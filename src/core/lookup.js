@@ -674,17 +674,21 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
   // first (for fire-door PPMs: "fire doors") and then choose the exact full
   // workbook instruction from the filtered dropdown. The workbook remains the
   // source of truth for which option is selected.
+  const buildingShort = spec.field === 'Building' ? buildingNumber(spec.value || spec.display || spec.strictCode) : '';
   const terms = spec.field === 'Instruction'
     ? uniqueNonBlank([...(spec.searchTerms || []), spec.strictCode, spec.sourceCode, spec.description, spec.value, spec.display])
-    : uniqueNonBlank([
-        spec.strictCode,
-        spec.sourceCode,
-        spec.field === 'Building' ? buildingNumber(spec.value) : '',
-        spec.description,
-        spec.value,
-        spec.display,
-        ...(spec.searchTerms || [])
-      ]);
+    : spec.field === 'Building'
+      ? uniqueNonBlank([buildingShort, ...(spec.searchTerms || []), spec.strictCode, spec.sourceCode, spec.description, spec.value, spec.display])
+      : uniqueNonBlank([
+          spec.strictCode,
+          spec.sourceCode,
+          spec.description,
+          spec.value,
+          spec.display,
+          ...(spec.searchTerms || [])
+        ]);
+  const commitTimeoutMs = Number(C().state.settings.lookupCommitTimeoutMs) || 8000;
+  const clickFirstField = spec.field === 'Instruction' || spec.field === 'Building';
 
   let lastTyped = '';
   for (const term of terms) {
@@ -714,7 +718,7 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
     // the filtered dropdown. Do not rely on ArrowDown selecting the first row,
     // because several fire-door instructions are returned by the same search.
     let committed = null;
-    if (spec.field === 'Instruction') {
+    if (clickFirstField) {
       const clickable = bestClickableForOption(best.node);
       dispatchClick(clickable, false);
       await wait(0);
@@ -722,11 +726,10 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
       try { control.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); } catch (_) {}
       try { control.blur(); } catch (_) {}
       await wait(0);
-      committed = await waitForCommittedLookup(spec, beforeFingerprint, 6200);
+      committed = await waitForCommittedLookup(spec, beforeFingerprint, commitTimeoutMs);
     } else {
-      // Other editable CAFM lookups retain the existing keyboard commit path.
       await commitInlineSelectionWithKeyboard(spec, control);
-      committed = await waitForCommittedLookup(spec, beforeFingerprint, spec.field === 'Building' ? 7000 : 5600);
+      committed = await waitForCommittedLookup(spec, beforeFingerprint, commitTimeoutMs);
     }
 
     if (!committed) {
@@ -744,7 +747,7 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
         try { liveControl.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); } catch (_) {}
         try { liveControl.blur(); } catch (_) {}
         await wait(0);
-        committed = await waitForCommittedLookup(spec, beforeFingerprint, spec.field === 'Building' ? 7000 : 5600);
+        committed = await waitForCommittedLookup(spec, beforeFingerprint, commitTimeoutMs);
       }
     }
 

@@ -24,7 +24,7 @@
         display: buildingDisplay,
         buildingName: record.buildingName,
         aliases: [record.buildingFull, record.buildingCode, record.buildingSearch, record.buildingName],
-        searchTerms: [buildingStrict, record.buildingName, buildingDisplay]
+        searchTerms: [buildingNumber(buildingDisplay || buildingStrict), buildingStrict, record.buildingName, buildingDisplay]
       }),
       makeLookupSpec('Floor', record.floorName, { display: record.floorName, aliases: [record.floorName], searchTerms: [record.floorName] }),
       makeLookupSpec('Location', locationDisplay || locationStrict, {

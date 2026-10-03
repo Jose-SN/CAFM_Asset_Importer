@@ -16,7 +16,8 @@
     'activate_select',
     'activate_confirm',
     'activate_wait',
-    'activate_wait_user'
+    'activate_wait_user',
+    'asset_save_and_new'
   ]);
 
   const PPM_PHASES = Object.freeze([

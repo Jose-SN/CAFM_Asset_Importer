@@ -5,7 +5,7 @@
   root.core = root.core || {};
 
   root.core.constants = Object.freeze({
-    VERSION: '8.0.18',
+    VERSION: '8.0.19',
     HOST_ID: 'ee-cafm-asset-importer-host',
     STORAGE: Object.freeze({
       session: 'eeAssetImporterV80Session',
@@ -18,8 +18,10 @@
     }),
     LARGE_KEY: 'eeAssetImporterV80Workbook',
     DEFAULT_SETTINGS: Object.freeze({
-      lookupTimeoutMs: 45000,
-      saveTimeoutMs: 45000,
+      lookupTimeoutMs: 20000,
+      saveTimeoutMs: 20000,
+      lookupCommitTimeoutMs: 8000,
+      ppmChildTimeoutMs: 15000,
       skipInvalidRows: false,
       stopOnLookupError: true,
       panelX: null,
@@ -28,7 +30,10 @@
       includeNotes: false,
       includeSpatial: false,
       iterationEnabled: false,
-      iterationCount: 1
+      iterationCount: 1,
+      autoDownloadTimeline: false,
+      autoContinueNext: true,
+      useSaveAndNew: true
     }),
     assetPagePattern: /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItem\.aspx/i,
     assetListPagePattern: /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItems\.aspx/i,

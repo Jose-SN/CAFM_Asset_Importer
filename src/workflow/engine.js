@@ -18,6 +18,7 @@
   } = root.core.pages;
   const { WAITING_PHASES } = root.workflow.phases;
   const { beginPostSave } = root.workflow.postSave;
+  const { dispatchClick } = root.core.dom;
   const $ = () => root.runtime.b;
 
   function scheduleAuto(_delay = 0) {
@@ -185,12 +186,48 @@
         return;
       }
 
-      if (auto.phase === 'navigate') {
-        if (!isNewEntityPage()) {
+      if (auto.phase === 'asset_save_and_new') {
+        const prevEntityId = String(auto.previousAssetEntityId || auto.assetEntityId || '');
+        if (!prevEntityId) {
+          b.state.session.auto = { ...auto, phase: 'navigate' };
+          await b.persistSession();
+          scheduleAuto(100);
+          return;
+        }
+        if (!isSavedAssetPage() || entityIdFromUrl() !== prevEntityId) {
+          location.href = assetEntityUrl(prevEntityId);
+          return;
+        }
+        const general = root.core.toolbar.findAssetGeneralNavLink();
+        if (general && !general.classList.contains('fsiNavSelectedItem')) {
+          dispatchClick(general, false);
+          scheduleAuto(300);
+          return;
+        }
+        const saveAndNew = b.clickSaveAndNew?.() || { ok: false };
+        b.addEvent('asset-save-and-new-click', { ok: saveAndNew.ok, method: saveAndNew.method || '', nextAssetCode: auto.assetCode || '' });
+        if (!saveAndNew.ok) {
+          b.state.session.auto = { ...auto, phase: 'navigate', saveAndNewStartedAt: 0 };
+          await b.persistSession();
           location.href = b.state.session.newEntityUrl || deriveNewEntityUrl();
           return;
         }
-        b.state.session.auto = { ...auto, phase: 'fill', index: b.state.session.index, assetCode: b.currentRecord()?.assetCode || '' };
+        b.state.session.auto = { ...auto, phase: 'navigate', saveAndNewStartedAt: Date.now() };
+        await b.persistSession();
+        scheduleAuto(300);
+        return;
+      }
+
+      if (auto.phase === 'navigate') {
+        if (!isNewEntityPage()) {
+          if (auto.saveAndNewStartedAt && Date.now() - Number(auto.saveAndNewStartedAt) < b.state.settings.saveTimeoutMs) {
+            scheduleAuto(200);
+            return;
+          }
+          location.href = b.state.session.newEntityUrl || deriveNewEntityUrl();
+          return;
+        }
+        b.state.session.auto = { ...auto, phase: 'fill', index: b.state.session.index, assetCode: b.currentRecord()?.assetCode || '', saveAndNewStartedAt: 0 };
         await b.persistSession();
       }
 

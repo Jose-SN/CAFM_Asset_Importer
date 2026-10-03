@@ -1,4 +1,4 @@
-# CAFM Smoke Test Runbook (v8.0.18)
+# CAFM Smoke Test Runbook (v8.0.19)
 
 Run these three scenarios on live Concept Evolution after reloading the extension (`chrome://extensions` → Reload).
 
@@ -132,13 +132,21 @@ Add Contract / Cost Centre / dates from your live CAFM lookup values if prefill 
 
 ---
 
+## v8.0.19 — grid dedup, Save and New, options
+
+1. Run an asset where linked PPM(s) **already exist** in CAFM — expect `ppm-grid-skip` / `existing` without ~70s Create New wait.
+2. Enable **Auto-download timeline JSON** only when needed; default is off.
+3. Panel shows **Last saved** / **Next to save** during batch runs.
+4. With **Use Save and New** enabled, after PPM cycle completes the extension opens the next New Entity via General → Save and New.
+5. Building lookup on Details tab: short number typed first, exact row clicked from dropdown.
+
 ## v8.0.18 — close sweep, timing, auto timeline
 
 1. Run an asset where at least one linked PPM **already exists** in CAFM.
 2. After parent refresh, confirm leftover FPPM popup windows close automatically (no manual close).
 3. Diagnostic JSON should include `ppm-post-refresh-close-sweep` and/or `ppm-duplicate-child-detected` events.
 4. When creating a new PPM, confirm step toasts (`PPM: selecting Contract...`, etc.) and `ppm-fill-step` events with `durationMs`.
-5. When the asset cycle completes, confirm a timeline JSON auto-downloads (`EE_CAFM_Timeline_*.json` in browser Downloads).
+5. With **Auto-download timeline JSON** enabled, confirm timeline JSON on asset cycle complete.
 
 ---
 

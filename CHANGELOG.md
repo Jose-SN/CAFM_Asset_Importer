@@ -1,4 +1,12 @@
-# v8.0.18
+# v8.0.19
+- PPM register: refresh grid before Create New; skip existing PPMs via row scan, session dedup, and per-asset guards (same instruction on different assets still creates one PPM per asset).
+- Building lookup: type short building number first and click the exact dropdown row (same pattern as PPM Instruction).
+- Panel: last saved / next to save queue line; optional auto-download timeline JSON; auto-continue and Save and New between assets; teach/capture buttons removed.
+- After all PPMs: General tab Save and New opens the next New Entity form when enabled.
+- Timeouts tuned: 20s default safety cap, 15s PPM child wait, 8s lookup commit; duplicate-child detection faster.
+- Preflight warns when the same asset has duplicate PPM instruction rows in the workbook.
+
+## v8.0.18
 - Post-refresh PPM close sweep: `PPM_SWEEP_CHILDREN` closes leftover FPPM popup tabs/windows without re-triggering parent refresh.
 - Duplicate/existing PPM path: detect saved-ppm or parent-register child URLs during `ppm_wait_new`, sweep, and refresh sooner.
 - Existing PPM skip now sweeps children before advancing to the next linked PPM row.

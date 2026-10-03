@@ -97,8 +97,10 @@ function initTeachCapture() {
     const target = bestClickedNode(event);
     if (!target || isAssistantElement(target)) return;
     const payload = clickFingerprint(target, event);
+    const topFrame = Boolean(C().TOP);
+    const state = C().state;
 
-    if (TOP && state.teachStatusArmed) {
+    if (topFrame && state?.teachStatusArmed) {
       state.teachStatusArmed = false;
       storageRemove([STORAGE.statusLearnRequest]).catch(() => {});
       storageSet({ [STORAGE.learnedStatus]: payload }).then(() => {
@@ -107,7 +109,7 @@ function initTeachCapture() {
       }).catch(() => {});
       return;
     }
-    if (TOP && state.teachNewArmed) {
+    if (topFrame && state?.teachNewArmed) {
       state.teachNewArmed = false;
       storageRemove([STORAGE.newLearnRequest]).catch(() => {});
       storageSet({ [STORAGE.learnedNew]: payload }).then(() => {

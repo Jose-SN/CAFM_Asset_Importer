@@ -16,7 +16,7 @@ const PANEL_FUNCS = [
 ];
 
 const CFG_CALLS = [
-  'counts', 'currentRecord', 'statusOf', 'validateRecord', 'linkedPpms',
+  'counts', 'currentRecord', 'statusOf', 'validateRecord', 'linkedPpms', 'nextPendingIndex',
   'assetCodeOnPage', 'ppmRecordOnCurrentPage', 'workflowAssetCodeOnPage',
   'workflowRecord', 'currentPpm', 'validationMessage', 'persistSession', 'storageSet',
   'loadWorkbookFile', 'fillCurrentRecord', 'clickSaveTracked', 'fillExistingSavedAsset',

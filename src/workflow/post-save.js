@@ -4,7 +4,7 @@
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
   const { wait, dispatchClick, waitForDom } = root.core.dom;
-  const { entityIdFromUrl, isSavedAssetPage, ppmListUrl, deriveNewEntityUrl } = root.core.pages;
+  const { entityIdFromUrl, isSavedAssetPage, isNewEntityPage, ppmListUrl, assetEntityUrl, deriveNewEntityUrl } = root.core.pages;
   const $ = () => root.runtime.b;
 
   async function beginPostSave(record, entityId, mode = 'automatic', note = 'CAFM asset save confirmed') {
@@ -96,10 +96,12 @@
       activePpmCount: activePpms
     });
 
-    try {
-      const fileName = root.data.workbook.downloadAssetTimeline(record, { auto: true });
-      b.showToast(`Timeline log downloaded: ${fileName}`, 'info', 6000);
-    } catch (_) {}
+    if (b.state.settings.autoDownloadTimeline) {
+      try {
+        const fileName = root.data.workbook.downloadAssetTimeline(record, { auto: true });
+        b.showToast(`Timeline log downloaded: ${fileName}`, 'info', 6000);
+      } catch (_) {}
+    }
 
     const next = b.nextPendingIndex(b.state.session.index + 1);
     if (auto.mode === 'manual-post-save') {
@@ -108,7 +110,7 @@
       b.state.session.currentLookupEvidence = [];
       await b.persistSession();
       b.render();
-      if (next >= 0 && b.state.session.newEntityUrl) {
+      if (next >= 0 && b.state.settings.autoContinueNext !== false && b.state.session.newEntityUrl) {
         b.showToast(`${record.assetCode} is ACTIVE and PPM setup is complete. Opening the next asset.`, 'success', 8000);
         await wait(0);
         location.href = b.state.session.newEntityUrl;
@@ -143,14 +145,27 @@
       return;
     }
 
+    if (b.state.settings.autoContinueNext === false) {
+      b.state.session.auto = { active: false, mode: auto.mode || 'automatic', phase: 'complete', completedAt: Date.now(), processedThisRun: completedIterations };
+      await b.persistSession();
+      b.render();
+      b.showToast(`${record.assetCode} complete. Auto-continue is off — reload the extension if needed, then start the next row manually.`, 'success', 12000);
+      return;
+    }
+
+    const previousEntityId = entityId;
+    const useSaveAndNew = b.state.settings.useSaveAndNew !== false;
     b.state.session.index = next;
     b.state.session.currentLookupEvidence = [];
     b.state.session.auto = {
       active: true,
       mode: auto.mode || 'automatic',
-      phase: 'navigate',
+      phase: useSaveAndNew ? 'asset_save_and_new' : 'navigate',
       index: next,
       assetCode: b.state.assets[next].assetCode,
+      previousAssetCode: record.assetCode,
+      previousAssetEntityId: previousEntityId,
+      saveAndNewStartedAt: 0,
       startedAt: auto.startedAt || Date.now(),
       processedThisRun: completedIterations,
       maxIterations: Math.max(1, Number(auto.maxIterations || 1)),
@@ -161,9 +176,18 @@
     b.render();
     const warningCount = (b.state.session.statuses?.[record.assetCode]?.validationWarnings || []).length;
     const ppmSummary = activePpms ? `${savedPpms} PPM saved, ${activePpms} ACTIVE` : `${savedPpms} PPM saved`;
-    b.showToast(`${record.assetCode} complete: Asset saved, ${ppmSummary}${warningCount ? `, ${warningCount} warning(s)` : ''}. Moving to next asset.`, warningCount ? 'warn' : 'success', 14000);
-    b.addEvent('asset-cycle-snackbar', { assetCode: record.assetCode, savedPpms, activePpms, warningCount, nextAssetCode: b.state.assets[next]?.assetCode || '' });
-    await wait(1500);
+    const nextCode = b.state.assets[next]?.assetCode || '';
+    b.showToast(`${record.assetCode} complete: Asset saved, ${ppmSummary}${warningCount ? `, ${warningCount} warning(s)` : ''}. Next: ${nextCode}.`, warningCount ? 'warn' : 'success', 14000);
+    b.addEvent('asset-cycle-snackbar', { assetCode: record.assetCode, savedPpms, activePpms, warningCount, nextAssetCode: nextCode });
+
+    if (useSaveAndNew && previousEntityId) {
+      if (!isSavedAssetPage() || entityIdFromUrl() !== String(previousEntityId)) {
+        location.href = assetEntityUrl(previousEntityId);
+      } else {
+        b.scheduleAuto(100);
+      }
+      return;
+    }
     location.href = b.state.session.newEntityUrl || deriveNewEntityUrl();
   }
 
@@ -190,7 +214,8 @@
       phase: 'ppm_open_list',
       assetEntityId: entityId,
       ppmIndex: 0,
-      ppmResults: auto.ppmResults || []
+      ppmResults: auto.ppmResults || [],
+      ppmGridRefreshedForIndex: -1
     };
     await b.persistSession();
     b.render();

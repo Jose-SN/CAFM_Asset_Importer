@@ -145,6 +145,7 @@
     hiddenCommitted,
     findSaveButton: CI.core.dom.findSaveButton,
     clickSaveAndClose: CI.core.dom.clickSaveAndClose,
+    clickSaveAndNew: CI.core.dom.clickSaveAndNew,
     validationMessage: CI.core.dom.validationMessage,
     ppmSourceIssues,
     linkedPpms,
@@ -213,7 +214,7 @@
     }
 
     configurePanel({
-      state, counts, validateRecord, currentRecord, statusOf, linkedPpms,
+      state, counts, validateRecord, currentRecord, statusOf, linkedPpms, nextPendingIndex,
       assetCodeOnPage, ppmRecordOnCurrentPage, workflowAssetCodeOnPage,
       workflowRecord, currentPpm, validationMessage,
       loadWorkbookFile, fillCurrentRecord, clickSaveTracked, fillExistingSavedAsset,

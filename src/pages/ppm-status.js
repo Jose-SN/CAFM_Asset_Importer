@@ -294,6 +294,11 @@
   async function recordPpmResult(record, ppm, status, note, ppmEntityId = '') {
     const b = $();
     const auto = b.state.session.auto || {};
+    const prior = (auto.ppmResults || []).find((item) => clean(item.ppmKey) === clean(ppm.ppmKey));
+    if (prior && ['saved', 'existing'].includes(clean(prior.status))) {
+      b.addEvent('ppm-save-result-ignored', { ppmKey: ppm.ppmKey, priorStatus: prior.status });
+      return;
+    }
     b.addEvent('ppm-save-result', { ppmKey: ppm.ppmKey, instruction: ppm.instruction, status, ppmEntityId });
     const results = [...(auto.ppmResults || []), {
       ppmKey: ppm.ppmKey,
@@ -344,7 +349,8 @@
       ppmIndex: nextIndex,
       ppmResults: results,
       ppmNewClickedForIndex: -1,
-      ppmListReadyStartedAt: 0
+      ppmListReadyStartedAt: 0,
+      ppmGridRefreshedForIndex: -1
     };
     await b.persistSession();
     b.render();

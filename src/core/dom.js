@@ -333,6 +333,20 @@ function findSaveAndCloseButton() {
   return candidates[0]?.closest?.('a,button,[role="button"]') || candidates[0] || null;
 }
 
+function findSaveAndNewButton() {
+  const exact = document.querySelector('a[onclick*="Toolbar.SaveAndNew"], a[title*="Save and New" i]');
+  if (exact && visible(exact) && !isAssistantElement(exact)) return exact;
+  const candidates = [...document.querySelectorAll('a,button,[role="button"]')]
+    .filter((element) => {
+      if (!visible(element) || isAssistantElement(element)) return false;
+      const text = norm(element.textContent);
+      const onclick = norm(element.getAttribute('onclick') || '');
+      const title = norm(element.getAttribute('title') || '');
+      return /save and new/.test(text) || onclick.includes('toolbar.saveandnew') || /save and new/.test(title);
+    });
+  return candidates[0]?.closest?.('a,button,[role="button"]') || candidates[0] || null;
+}
+
 function clickSaveAndClose() {
   try {
     if (typeof Toolbar !== 'undefined' && typeof Toolbar.SaveAndClose === 'function') {
@@ -350,6 +364,31 @@ function clickSaveAndClose() {
   for (const trigger of saveTriggers) {
     dispatchClick(trigger, false);
     const menuItem = findSaveAndCloseButton();
+    if (menuItem && visible(menuItem)) {
+      dispatchClick(menuItem, false);
+      return { ok: true, method: 'dropdown-menu-link' };
+    }
+  }
+  return { ok: false, method: '' };
+}
+
+function clickSaveAndNew() {
+  try {
+    if (typeof Toolbar !== 'undefined' && typeof Toolbar.SaveAndNew === 'function') {
+      Toolbar.SaveAndNew();
+      return { ok: true, method: 'Toolbar.SaveAndNew' };
+    }
+  } catch (_) {}
+  const direct = findSaveAndNewButton();
+  if (direct && visible(direct)) {
+    dispatchClick(direct, false);
+    return { ok: true, method: 'menu-link' };
+  }
+  const saveTriggers = [...document.querySelectorAll('a[onclick*="Toolbar.Save"], button[onclick*="Toolbar.Save"]')]
+    .filter((element) => visible(element) && !isAssistantElement(element));
+  for (const trigger of saveTriggers) {
+    dispatchClick(trigger, false);
+    const menuItem = findSaveAndNewButton();
     if (menuItem && visible(menuItem)) {
       dispatchClick(menuItem, false);
       return { ok: true, method: 'dropdown-menu-link' };
@@ -377,6 +416,6 @@ function validationMessage() {
     wait, visible, isAssistantElement, elementValue, dispatchClick,
     configureForm, waitForDom, labelElements, allVisibleControls, nearestControl,
     setNativeValue, tabContextReady, clickTab, fillByLabel, nearestCheckbox,
-    setCheckboxByLabel, setSelectByLabel, findSaveButton, findSaveAndCloseButton, clickSaveAndClose, validationMessage
+    setCheckboxByLabel, setSelectByLabel, findSaveButton, findSaveAndCloseButton, findSaveAndNewButton, clickSaveAndClose, clickSaveAndNew, validationMessage
   });
 })();

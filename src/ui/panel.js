@@ -76,7 +76,20 @@ function render() {
       C().state.els.preflightReport.hidden = true;
     }
   }
+  const prevSavedCode = (() => {
+    for (let i = Math.min(C().state.session.index, C().state.assets.length - 1); i >= 0; i -= 1) {
+      if (C().statusOf(C().state.assets[i]) === 'saved') return C().state.assets[i].assetCode;
+    }
+    return '';
+  })();
+  const nextPendingIdx = C().nextPendingIndex(C().state.session.index);
+  const nextPendingCode = nextPendingIdx >= 0 ? C().state.assets[nextPendingIdx]?.assetCode || '' : '';
   C().state.els.row.textContent = record ? `${C().state.session.index + 1} / ${C().state.assets.length} | Excel row ${record.workbookRow}` : '-';
+  if (C().state.els.queueNav) {
+    C().state.els.queueNav.textContent = loaded
+      ? `Last saved: ${prevSavedCode || '-'} | Next to save: ${nextPendingCode || '-'}`
+      : 'Last saved: - | Next to save: -';
+  }
   C().state.els.assetCode.textContent = record?.assetCode || '-';
   C().state.els.status.textContent = record ? status.toUpperCase() : '-';
   C().state.els.status.className = `pill ${statusClass(status)}`;
@@ -145,10 +158,6 @@ function render() {
     }
   }
 
-  C().state.els.learnedStatusInfo.textContent = C().state.learnedStatus
-    ? `Taught status button: ${C().state.learnedStatus.tag || 'element'}${C().state.learnedStatus.attrs?.id ? ` #${C().state.learnedStatus.attrs.id}` : ''} | ${C().state.learnedStatus.topFrame ? 'top page' : 'embedded frame'}`
-    : 'Status button not taught yet. Click Teach, then click the traffic-light once manually.';
-
   const assetEntryPage = isAssetPage() && isNewEntityPage();
   for (const id of ['fill', 'saveCurrent', 'skip', 'prev', 'next', 'markSaved']) C().state.els[id].disabled = !loaded || !assetEntryPage;
   C().state.els.editExisting.disabled = !loaded || !savedAssetPage || !savedMatch;
@@ -178,12 +187,6 @@ function render() {
   C().state.els.startPpmHere.textContent = ppmPageMatch ? `START PPM FOR THIS ASSET (${ppmReadyCount})` : 'START PPM FOR THIS ASSET';
   C().state.els.openPpmNew.hidden = !ppmRegisterPage;
   C().state.els.openPpmNew.disabled = !ppmRegisterPage;
-  C().state.els.learnPpmNew.hidden = !ppmRegisterPage;
-  C().state.els.learnPpmNew.disabled = !ppmRegisterPage;
-  C().state.els.learnedNewInfo.hidden = !ppmRegisterPage;
-  C().state.els.learnedNewInfo.textContent = C().state.learnedNew
-    ? `Taught + New button: ${C().state.learnedNew.tag || 'element'}${C().state.learnedNew.attrs?.id ? ` #${C().state.learnedNew.attrs.id}` : ''} | ${C().state.learnedNew.topFrame ? 'top page' : 'embedded frame'}`
-    : '+ New button not taught yet. Click Teach, then click the real + New control once manually.';
   if (C().state.els.ppmQueuePreview) {
     C().state.els.ppmQueuePreview.hidden = !ppmRegisterPage;
     if (!loaded) {
@@ -215,6 +218,9 @@ function render() {
   C().state.els.includeNotes.checked = Boolean(C().state.settings.includeNotes);
   C().state.els.includeSpatial.checked = Boolean(C().state.settings.includeSpatial);
   C().state.els.skipInvalid.checked = Boolean(C().state.settings.skipInvalidRows);
+  if (C().state.els.autoDownloadTimeline) C().state.els.autoDownloadTimeline.checked = Boolean(C().state.settings.autoDownloadTimeline);
+  if (C().state.els.autoContinueNext) C().state.els.autoContinueNext.checked = C().state.settings.autoContinueNext !== false;
+  if (C().state.els.useSaveAndNew) C().state.els.useSaveAndNew.checked = C().state.settings.useSaveAndNew !== false;
 }
 
 function makeDraggable() {
@@ -345,6 +351,7 @@ function injectPanel() {
         <div id="currentSection" class="section">
           <h3>Current asset</h3>
           <div class="rowline"><span id="row" class="muted">-</span><span id="status" class="pill neutral">-</span></div>
+          <div id="queueNav" class="muted" style="margin:4px 0">Last saved: - | Next to save: -</div>
           <div id="assetCode" class="asset">-</div>
           <div id="validation" class="validation goodtext">Load a workbook to begin.</div>
           <div id="lookupSummary" class="lookup-list"></div>
@@ -360,16 +367,13 @@ function injectPanel() {
             <button id="next" class="action">Next</button>
             <button id="skip" class="action">Skip current</button>
             <button id="markSaved" class="action">Mark saved + next</button>
-            <button id="learnStatus" class="action wide">Teach / capture status button</button>
           </div>
-          <div id="learnedStatusInfo" class="muted" style="margin-top:7px">Status button not taught yet.</div>
         </div>
         <div id="autoSection" class="section">
           <h3>Automatic Asset + PPM import</h3>
           <div class="buttons">
             <button id="startPpmHere" class="action primary wide" hidden>START PPM FOR THIS ASSET</button>
             <button id="openPpmNew" class="action wide" hidden>OPEN + NEW PPM WINDOW</button>
-            <button id="learnPpmNew" class="action wide" hidden>TEACH / CAPTURE + NEW BUTTON</button>
             <button id="startAuto" class="action primary">Start automatic</button>
             <button id="pauseAuto" class="action danger">Pause / Stop</button>
             <button id="resumeAuto" class="action primary wide" hidden>Resume from stopped row</button>
@@ -379,7 +383,6 @@ function injectPanel() {
             <button id="resumeRowGo" type="button" class="action" style="min-height:28px;padding:4px 8px">Go</button>
           </label>
           <div id="ppmQueuePreview" class="validation goodtext" hidden style="margin-top:8px"></div>
-          <div id="learnedNewInfo" class="muted" hidden style="margin-top:7px">+ New button not taught yet.</div>
           <div id="autoState">Automatic import stopped</div>
           <div id="progressTrack" hidden style="height:7px;background:#2d3944;border-radius:4px;margin-top:6px;overflow:hidden">
             <div id="progressFill" style="height:100%;width:0%;background:linear-gradient(90deg,#3d8bfd,#7ee2a8);transition:width .25s ease"></div>
@@ -391,7 +394,10 @@ function injectPanel() {
           <label class="option"><input id="includeNotes" type="checkbox"> Include Notes tab only when workbook data is populated</label>
           <label class="option"><input id="includeSpatial" type="checkbox"> Include Spatial / GIS tab only when workbook data is populated</label>
           <label class="option"><input id="skipInvalid" type="checkbox"> Skip invalid workbook rows instead of stopping</label>
-          <div class="muted">v8 has no per-record pacing delay. It proceeds when CAFM state is verified; 45-second safety timeouts remain for stalled network/UI operations.</div>
+          <label class="option"><input id="autoDownloadTimeline" type="checkbox"> Auto-download timeline JSON when each asset cycle completes</label>
+          <label class="option"><input id="autoContinueNext" type="checkbox"> Auto-continue to next asset after PPM cycle</label>
+          <label class="option"><input id="useSaveAndNew" type="checkbox"> Use Save and New on General tab between assets</label>
+          <div class="muted">Proceeds when CAFM state is verified. Safety timeouts default to 20s (PPM child wait 15s). Reload the extension at chrome://extensions after code updates.</div>
         </div>
         <div id="sessionSection" class="section">
           <h3>Session</h3>
@@ -408,7 +414,7 @@ function injectPanel() {
     <div id="toast" class="toast"></div>
   `;
 
-  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'learnStatus', 'learnedStatusInfo', 'startPpmHere', 'openPpmNew', 'learnPpmNew', 'ppmQueuePreview', 'learnedNewInfo', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast'];
+  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast'];
   for (const id of ids) C().state.els[id] = shadow.getElementById(id);
   C().state.els.dragHandle = C().state.els.head;
   if (!isAssetPage()) C().state.els.panel.classList.add('ppm-workflow');
@@ -466,16 +472,6 @@ function injectPanel() {
   C().state.els.next.addEventListener('click', () => C().move(1));
   C().state.els.skip.addEventListener('click', () => C().skipCurrent());
   C().state.els.markSaved.addEventListener('click', () => C().markSavedAndNext('Manually confirmed by user'));
-  C().state.els.learnStatus.addEventListener('click', async () => {
-    C().state.teachStatusArmed = true;
-    C().state.teachNewArmed = false;
-    const auto = C().state.session.auto || {};
-    if (String(auto.phase || '').startsWith('activate_')) C().state.session.auto = { ...auto, phase: 'activate_wait_user', activationManualStartedAt: Date.now() };
-    else if (String(auto.phase || '').startsWith('ppm_status_')) C().state.session.auto = { ...auto, phase: 'ppm_status_wait_user', ppmStatusManualStartedAt: Date.now() };
-    await C().storageSet({ [STORAGE.statusLearnRequest]: { active: true, startedAt: Date.now(), expiresAt: Date.now() + 90000 } });
-    await C().persistSession();
-    showToast('Teach mode armed. Click the real traffic-light status icon ONCE. This click will be captured only once; automation will not click it again while teaching.', 'warn', 14000);
-  });
   C().state.els.startPpmHere.addEventListener('click', async () => {
     if (C().state.busy) return;
     try { await C().startPpmForCurrentPage(); }
@@ -490,15 +486,6 @@ function injectPanel() {
     } catch (error) {
       showToast(error.message || String(error), 'error', 12000);
     }
-  });
-  C().state.els.learnPpmNew.addEventListener('click', async () => {
-    C().state.teachNewArmed = true;
-    C().state.teachStatusArmed = false;
-    const auto = C().state.session.auto || {};
-    if (String(auto.phase || '').startsWith('ppm_')) C().state.session.auto = { ...auto, phase: 'ppm_wait_user_new', ppmOpenStartedAt: Date.now() };
-    await C().storageSet({ [STORAGE.newLearnRequest]: { active: true, startedAt: Date.now(), expiresAt: Date.now() + 90000 } });
-    await C().persistSession();
-    showToast('Teach + New is armed. Click the REAL CAFM + New button ONCE. The extension will capture only that click and will not issue a second popup click while teaching.', 'warn', 16000);
   });
   C().state.els.startAuto.addEventListener('click', () => C().startAutomatic());
   C().state.els.pauseAuto.addEventListener('click', () => C().pauseAutomatic());
@@ -524,6 +511,18 @@ function injectPanel() {
     C().state.settings.skipInvalidRows = C().state.els.skipInvalid.checked;
     await C().persistSession();
   });
+  C().state.els.autoDownloadTimeline.addEventListener('change', async () => {
+    C().state.settings.autoDownloadTimeline = C().state.els.autoDownloadTimeline.checked;
+    await C().persistSession();
+  });
+  C().state.els.autoContinueNext.addEventListener('change', async () => {
+    C().state.settings.autoContinueNext = C().state.els.autoContinueNext.checked;
+    await C().persistSession();
+  });
+  C().state.els.useSaveAndNew.addEventListener('change', async () => {
+    C().state.settings.useSaveAndNew = C().state.els.useSaveAndNew.checked;
+    await C().persistSession();
+  });
   C().state.els.iterateBatch.addEventListener('change', async () => {
     C().state.settings.iterationEnabled = C().state.els.iterateBatch.checked;
     await C().persistSession();
@@ -537,18 +536,8 @@ function injectPanel() {
   C().state.els.downloadDiagnostic.addEventListener('click', () => C().downloadDiagnostic());
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
-    let changed = false;
-    if (changes[STORAGE.learnedStatus]) {
-      C().state.learnedStatus = changes[STORAGE.learnedStatus].newValue || null;
-      changed = true;
-      if (C().state.learnedStatus) showToast('Status button captured successfully. Future activation will use this exact element before any fallback detector.', 'success', 9000);
-    }
-    if (changes[STORAGE.learnedNew]) {
-      C().state.learnedNew = changes[STORAGE.learnedNew].newValue || null;
-      changed = true;
-      if (C().state.learnedNew) showToast('+ New button captured successfully. Future PPM creation will use this exact learned control before any fallback detector.', 'success', 10000);
-    }
-    if (changed) render();
+    if (changes[STORAGE.learnedStatus]) C().state.learnedStatus = changes[STORAGE.learnedStatus].newValue || null;
+    if (changes[STORAGE.learnedNew]) C().state.learnedNew = changes[STORAGE.learnedNew].newValue || null;
   });
   makeDraggable();
 }
