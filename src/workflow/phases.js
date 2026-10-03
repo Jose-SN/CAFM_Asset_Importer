@@ -17,7 +17,8 @@
     'activate_confirm',
     'activate_wait',
     'activate_wait_user',
-    'asset_save_and_new'
+    'asset_save_and_new',
+    'run_complete_finalize'
   ]);
 
   const PPM_PHASES = Object.freeze([
@@ -42,12 +43,22 @@
     'activate_wait',
     'activate_wait_user',
     'asset_save_and_new',
+    'run_complete_finalize',
     'ppm_wait_new',
     'ppm_wait_user_new',
     'ppm_await_save',
     'ppm_cycle_general_wait',
     'ppm_status_wait',
-    'ppm_status_wait_user'
+    'ppm_status_wait_user',
+    'ppm_parent_refresh',
+    'ppm_parent_refresh_wait'
+  ]);
+
+  /** Phases where DOM mutations fire very often; scheduleAuto uses longer minimum delays. */
+  const HOT_SCHEDULE_PHASES = new Set([
+    'ppm_parent_refresh',
+    'ppm_parent_refresh_wait',
+    'ppm_wait_new'
   ]);
 
   function phasePrefix(phase, prefix) {
@@ -58,6 +69,7 @@
     ASSET_PHASES,
     PPM_PHASES,
     WAITING_PHASES,
+    HOT_SCHEDULE_PHASES,
     phasePrefix,
     isActivationPhase: (phase) => phasePrefix(phase, 'activate_'),
     isPpmPhase: (phase) => phasePrefix(phase, 'ppm_'),

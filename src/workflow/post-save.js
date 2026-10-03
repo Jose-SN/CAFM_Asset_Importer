@@ -4,7 +4,16 @@
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
   const { wait, dispatchClick, waitForDom } = root.core.dom;
-  const { entityIdFromUrl, isSavedAssetPage, isNewEntityPage, ppmListUrl, assetEntityUrl, deriveNewEntityUrl } = root.core.pages;
+  const {
+    entityIdFromUrl,
+    isSavedAssetPage,
+    isNewEntityPage,
+    isAssetListPage,
+    ppmListUrl,
+    assetEntityUrl,
+    assetListUrl,
+    deriveNewEntityUrl
+  } = root.core.pages;
   const $ = () => root.runtime.b;
 
   async function beginPostSave(record, entityId, mode = 'automatic', note = 'CAFM asset save confirmed') {
@@ -120,28 +129,26 @@
       return;
     }
 
-    if (completedIterations >= Math.max(1, Number(auto.maxIterations || 1))) {
-      b.state.session.auto = {
+    const maxIterations = Math.max(1, Number(auto.maxIterations || 1));
+    if (completedIterations >= maxIterations) {
+      await beginRunCompleteFinalize(record, {
         ...auto,
-        active: false,
-        phase: 'complete',
-        completedAt: Date.now(),
         processedThisRun: completedIterations,
-        maxIterations: Math.max(1, Number(auto.maxIterations || 1)),
+        maxIterations,
+        assetEntityId: entityId,
         ppmResults
-      };
-      b.state.session.currentLookupEvidence = [];
-      await b.persistSession();
-      b.render();
-      b.showToast(`Iteration limit reached: ${completedIterations} asset cycle(s) completed.`, 'success', 10000);
+      }, ppmResults, 'iteration');
       return;
     }
 
     if (next < 0) {
-      b.state.session.auto = { active: false, mode: auto.mode || 'automatic', phase: 'complete', completedAt: Date.now() };
-      await b.persistSession();
-      b.render();
-      b.showToast('Automatic Asset + Activation + PPM import completed.', 'success', 10000);
+      await beginRunCompleteFinalize(record, {
+        ...auto,
+        processedThisRun: completedIterations,
+        maxIterations,
+        assetEntityId: entityId,
+        ppmResults
+      }, ppmResults, 'workbook');
       return;
     }
 
@@ -189,6 +196,125 @@
       return;
     }
     location.href = b.state.session.newEntityUrl || deriveNewEntityUrl();
+  }
+
+  async function beginRunCompleteFinalize(record, auto, ppmResults = [], reason = 'iteration') {
+    const b = $();
+    const entityId = String(auto.assetEntityId || b.state.session.statuses?.[record.assetCode]?.cafmEntityId || '').trim();
+    b.addEvent('run-complete-finalize-start', {
+      reason,
+      assetCode: record?.assetCode || '',
+      processedThisRun: Number(auto.processedThisRun || 0),
+      maxIterations: Number(auto.maxIterations || 1)
+    });
+    b.state.session.auto = {
+      ...auto,
+      active: true,
+      mode: auto.mode || 'automatic',
+      phase: 'run_complete_finalize',
+      assetEntityId: entityId,
+      ppmResults,
+      runCompleteReason: reason,
+      runCompleteGeneralStartedAt: 0,
+      runCompleteGeneralReadyAt: 0,
+      runCompleteSaveClickedAt: 0
+    };
+    await b.persistSession();
+    b.render();
+    if (entityId && (!isSavedAssetPage() || entityIdFromUrl() !== entityId)) {
+      location.href = assetEntityUrl(entityId);
+      return;
+    }
+    b.scheduleAuto(120);
+  }
+
+  async function finishRunCompleteFinalize(record) {
+    const b = $();
+    const auto = b.state.session.auto || {};
+    const count = Number(auto.processedThisRun || 1);
+    const max = Math.max(1, Number(auto.maxIterations || count));
+    const reason = String(auto.runCompleteReason || 'iteration');
+    b.state.settings.collapsed = false;
+    b.state.settings.panelView = 'main';
+    b.state.session.auto = {
+      active: false,
+      mode: auto.mode || 'automatic',
+      phase: 'complete',
+      completedAt: Date.now(),
+      processedThisRun: count,
+      maxIterations: max,
+      ppmResults: auto.ppmResults || [],
+      runCompleteReason: reason
+    };
+    b.state.session.currentLookupEvidence = [];
+    await b.persistSession();
+    b.render();
+    const message = reason === 'workbook'
+      ? `All workbook assets complete (${count} cycle(s)). Last asset saved on General. Opening asset list.`
+      : `Automatic iteration complete: ${count} of ${max} asset cycle(s). Last asset saved on General. Opening asset list.`;
+    b.showToast(message, 'success', 18000);
+    b.addEvent('run-complete-finalize-done', { reason, processedThisRun: count, maxIterations: max, assetCode: record?.assetCode || '' });
+    if (!isAssetListPage()) {
+      location.href = assetListUrl();
+    }
+  }
+
+  async function processRunCompleteFinalize(record) {
+    const b = $();
+    const auto = b.state.session.auto || {};
+    const entityId = String(auto.assetEntityId || '').trim();
+    if (!isSavedAssetPage() || (entityId && entityIdFromUrl() !== entityId)) {
+      if (entityId) {
+        location.href = assetEntityUrl(entityId);
+        return;
+      }
+      await finishRunCompleteFinalize(record);
+      return;
+    }
+    const general = root.core.toolbar.findAssetGeneralNavLink();
+    const onGeneral = Boolean(general?.classList.contains('fsiNavSelectedItem'));
+    if (!onGeneral) {
+      if (!auto.runCompleteGeneralStartedAt) {
+        b.state.session.auto = { ...auto, runCompleteGeneralStartedAt: Date.now() };
+        await b.persistSession();
+      }
+      if (general) dispatchClick(general, false);
+      else {
+        await finishRunCompleteFinalize(record);
+        return;
+      }
+      if (Date.now() - Number(auto.runCompleteGeneralStartedAt || Date.now()) > b.state.settings.lookupTimeoutMs) {
+        b.addEvent('run-complete-general-timeout', { assetCode: record?.assetCode || '' });
+      } else {
+        b.scheduleAuto(350);
+        return;
+      }
+    }
+    if (!auto.runCompleteGeneralReadyAt) {
+      b.state.session.auto = { ...auto, runCompleteGeneralReadyAt: Date.now() };
+      await b.persistSession();
+      b.scheduleAuto(280);
+      return;
+    }
+    if (!auto.runCompleteSaveClickedAt) {
+      const save = b.findSaveButton();
+      if (save) {
+        dispatchClick(save, false);
+        b.addEvent('run-complete-save-click', { assetCode: record?.assetCode || '' });
+        b.state.session.auto = { ...auto, runCompleteSaveClickedAt: Date.now() };
+        await b.persistSession();
+        b.scheduleAuto(650);
+        return;
+      }
+      if (Date.now() - Number(auto.runCompleteGeneralReadyAt || Date.now()) > b.state.settings.lookupTimeoutMs) {
+        b.addEvent('run-complete-save-missing', { assetCode: record?.assetCode || '' });
+        await finishRunCompleteFinalize(record);
+        return;
+      }
+      b.scheduleAuto(300);
+      return;
+    }
+    await finishRunCompleteFinalize(record);
   }
 
   async function afterActivation(record) {
@@ -324,6 +450,9 @@
   root.workflow.postSave = Object.freeze({
     beginPostSave,
     finishPostSave,
+    beginRunCompleteFinalize,
+    finishRunCompleteFinalize,
+    processRunCompleteFinalize,
     afterActivation,
     clickSaveTracked,
     handlePostReloadSaveState

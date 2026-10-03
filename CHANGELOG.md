@@ -1,3 +1,17 @@
+# v8.0.25
+- Fix **PPM register refresh storm**: guard repeat Refresh clicks until one cycle finishes; fix fall-through after `ppm_parent_refresh_wait`; require visible Refresh/Create New buttons.
+- **Debounce** MutationObserver and `scheduleAuto` during `ppm_parent_refresh`, `ppm_parent_refresh_wait`, and `ppm_wait_new` (longer minimum delays, fewer session writes).
+- **Background orchestrator** runs only when the workflow tab is **not focused** (`backgroundOrchestratorOnlyWhenHidden`, default on) — avoids double-firing with the content script while you watch the page.
+- Throttle diagnostic events (`ppm-child-check`, refresh checks) and stop persisting session on every child poll.
+
+# v8.0.24
+- Panel **resize** (bottom-right grip); width/height remembered in settings.
+- **Summary** and **Details** views with header tabs; Summary shows KPIs and quick actions, Details has full controls.
+- **Asset list (home)** button on Summary; extension **popup** updated with navigation to asset list and New Entity.
+
+# v8.0.23
+- When automatic **iteration** or the full **workbook** run finishes: open **General** on the last asset, click **Save**, show a completion message, expand the importer panel, and navigate to the **asset list** page.
+
 # v8.0.22
 - Fix **Extension context invalidated** uncaught errors after reloading the extension: storage APIs now detect a dead extension context, stop automatic import safely, and show a clear “press F5” message instead of console promise rejections.
 

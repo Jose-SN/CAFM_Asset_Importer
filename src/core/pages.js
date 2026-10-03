@@ -89,6 +89,10 @@
     return `${location.origin}/Evolution/!System/Asset/FASSET/ViewFASSETItem.aspx?id=${encodeURIComponent(id)}&SubNav=true`;
   }
 
+  function assetListUrl() {
+    return `${location.origin}/Evolution/!System/Asset/FASSET/ViewFASSETItems.aspx`;
+  }
+
   function ppmListUrl(assetEntityId) {
     const id = clean(assetEntityId);
     return `${location.origin}/Evolution/!System/Asset/FASSET/ViewFASSETItemPPMs.aspx?id=${encodeURIComponent(id)}&SubNav=true#`;
@@ -132,6 +136,7 @@
     isWorkflowPage,
     isPanelPage,
     assetEntityUrl,
+    assetListUrl,
     ppmListUrl,
     ppmEntityUrl,
     isSavedPpmPage,

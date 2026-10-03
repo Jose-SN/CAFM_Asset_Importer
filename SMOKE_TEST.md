@@ -1,4 +1,4 @@
-# CAFM Smoke Test Runbook (v8.0.21)
+# CAFM Smoke Test Runbook (v8.0.25)
 
 Run these three scenarios on live Concept Evolution after reloading the extension (`chrome://extensions` → Reload).
 
@@ -131,6 +131,12 @@ Add Contract / Cost Centre / dates from your live CAFM lookup values if prefill 
 4. Expected: phase restores to `failedPhase`; run continues from that phase.
 
 ---
+
+## v8.0.23 — iteration / workbook complete
+
+1. Run automatic import until **iteration count** is reached (or all workbook rows are done).
+2. Confirm **General** tab + **Save** on the last asset, then navigation to **ViewFASSETItems.aspx** (asset list).
+3. Importer panel should be **expanded** with an iteration/import complete message.
 
 ## v8.0.21 — General tab + Save and New between assets
 

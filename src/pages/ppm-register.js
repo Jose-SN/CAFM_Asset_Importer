@@ -127,8 +127,18 @@
   function exactPpmRefreshButton() {
     if (!isPpmListPage()) return null;
     try {
-      return document.querySelector('a[title="Refresh the page"][onclick*="Toolbar.Refresh"]');
+      const button = document.querySelector('a[title="Refresh the page"][onclick*="Toolbar.Refresh"]');
+      return button && visible(button) ? button : null;
     } catch (_) { return null; }
+  }
+
+  const eventThrottleAt = {};
+
+  function throttledEvent(b, name, minMs, payload) {
+    const now = Date.now();
+    if (now - (eventThrottleAt[name] || 0) < minMs) return;
+    eventThrottleAt[name] = now;
+    b.addEvent(name, payload);
   }
 
   async function expectPpmChildWindow(assetCode) {
@@ -188,6 +198,10 @@
 
   async function beginPpmParentRefresh(auto, afterRefreshPhase) {
     const b = $();
+    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait'].includes(auto.phase)) {
+      b.scheduleAuto(450);
+      return;
+    }
     b.state.session.auto = {
       ...auto,
       phase: 'ppm_parent_refresh',
@@ -198,7 +212,7 @@
       ppmParentRefreshSawDisabled: false
     };
     await b.persistSession();
-    b.scheduleAuto(100);
+    b.scheduleAuto(300);
   }
 
   function clickPpmNewToolbar(guardKey = 'ppm-new') {
@@ -332,18 +346,21 @@
       const selector = 'a[title="Refresh the page"][onclick*="Toolbar.Refresh"]';
       const button = exactPpmRefreshButton();
       const info = ppmToolbarButtonState(button, selector);
-      b.addEvent('ppm-parent-refresh-check', {
+      throttledEvent(b, 'ppm-parent-refresh-check', 1500, {
         ...info,
         targetPhase: auto.ppmAfterRefreshPhase || '',
         parentUrl: location.href,
         isPpmParentRegister: isPpmListPage()
       });
-      await b.persistSession();
       if (!button || button.hasAttribute('disabled') || String(button.getAttribute('aria-disabled') || '').toLowerCase() === 'true') {
         const started = Number(auto.ppmParentRefreshStartedAt || Date.now());
-        if (!auto.ppmParentRefreshStartedAt) { b.state.session.auto = { ...auto, ppmParentRefreshStartedAt: started }; await b.persistSession(); }
+        if (!auto.ppmParentRefreshStartedAt) {
+          b.state.session.auto = { ...auto, ppmParentRefreshStartedAt: started };
+          await b.persistSession();
+          auto = b.state.session.auto || {};
+        }
         if (Date.now() - started > b.state.settings.lookupTimeoutMs) throw new Error('Parent PPM Refresh button did not become available before timeout.');
-        b.scheduleAuto(300);
+        b.scheduleAuto(450);
         return;
       }
       const clickedAt = Date.now();
@@ -355,10 +372,10 @@
         ppmParentRefreshSawDisabled: false
       };
       await b.persistSession();
+      auto = b.state.session.auto || {};
       b.addEvent('ppm-parent-refresh-click', { ...info, clickCalled: true, parentUrl: location.href });
-      await b.persistSession();
       button.click();
-      b.scheduleAuto(250);
+      b.scheduleAuto(450);
       return;
     }
 
@@ -370,13 +387,12 @@
       const sawDisabled = Boolean(auto.ppmParentRefreshSawDisabled || disabledNow);
       if (sawDisabled !== Boolean(auto.ppmParentRefreshSawDisabled)) {
         b.state.session.auto = { ...auto, ppmParentRefreshSawDisabled: sawDisabled };
-        await b.persistSession();
         auto = b.state.session.auto || {};
       }
       const toolbarReadyAgain = Boolean(refreshButton) && !disabledNow && document.readyState === 'complete' && elapsed >= 500;
       if (!pageReloaded && !toolbarReadyAgain) {
         if (elapsed > b.state.settings.lookupTimeoutMs) throw new Error('Parent PPM page refresh did not complete before timeout.');
-        b.scheduleAuto(250);
+        b.scheduleAuto(450);
         return;
       }
       const nextPhase = auto.ppmAfterRefreshPhase || 'ppm_next';
@@ -405,6 +421,7 @@
         await completePpmCycleOnParent(record, auto.ppmResults || []);
         return;
       }
+      return;
     }
 
     if (auto.phase === 'ppm_cycle_complete_parent') {
@@ -472,8 +489,13 @@
 
     if (auto.phase === 'ppm_wait_new') {
       const child = await b.runtimeMessage({ type: 'PPM_CHILD_STATE', assetCode: record.assetCode });
-      b.addEvent('ppm-child-check', { found: Boolean(child?.found), childTabId: child?.tabId ?? null, childUrl: child?.url || '', childStatus: child?.status || '' });
-      await b.persistSession();
+      const childFound = Boolean(child?.found);
+      throttledEvent(b, 'ppm-child-check', 2000, {
+        found: childFound,
+        childTabId: child?.tabId ?? null,
+        childUrl: child?.url || '',
+        childStatus: child?.status || ''
+      });
       if (child?.found) {
         const analysis = analyzePpmChildUrl(child.url);
         const openElapsed = Date.now() - Number(auto.ppmOpenStartedAt || Date.now());
@@ -491,7 +513,7 @@
           await beginPpmParentRefresh(auto, 'ppm_next');
           return;
         }
-        b.scheduleAuto(150);
+        b.scheduleAuto(350);
         return;
       }
 
@@ -505,10 +527,9 @@
       const info = ppmToolbarButtonState(button, 'a[title="Create New"][onclick*="Toolbar.New"]');
       const attempts = Number(auto.ppmNewClickAttempts || 0);
       const lastClick = Number(auto.ppmNewLastClickAt || 0);
-      b.addEvent('ppm-create-new-retry-check', { ...info, attempt: attempts + 1, elapsedMs: elapsed });
-      await b.persistSession();
-      if (!button || button.hasAttribute('disabled') || String(button.getAttribute('aria-disabled') || '').toLowerCase() === 'true') {
-        b.scheduleAuto(500);
+      throttledEvent(b, 'ppm-create-new-retry-check', 1500, { ...info, attempt: attempts + 1, elapsedMs: elapsed });
+      if (!button || !visible(button) || button.hasAttribute('disabled') || String(button.getAttribute('aria-disabled') || '').toLowerCase() === 'true') {
+        b.scheduleAuto(600);
         return;
       }
       if (!lastClick || Date.now() - lastClick >= 700) {
@@ -518,9 +539,8 @@
         b.state.session.auto = { ...auto, ppmNewClickAttempts: attempts + 1, ppmNewLastClickAt: now };
         await b.persistSession();
         b.addEvent('ppm-create-new-retry-click', { ...info, attempt: attempts + 1, clickCalled: true });
-        await b.persistSession();
       }
-      b.scheduleAuto(200);
+      b.scheduleAuto(400);
       return;
     }
 

@@ -243,8 +243,20 @@
 
     if (isAssetPage() || isAssetListPage()) await runtimeMessage({ type: 'REGISTER_ASSET_TAB' });
     if (isAssetPage()) await handlePostReloadSaveState();
+    let mutationScheduleTimer = null;
+    let lastMutationScheduleAt = 0;
     const autoObserver = new MutationObserver(() => {
-      if (state.session.auto?.active) scheduleAuto();
+      if (!state.session.auto?.active) return;
+      const phase = state.session.auto?.phase || '';
+      const hotPhase = ['ppm_parent_refresh', 'ppm_parent_refresh_wait', 'ppm_wait_new'].includes(phase);
+      const minGapMs = hotPhase ? 900 : 200;
+      const now = Date.now();
+      if (now - lastMutationScheduleAt < minGapMs) return;
+      clearTimeout(mutationScheduleTimer);
+      mutationScheduleTimer = setTimeout(() => {
+        lastMutationScheduleAt = Date.now();
+        if (state.session.auto?.active) scheduleAuto(hotPhase ? 500 : 0);
+      }, hotPhase ? 500 : 120);
     });
     try {
       autoObserver.observe(document.documentElement, {

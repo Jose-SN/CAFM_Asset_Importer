@@ -13,8 +13,13 @@
     isSavedPpmPage,
     isAssetListPage,
     isPanelPage,
-    isWorkflowPage
+    isWorkflowPage,
+    assetListUrl
   } = root.core.pages;
+
+  const PANEL_MIN_WIDTH = 340;
+  const PANEL_MIN_HEIGHT = 320;
+  const PANEL_MAX_WIDTH = 760;
   const { lookupMapping } = root.pages.assetMappings;
 
   /** @type {null | Record<string, unknown>} */
@@ -43,6 +48,66 @@ function showToast(message, type = 'info', duration = 4500) {
   C().state.els.toast.className = `toast show ${type}`;
   clearTimeout(C().state.els.toast._timer);
   C().state.els.toast._timer = setTimeout(() => { C().state.els.toast.className = 'toast'; }, duration);
+}
+
+function applyPanelGeometry() {
+  const panel = C().state.els.panel;
+  const body = C().state.els.body;
+  if (!panel) return;
+  const w = Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, Number(C().state.settings.panelWidth) || 440));
+  const h = Math.max(PANEL_MIN_HEIGHT, Math.min(window.innerHeight - 24, Number(C().state.settings.panelHeight) || 520));
+  panel.style.width = `${w}px`;
+  panel.style.height = `${h}px`;
+  if (body) body.style.maxHeight = '';
+}
+
+function setPanelView(view, persist = false) {
+  const next = view === 'detail' ? 'detail' : 'main';
+  C().state.settings.panelView = next;
+  const els = C().state.els;
+  if (els.viewMain) els.viewMain.hidden = next !== 'main';
+  if (els.viewDetail) els.viewDetail.hidden = next !== 'detail';
+  if (els.navMain) els.navMain.classList.toggle('active', next === 'main');
+  if (els.navDetail) els.navDetail.classList.toggle('active', next === 'detail');
+  if (persist) C().persistSession().catch(() => {});
+}
+
+function syncMainView() {
+  const els = C().state.els;
+  if (!els.mainTotal) return;
+  const pairs = [
+    ['mainTotal', 'total'], ['mainSaved', 'saved'], ['mainRemaining', 'remaining'], ['mainIssues', 'issues'],
+    ['mainRow', 'row'], ['mainQueueNav', 'queueNav'], ['mainAssetCode', 'assetCode'],
+    ['mainAutoState', 'autoState'], ['mainValidation', 'validation'], ['mainFileName', 'fileName']
+  ];
+  for (const [mainId, srcId] of pairs) {
+    if (els[mainId] && els[srcId]) {
+      if (mainId === 'mainAssetCode') els[mainId].textContent = els[srcId].textContent;
+      else if (mainId === 'mainValidation') {
+        els[mainId].textContent = els[srcId].textContent;
+        els[mainId].className = els[srcId].className;
+      } else els[mainId].textContent = els[srcId].textContent;
+    }
+  }
+  if (els.mainStatus && els.status) {
+    els.mainStatus.textContent = els.status.textContent;
+    els.mainStatus.className = els.status.className;
+  }
+  if (els.mainProgressTrack && els.progressTrack) {
+    els.mainProgressTrack.hidden = els.progressTrack.hidden;
+    if (els.mainProgressFill && els.progressFill) els.mainProgressFill.style.width = els.progressFill.style.width;
+    if (els.mainProgressLabel && els.progressLabel) {
+      els.mainProgressLabel.hidden = els.progressLabel.hidden;
+      els.mainProgressLabel.textContent = els.progressLabel.textContent;
+    }
+  }
+  if (els.mainStartAuto && els.startAuto) els.mainStartAuto.disabled = els.startAuto.disabled;
+  if (els.mainPauseAuto && els.pauseAuto) els.mainPauseAuto.disabled = els.pauseAuto.disabled;
+  if (els.mainResumeAuto && els.resumeAuto) {
+    els.mainResumeAuto.hidden = els.resumeAuto.hidden;
+    els.mainResumeAuto.disabled = els.resumeAuto.disabled;
+    els.mainResumeAuto.textContent = els.resumeAuto.textContent;
+  }
 }
 
 function render() {
@@ -135,8 +200,17 @@ function render() {
   C().state.els.autoState.textContent = auto?.active
     ? `Automatic import: ${String(auto.phase || 'running').replace(/_/g, ' ')} | asset ${(Number(auto.index ?? C().state.session.index) || 0) + 1}/${C().state.assets.length}${ppmProgress} | cycle ${Number(auto.processedThisRun || 0)}/${Number(auto.maxIterations || 1)}`
     : auto?.phase === 'complete'
-      ? `Automatic import complete${auto?.processedThisRun != null ? ` | ${Number(auto.processedThisRun || 0)}/${Number(auto.maxIterations || auto.processedThisRun || 1)} asset cycle(s)` : ''}`
+      ? (auto?.runCompleteReason === 'workbook'
+        ? `Import complete — all workbook assets done (${Number(auto.processedThisRun || 0)} cycle(s)).`
+        : auto?.runCompleteReason === 'iteration'
+          ? `Iteration complete — ${Number(auto.processedThisRun || 0)}/${Number(auto.maxIterations || auto.processedThisRun || 1)} asset cycle(s) finished.`
+          : `Automatic import complete${auto?.processedThisRun != null ? ` | ${Number(auto.processedThisRun || 0)}/${Number(auto.maxIterations || auto.processedThisRun || 1)} asset cycle(s)` : ''}`)
       : auto?.phase === 'error' ? `Stopped: ${auto.error || 'error'}` : 'Automatic import stopped';
+
+  if (C().state.els.panel) {
+    C().state.els.panel.classList.toggle('collapsed', Boolean(C().state.settings.collapsed));
+    if (C().state.els.collapse) C().state.els.collapse.textContent = C().state.settings.collapsed ? '+' : '-';
+  }
 
   if (C().state.els.progressTrack && C().state.els.progressFill) {
     const showProgress = Boolean(auto?.active) && C().state.assets.length > 0;
@@ -221,6 +295,10 @@ function render() {
   if (C().state.els.autoDownloadTimeline) C().state.els.autoDownloadTimeline.checked = Boolean(C().state.settings.autoDownloadTimeline);
   if (C().state.els.autoContinueNext) C().state.els.autoContinueNext.checked = C().state.settings.autoContinueNext !== false;
   if (C().state.els.useSaveAndNew) C().state.els.useSaveAndNew.checked = C().state.settings.useSaveAndNew !== false;
+
+  applyPanelGeometry();
+  setPanelView(C().state.settings.panelView || 'main');
+  syncMainView();
 }
 
 function makeDraggable() {
@@ -258,6 +336,43 @@ function makeDraggable() {
   });
 }
 
+function makeResizable() {
+  const panel = C().state.els.panel;
+  const grip = C().state.els.resizeGrip;
+  if (!panel || !grip) return;
+  let resizing = false;
+  let startX = 0;
+  let startY = 0;
+  let startW = 0;
+  let startH = 0;
+  grip.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    resizing = true;
+    startX = event.clientX;
+    startY = event.clientY;
+    startW = panel.offsetWidth;
+    startH = panel.offsetHeight;
+    grip.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  grip.addEventListener('pointermove', (event) => {
+    if (!resizing) return;
+    const w = Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, window.innerWidth - 20, startW + (event.clientX - startX)));
+    const h = Math.max(PANEL_MIN_HEIGHT, Math.min(window.innerHeight - 24, startH + (event.clientY - startY)));
+    panel.style.width = `${w}px`;
+    panel.style.height = `${h}px`;
+    C().state.settings.panelWidth = w;
+    C().state.settings.panelHeight = h;
+  });
+  grip.addEventListener('pointerup', async (event) => {
+    if (!resizing) return;
+    resizing = false;
+    grip.releasePointerCapture?.(event.pointerId);
+    await C().persistSession();
+  });
+}
+
 function injectPanel() {
   if (!isPanelPage() || document.getElementById(HOST_ID)) return;
   const host = document.createElement('div');
@@ -272,22 +387,23 @@ function injectPanel() {
     <style>
       :host { all: initial; }
       * { box-sizing: border-box; }
-      #panel { position: fixed; top: 76px; right: 14px; width: 430px; max-width: calc(100vw - 20px); max-height: calc(100vh - 88px); z-index: 2147483646; background:#111820; color:#f4f6f8; border:1px solid #34414e; border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,.35); font:13px/1.35 Arial,Helvetica,sans-serif; overflow:hidden; }
-      #head { display:flex; align-items:center; gap:10px; padding:10px 12px; background:#0b1117; border-bottom:1px solid #2c3946; cursor:move; user-select:none; }
+      #panel { position: fixed; top: 76px; right: 14px; width: 440px; height: 520px; max-width: calc(100vw - 20px); max-height: calc(100vh - 24px); z-index: 2147483646; background:#111820; color:#f4f6f8; border:1px solid #34414e; border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,.35); font:13px/1.35 Arial,Helvetica,sans-serif; overflow:hidden; display:flex; flex-direction:column; }
+      #head { display:flex; align-items:center; gap:8px; padding:8px 10px; background:#0b1117; border-bottom:1px solid #2c3946; cursor:move; user-select:none; flex-shrink:0; }
       #head img { width:32px; height:32px; object-fit:contain; background:#fff; border-radius:5px; }
       #head .titles { flex:1; min-width:0; }
-      #head h2 { margin:0; font-size:15px; color:#fff; }
-      #head .sub { color:#aeb9c4; font-size:11px; margin-top:2px; }
-      #head button { border:1px solid #41505e; background:#202b35; color:#fff; width:28px; height:28px; border-radius:6px; cursor:pointer; }
-      #body { overflow:auto; max-height:calc(100vh - 145px); padding:10px; }
-      #panel.collapsed #body { display:none; }
-      #panel.ppm-workflow { width:350px; }
-      #panel.ppm-workflow #workbookSection, #panel.ppm-workflow #manualSection, #panel.ppm-workflow #sessionSection { display:none; }
-      #panel.ppm-workflow #currentSection #validation, #panel.ppm-workflow #currentSection #lookupSummary { display:none; }
-      #panel.ppm-workflow #autoSection #startAuto, #panel.ppm-workflow #autoSection .option { display:none; }
-      #panel.ppm-workflow #autoSection .buttons { grid-template-columns:1fr; }
-      #panel.ppm-workflow #autoSection { margin-bottom:0; }
-      #panel.ppm-workflow #body { max-height:310px; }
+      #head h2 { margin:0; font-size:14px; color:#fff; }
+      #head .sub { color:#aeb9c4; font-size:10px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      #head button { border:1px solid #41505e; background:#202b35; color:#fff; width:28px; height:28px; border-radius:6px; cursor:pointer; flex-shrink:0; }
+      #navBar { display:flex; gap:4px; flex-shrink:0; }
+      .nav-tab { border:1px solid #41505e; background:#202b35; color:#b8c5cf; min-height:28px; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:11px; font-weight:600; }
+      .nav-tab.active { background:#e5e9ed; color:#111820; border-color:#fff; }
+      #body { overflow:auto; flex:1; min-height:0; padding:10px; }
+      #panel.collapsed #body, #panel.collapsed #navBar, #panel.collapsed #resizeGrip { display:none; }
+      .panel-view { display:block; }
+      #resizeGrip { position:absolute; right:2px; bottom:2px; width:18px; height:18px; cursor:nwse-resize; z-index:2; opacity:.65; background:linear-gradient(135deg, transparent 50%, #8f9ca8 50%); border-radius:0 0 10px 0; }
+      #resizeGrip:hover { opacity:1; }
+      .main-actions { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px; }
+      .main-nav-row { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
       .section { border:1px solid #2c3946; border-radius:8px; padding:9px; margin-bottom:9px; background:#151e27; }
       .section h3 { margin:0 0 7px; font-size:12px; color:#d9e2ea; text-transform:uppercase; letter-spacing:.35px; }
       .file { display:flex; gap:7px; align-items:center; }
@@ -332,10 +448,46 @@ function injectPanel() {
     <div id="panel">
       <div id="head">
         <img src="${logo}" alt="Engineering Efficiency Ltd">
-        <div class="titles"><h2>CAFM Asset Importer</h2><div id="contextSub" class="sub">Engineering Efficiency Ltd | v${VERSION} | Asset -> ACTIVE -> data-driven linked PPMs</div></div>
+        <div class="titles"><h2>CAFM Asset Importer</h2><div id="contextSub" class="sub">Engineering Efficiency Ltd | v${VERSION}</div></div>
+        <div id="navBar">
+          <button type="button" id="navMain" class="nav-tab active" title="Summary dashboard">Summary</button>
+          <button type="button" id="navDetail" class="nav-tab" title="Full controls and settings">Details</button>
+        </div>
         <button id="collapse" title="Collapse">-</button>
       </div>
       <div id="body">
+        <div id="viewMain" class="panel-view">
+          <div class="section">
+            <h3>Summary</h3>
+            <div id="mainFileName" class="muted">No workbook loaded</div>
+            <div class="kpis">
+              <div class="kpi"><span>Total</span><strong id="mainTotal">0</strong></div>
+              <div class="kpi"><span>Saved</span><strong id="mainSaved">0</strong></div>
+              <div class="kpi"><span>Remaining</span><strong id="mainRemaining">0</strong></div>
+              <div class="kpi"><span>Issues</span><strong id="mainIssues">0</strong></div>
+            </div>
+            <div class="rowline" style="margin-top:10px"><span id="mainRow" class="muted">-</span><span id="mainStatus" class="pill neutral">-</span></div>
+            <div id="mainQueueNav" class="muted" style="margin:4px 0">Last saved: - | Next to save: -</div>
+            <div id="mainAssetCode" class="asset">-</div>
+            <div id="mainValidation" class="validation goodtext">Load a workbook to begin.</div>
+            <div id="mainAutoState" style="color:#b8c5cf;font-size:11px;margin-top:8px">Automatic import stopped</div>
+            <div id="mainProgressTrack" hidden style="height:7px;background:#2d3944;border-radius:4px;margin-top:6px;overflow:hidden">
+              <div id="mainProgressFill" style="height:100%;width:0%;background:linear-gradient(90deg,#3d8bfd,#7ee2a8);transition:width .25s ease"></div>
+            </div>
+            <div id="mainProgressLabel" class="muted" hidden style="margin-top:4px;font-size:10px"></div>
+            <div class="main-actions">
+              <button id="mainStartAuto" class="action primary">Start automatic</button>
+              <button id="mainPauseAuto" class="action danger">Pause / Stop</button>
+              <button id="mainResumeAuto" class="action primary wide" hidden>Resume</button>
+            </div>
+            <div class="main-nav-row">
+              <button id="openDetailView" class="action">Open details page</button>
+              <button id="goAssetList" class="action">Asset list (home)</button>
+              <button id="mainLoadWorkbook" class="action">Load workbook…</button>
+            </div>
+          </div>
+        </div>
+        <div id="viewDetail" class="panel-view" hidden>
         <div id="workbookSection" class="section">
           <h3>Workbook</h3>
           <div class="file"><input id="fileInput" type="file" accept=".xlsx"></div>
@@ -408,23 +560,26 @@ function injectPanel() {
           </div>
           <div class="muted" style="margin-top:7px">NEW asset sequence: fill populated workbook fields -> Save -> verify saved Asset ID -> Change Asset Status -> Active -> PPM workflow. Legacy toolbar detection is corrected to use page-relative coordinates and one-click protection. v8 uses state-driven progression with no inter-record pacing delay and skips optional Notes/Spatial tabs unless enabled and populated. EDIT EXISTING: open a saved asset, use Fill saved asset from workbook, review, then Save existing changes only (or the normal CAFM Save). Edit mode matches by Asset Code, never creates a duplicate, never clears blank workbook fields, and does not alter asset status or existing PPMs.</div>
         </div>
-        <div class="footer">Move this panel by dragging the header. Site and calculated/read-only fields are not overwritten.</div>
+        <div class="footer">Drag header to move · drag corner to resize · Summary / Details tabs · Site and read-only fields are not overwritten.</div>
+        </div>
       </div>
+      <div id="resizeGrip" title="Drag to resize panel"></div>
     </div>
     <div id="toast" class="toast"></div>
   `;
 
-  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast'];
+  const ids = ['panel', 'head', 'body', 'navBar', 'navMain', 'navDetail', 'viewMain', 'viewDetail', 'resizeGrip', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'mainFileName', 'mainTotal', 'mainSaved', 'mainRemaining', 'mainIssues', 'mainRow', 'mainQueueNav', 'mainAssetCode', 'mainStatus', 'mainValidation', 'mainAutoState', 'mainProgressTrack', 'mainProgressFill', 'mainProgressLabel', 'mainStartAuto', 'mainPauseAuto', 'mainResumeAuto', 'openDetailView', 'goAssetList', 'mainLoadWorkbook'];
   for (const id of ids) C().state.els[id] = shadow.getElementById(id);
   C().state.els.dragHandle = C().state.els.head;
-  if (!isAssetPage()) C().state.els.panel.classList.add('ppm-workflow');
 
   if (C().state.settings.panelX != null) {
     C().state.els.panel.style.right = 'auto';
     C().state.els.panel.style.left = `${Math.max(0, Number(C().state.settings.panelX) || 0)}px`;
   }
   C().state.els.panel.style.top = `${Math.max(0, Number(C().state.settings.panelY) || 76)}px`;
+  applyPanelGeometry();
   if (C().state.settings.collapsed) C().state.els.panel.classList.add('collapsed');
+  setPanelView(C().state.settings.panelView || 'main');
 
   C().state.els.collapse.addEventListener('click', async () => {
     C().state.settings.collapsed = !C().state.settings.collapsed;
@@ -433,6 +588,29 @@ function injectPanel() {
     await C().persistSession();
   });
   C().state.els.collapse.textContent = C().state.settings.collapsed ? '+' : '-';
+
+  C().state.els.navMain.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setPanelView('main', true);
+    render();
+  });
+  C().state.els.navDetail.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setPanelView('detail', true);
+    render();
+  });
+  C().state.els.openDetailView.addEventListener('click', () => {
+    setPanelView('detail', true);
+    render();
+  });
+  C().state.els.goAssetList.addEventListener('click', () => {
+    C().state.settings.panelView = 'main';
+    location.href = assetListUrl();
+  });
+  C().state.els.mainLoadWorkbook.addEventListener('click', () => C().state.els.fileInput.click());
+  C().state.els.mainStartAuto.addEventListener('click', () => C().startAutomatic());
+  C().state.els.mainPauseAuto.addEventListener('click', () => C().pauseAutomatic());
+  C().state.els.mainResumeAuto.addEventListener('click', () => C().resumeAutomatic());
 
   C().state.els.fileInput.addEventListener('change', async (event) => {
     const file = event.target.files?.[0];
@@ -540,12 +718,15 @@ function injectPanel() {
     if (changes[STORAGE.learnedNew]) C().state.learnedNew = changes[STORAGE.learnedNew].newValue || null;
   });
   makeDraggable();
+  makeResizable();
 }
   root.ui = root.ui || {};
   root.ui.panel = Object.freeze({
     configure,
     injectPanel,
     render,
-    showToast
+    showToast,
+    setPanelView,
+    applyPanelGeometry
   });
 })();

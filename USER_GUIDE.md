@@ -41,7 +41,20 @@ You stay in control: you load the workbook, start the run, and can pause or resu
 2. Go to **Assets**  
 3. Open **New Entity** (a blank asset form — the web address usually contains `id=-1`)  
 
-The floating importer panel appears on the left side of CAFM pages.
+The floating importer panel appears on CAFM asset and PPM pages.
+
+### Panel views
+
+| View | What it is for |
+|------|----------------|
+| **Summary** | Dashboard: counts, current asset, progress, Start/Pause, quick links |
+| **Details** | Full workbook load, manual buttons, all settings, session downloads |
+
+Use the **Summary** / **Details** tabs in the panel header to switch views. You can also open **Asset list (home)** from Summary to go to the main CAFM asset list.
+
+**Resize:** drag the small grip at the bottom-right corner of the panel. **Move:** drag the header bar.
+
+Click the extension icon in Chrome for a popup with shortcuts to the **asset list** and **New Entity** page.
 
 ---
 
@@ -76,7 +89,8 @@ You can switch to another browser tab or another application while it runs — t
 
 ### Step 4 — When it finishes
 
-- A success message appears when all requested assets are done  
+- A success message appears when all requested assets are done (or when your **iteration count** is reached)  
+- The extension opens the **General** tab on the last asset, clicks **Save**, then takes you to the **asset list** page with the importer panel **opened** so you can review counts or start another run  
 - Rows marked **saved** in the panel have completed asset + PPM workflow  
 - Use **Download CSV log** or **Download diagnostic JSON** if you need a record of what happened  
 
@@ -174,6 +188,7 @@ The **Last saved / Next to save** line shows batch progress during automatic run
 |--------------|--------------|------------|
 | Validation message on CAFM | Required field or bad lookup | Fix Excel or complete field manually, then Resume |
 | Stuck after PPM save | Slow CAFM or tab in background | Wait up to ~90 seconds; switch back to CAFM tab if needed |
+| PPM register feels slow or keeps refreshing | Old versions could click Refresh too often | Update to **v8.0.25+**, reload extension, refresh CAFM tab (F5) |
 | “Timed out” on Save and New | General tab not ready | Resume; extension retries General + Save and New |
 | Wrong asset code on screen | Workbook row mismatch | Use Previous/Next to select correct row |
 | Duplicate PPM | Already in CAFM | Normal skip — check log for **existing** |

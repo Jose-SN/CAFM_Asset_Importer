@@ -16,23 +16,33 @@
     ppmEntityUrl,
     deriveNewEntityUrl
   } = root.core.pages;
-  const { WAITING_PHASES } = root.workflow.phases;
+  const { WAITING_PHASES, HOT_SCHEDULE_PHASES } = root.workflow.phases;
   const { beginPostSave } = root.workflow.postSave;
   const { dispatchClick } = root.core.dom;
   const $ = () => root.runtime.b;
 
+  let lastOrchestratorSyncAt = 0;
+
   function syncAutoOrchestrator() {
     try {
+      const onlyWhenHidden = $().state.settings.backgroundOrchestratorOnlyWhenHidden !== false;
+      if (onlyWhenHidden && !document.hidden) {
+        const now = Date.now();
+        if (now - lastOrchestratorSyncAt < 4000) return;
+        lastOrchestratorSyncAt = now;
+      }
       chrome.runtime.sendMessage({ type: 'AUTO_ORCHESTRATOR_SYNC' }).catch(() => {});
     } catch (_) {}
   }
 
-  function scheduleAuto(_delay = 0) {
+  function scheduleAuto(delay = 0) {
     const b = $();
     clearTimeout(b.state.autoTimer);
     const phase = clean(b.state.session.auto?.phase || '');
-    const watchdogMs = WAITING_PHASES.has(phase) ? 750 : 0;
-    b.state.autoTimer = setTimeout(() => runAutomatic().catch((error) => stopAutomaticWithError(error)), watchdogMs);
+    let waitMs = Math.max(0, Number(delay) || 0);
+    if (WAITING_PHASES.has(phase)) waitMs = Math.max(waitMs, 750);
+    if (HOT_SCHEDULE_PHASES.has(phase)) waitMs = Math.max(waitMs, 450);
+    b.state.autoTimer = setTimeout(() => runAutomatic().catch((error) => stopAutomaticWithError(error)), waitMs);
     if (b.state.session.auto?.active) syncAutoOrchestrator();
   }
 
@@ -193,6 +203,19 @@
         if (validation) throw new Error(validation);
         if (Date.now() - Number(auto.saveStartedAt || Date.now()) > b.state.settings.saveTimeoutMs) throw new Error('CAFM save confirmation timed out.');
         scheduleAuto(0);
+        return;
+      }
+
+      if (auto.phase === 'run_complete_finalize') {
+        if (!isSavedAssetPage()) {
+          if (auto.assetEntityId) {
+            location.href = assetEntityUrl(auto.assetEntityId);
+            return;
+          }
+          await root.workflow.postSave.finishRunCompleteFinalize(record);
+          return;
+        }
+        await root.workflow.postSave.processRunCompleteFinalize(record);
         return;
       }
 

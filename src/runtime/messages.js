@@ -23,6 +23,7 @@
 
       if (message.type === 'RUN_AUTO_STEP') {
         if (!root.core.storage.isExtensionContextValid()) return;
+        if (message.source === 'background-orchestrator' && !document.hidden) return;
         storageGet([STORAGE.session]).then(async (stored) => {
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
           if (!state.session.auto?.active) return;

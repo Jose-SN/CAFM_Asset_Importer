@@ -5,7 +5,7 @@
   root.core = root.core || {};
 
   root.core.constants = Object.freeze({
-    VERSION: '8.0.22',
+    VERSION: '8.0.25',
     HOST_ID: 'ee-cafm-asset-importer-host',
     STORAGE: Object.freeze({
       session: 'eeAssetImporterV80Session',
@@ -24,10 +24,14 @@
       lookupCommitTimeoutMs: 8000,
       ppmChildTimeoutMs: 15000,
       backgroundOrchestrator: true,
+      backgroundOrchestratorOnlyWhenHidden: true,
       skipInvalidRows: false,
       stopOnLookupError: true,
       panelX: null,
       panelY: 76,
+      panelWidth: 440,
+      panelHeight: 520,
+      panelView: 'main',
       collapsed: false,
       includeNotes: false,
       includeSpatial: false,

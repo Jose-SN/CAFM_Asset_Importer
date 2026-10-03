@@ -55,13 +55,18 @@ async function collectWorkflowTabIds(session, parent) {
   return tabIds;
 }
 
-async function dispatchAutoSteps(session) {
+async function dispatchAutoSteps(session, settings = {}) {
   if (!session?.auto?.active) return { dispatched: 0 };
+  const onlyWhenHidden = settings.backgroundOrchestratorOnlyWhenHidden !== false;
   const parent = await getStoredPpmParent();
   const tabIds = await collectWorkflowTabIds(session, parent);
   let dispatched = 0;
   for (const tabId of tabIds) {
     try {
+      if (onlyWhenHidden) {
+        const tab = await chrome.tabs.get(tabId);
+        if (tab?.active) continue;
+      }
       await chrome.tabs.sendMessage(tabId, {
         type: 'RUN_AUTO_STEP',
         phase: session.auto.phase || '',
@@ -88,7 +93,7 @@ async function syncAutoOrchestrator() {
   }
   const delayMs = Math.max(500, Number(settings.backgroundOrchestratorMs) || DEFAULT_ORCHESTRATOR_MS);
   await scheduleOrchestratorAlarm(delayMs);
-  const result = await dispatchAutoSteps(session);
+  const result = await dispatchAutoSteps(session, settings);
   return { active: true, ...result };
 }
 
