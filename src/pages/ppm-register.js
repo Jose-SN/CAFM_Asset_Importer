@@ -123,6 +123,12 @@
     } catch (_) { return null; }
   }
 
+  async function expectPpmChildWindow(assetCode) {
+    try {
+      await $().runtimeMessage({ type: 'PPM_EXPECT_CHILD', assetCode, expectMs: 90000 });
+    } catch (_) {}
+  }
+
   function clickPpmNewToolbar(guardKey = 'ppm-new') {
     const b = $();
     const selector = 'a[title="Create New"][onclick*="Toolbar.New"]';
@@ -324,6 +330,7 @@
         return;
       }
       if (!lastClick || Date.now() - lastClick >= 700) {
+        await expectPpmChildWindow(record.assetCode);
         button.click();
         const now = Date.now();
         b.state.session.auto = { ...auto, ppmNewClickAttempts: attempts + 1, ppmNewLastClickAt: now };
@@ -368,6 +375,7 @@
       return;
     }
     await b.runtimeMessage({ type: 'REGISTER_PPM_PARENT', assetCode: record.assetCode, assetEntityId: String(auto.assetEntityId || entityIdFromUrl() || '') });
+    await expectPpmChildWindow(record.assetCode);
     const info = ppmToolbarButtonState(newButton, 'a[title="Create New"][onclick*="Toolbar.New"]');
     b.addEvent('ppm-create-new-ready', { ...info, ppmIndex, ppmKey: ppm.ppmKey });
     await b.persistSession();
@@ -427,6 +435,8 @@
     b.render();
     let openedAttempt = false;
     try {
+      await b.runtimeMessage({ type: 'REGISTER_PPM_PARENT', assetCode: record.assetCode, assetEntityId });
+      await expectPpmChildWindow(record.assetCode);
       const key = `ppm-new:${record.assetCode}:0`;
       openedAttempt = clickPpmNewToolbar(key);
       b.state.session.auto.ppmNewClickedForIndex = 0;

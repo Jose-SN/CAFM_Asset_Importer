@@ -191,14 +191,33 @@
         for (const problem of errors) await b.recordValidationWarning(record, { scope: 'ppm', field: 'Pre-save audit', expected: 'Excel-backed value committed', actual: '', reason: problem, ppmKey: ppm.ppmKey });
         b.addEvent('ppm-pre-save-warning-summary', { ppmKey: ppm.ppmKey, warningCount: errors.length, warnings: errors });
       }
+      const linked = b.linkedPpms(record);
+      const nextIndex = (Number(auto.ppmIndex) || 0) + 1;
+      const tentativeNextPhase = nextIndex < linked.length ? 'ppm_next' : 'ppm_cycle_complete_parent';
+      try {
+        await b.runtimeMessage({
+          type: 'PPM_PREPARE_CLOSE',
+          assetCode: record.assetCode,
+          assetEntityId: String(auto.assetEntityId || ''),
+          nextPhase: tentativeNextPhase,
+          afterRefreshPhase: tentativeNextPhase
+        });
+      } catch (_) {}
+
       const saveClose = b.clickSaveAndClose?.() || { ok: false };
+      const saveMethod = saveClose.ok ? saveClose.method : 'save-only';
       if (!saveClose.ok) {
         const save = b.findSaveButton();
         if (!save) throw new Error(`CAFM PPM Save button was not detected for ${ppm.ppmKey}.`);
         dispatchClick(save, false);
       }
-      b.addEvent('ppm-save-click', { ppmKey: ppm.ppmKey, method: saveClose.ok ? saveClose.method : 'save-only' });
-      b.state.session.auto = { ...b.state.session.auto, phase: 'ppm_await_save', ppmSaveStartedAt: Date.now() };
+      b.addEvent('ppm-save-click', { ppmKey: ppm.ppmKey, method: saveMethod });
+      b.state.session.auto = {
+        ...b.state.session.auto,
+        phase: 'ppm_await_save',
+        ppmSaveStartedAt: Date.now(),
+        ppmSaveMethod: saveMethod
+      };
       await b.persistSession();
       b.scheduleAuto(0);
       return;
@@ -207,7 +226,18 @@
     if (auto.phase === 'ppm_await_save') {
       const validation = b.validationMessage();
       if (validation) throw new Error(`CAFM did not save PPM ${ppm.ppmKey}: ${validation}`);
-      if (Date.now() - Number(auto.ppmSaveStartedAt || Date.now()) > b.state.settings.saveTimeoutMs) throw new Error(`PPM save confirmation timed out for ${ppm.ppmKey}.`);
+      const savedEntityId = entityIdFromUrl();
+      if (savedEntityId && savedEntityId !== '-1') {
+        await b.recordPpmResult(record, ppm, 'saved', 'CAFM PPM entity page detected after Save', savedEntityId);
+        return;
+      }
+      const elapsed = Date.now() - Number(auto.ppmSaveStartedAt || Date.now());
+      const usedSaveAndClose = /saveandclose|save and close|dropdown-menu-link|menu-link/i.test(String(auto.ppmSaveMethod || ''));
+      if (usedSaveAndClose && elapsed >= 1800) {
+        await b.recordPpmResult(record, ppm, 'saved', 'Save and Close completed; child close handled by background registry', '');
+        return;
+      }
+      if (elapsed > b.state.settings.saveTimeoutMs) throw new Error(`PPM save confirmation timed out for ${ppm.ppmKey}.`);
       b.scheduleAuto(0);
       return;
     }

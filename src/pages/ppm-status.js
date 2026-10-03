@@ -82,9 +82,18 @@
         ppmKey: target.ppmKey,
         nextPhase,
         currentUrl: location.href,
-        strategy: 'close-all-parent-ppm-editors'
+        strategy: 'child-registry-close-all'
       });
       await b.persistSession();
+      try {
+        await b.runtimeMessage({
+          type: 'PPM_PREPARE_CLOSE',
+          assetCode: record.assetCode,
+          assetEntityId: String(auto.assetEntityId || ''),
+          nextPhase,
+          afterRefreshPhase
+        });
+      } catch (_) {}
       chrome.runtime.sendMessage({
         type: 'PPM_CLOSE_CURRENT_EDITOR_TAB',
         assetCode: record.assetCode,
@@ -146,10 +155,19 @@
       ppmKey: savedPpm?.ppmKey || '',
       nextPhase,
       currentUrl: location.href,
-      strategy: 'close-after-save-no-activation',
+      strategy: 'child-registry-close-all',
       closeButtonFound: Boolean(closeButton)
     });
     await b.persistSession();
+    try {
+      await b.runtimeMessage({
+        type: 'PPM_PREPARE_CLOSE',
+        assetCode: record.assetCode,
+        assetEntityId: String(auto.assetEntityId || ''),
+        nextPhase,
+        afterRefreshPhase
+      });
+    } catch (_) {}
     chrome.runtime.sendMessage({
       type: 'PPM_CLOSE_CURRENT_EDITOR_TAB',
       assetCode: record.assetCode,

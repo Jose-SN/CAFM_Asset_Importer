@@ -1,4 +1,11 @@
-# v8.0.16
+# v8.0.17
+- Background PPM child registry: track every FPPM popup/tab by unique id (`ppm-{tabId}-{timestamp}`) in the parent workflow record.
+- `PPM_EXPECT_CHILD` when parent clicks + New; register children on tab create/update even without `openerTabId`.
+- `PPM_PREPARE_CLOSE` stores pending refresh/next phase before close; `PPM_CLOSE_CURRENT_EDITOR_TAB` closes all registered FPPM tabs and popup windows, then notifies parent.
+- `tabs.onRemoved` notifies parent when CAFM Save and Close closes the child itself.
+- PPM editor assumes save success after Save and Close when entity id is not detected in time.
+
+## v8.0.16
 - Support embedded PPM tab on saved asset pages (`ViewFASSETItem.aspx` + `fsiGridPPMs`), not only the separate `ViewFASSETItemPPMs.aspx#` register.
 - After PPM save: close the editor child tab, focus the parent asset PPM tab, click Refresh, then Create New for the next linked PPM row.
 - Background parent resolution falls back to registered parent tab and embedded asset editor when no hash register exists.
