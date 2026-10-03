@@ -126,6 +126,19 @@
       const record = b.workflowRecord(auto);
       if (!record) throw new Error('No asset row is available for the active workflow.');
 
+      if (auto.phase === 'asset_close_child' || auto.phase === 'asset_close_wait') {
+        if (isSavedAssetPage()) {
+          await root.pages.assetSaved.processAssetCloseAfterSave(record);
+          return;
+        }
+        if (auto.assetEntityId && isAssetPage()) {
+          location.href = assetEntityUrl(auto.assetEntityId);
+          return;
+        }
+        scheduleAuto(300);
+        return;
+      }
+
       if (String(auto.phase || '').startsWith('activate_')) {
         if (!isSavedAssetPage()) {
           location.href = assetEntityUrl(auto.assetEntityId);
@@ -136,6 +149,10 @@
       }
 
       if (String(auto.phase || '').startsWith('ppm_status_')) {
+        if (!root.pages.ppmStatus.isPpmActivationEnabled()) {
+          await b.finishPostSave(record, auto.ppmResults || []);
+          return;
+        }
         const target = b.ppmActivationTarget(auto);
         if (!target) { await b.finishPostSave(record, auto.ppmResults || []); return; }
         if (!isSavedPpmPage() || entityIdFromUrl() !== String(target.ppmEntityId || '')) {

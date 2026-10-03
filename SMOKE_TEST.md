@@ -1,4 +1,4 @@
-# CAFM Smoke Test Runbook (v8.0.13)
+# CAFM Smoke Test Runbook (v8.0.14)
 
 Run these three scenarios on live Concept Evolution after reloading the extension (`chrome://extensions` → Reload).
 
@@ -76,6 +76,7 @@ Add Contract / Cost Centre / dates from your live CAFM lookup values if prefill 
 | Open Asset **New Entity** (`id=-1`) | Panel visible |
 | Start Automatic | Preflight toast; phase progresses `fill` → `saving` → `await_save` |
 | Asset saves | URL gains entity `id=` |
+| Editor close | Asset child window closes; parent opens saved asset |
 | Activation | Change Asset Status → **Active** completes |
 | Post-activation | **No** PPM register opened; cycle completes or moves to next asset |
 | Panel | `complete` phase; status saved |
@@ -91,12 +92,12 @@ Add Contract / Cost Centre / dates from your live CAFM lookup values if prefill 
 | Step | Expected |
 |------|----------|
 | Full asset cycle through ACTIVE | PPM register opens (nav link or constructed URL with trailing `#`) |
-| PPM 1 | + New → editor → fill → Save → PPM Status **Active** → child tab closes → parent register |
-| PPM 2 | + New clicked again on **same** parent register → second PPM saved and activated |
+| PPM 1 | + New → editor → fill → Save → child tab closes → parent register |
+| PPM 2 | + New clicked again on **same** parent register → second PPM saved (no PPM status activation) |
 | Panel | PPM progress shows `1/2` then `2/2` |
 | Finish | `complete` or next asset |
 
-**Pass if:** both PPM rows created and ACTIVE; parent register retained between PPMs; no duplicate orphan register tabs left open.
+**Pass if:** both PPM rows created and saved; parent register retained between PPMs; no duplicate orphan register tabs left open.
 
 ---
 
@@ -108,9 +109,9 @@ Add Contract / Cost Centre / dates from your live CAFM lookup values if prefill 
 |------|----------|
 | Asset cycle completes | PPM register opens |
 | PPM fill | Contract + Instruction lookups use fire-door search terms |
-| Save + activate | PPM reaches ACTIVE |
+| Save + close | PPM saves; child editor closes |
 
-**Pass if:** fire-door instruction resolves without lookup timeout; PPM saves and activates.
+**Pass if:** fire-door instruction resolves without lookup timeout; PPM saves successfully.
 
 ---
 

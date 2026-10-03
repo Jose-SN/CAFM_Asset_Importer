@@ -27,7 +27,7 @@
       ...(b.state.session.auto || {}),
       active: true,
       mode,
-      phase: 'activate_open',
+      phase: 'asset_close_child',
       index: b.state.session.index,
       assetCode: record.assetCode,
       assetEntityId: entityId,
@@ -40,7 +40,7 @@
     b.state.session.manualAwaitSave = null;
     await b.persistSession();
     b.render();
-    b.showToast(`${record.assetCode} saved. Changing Asset Status to Active${linked.length ? `, then adding ${linked.length} PPM(s)` : ''}.`, 'success', 8000);
+    b.showToast(`${record.assetCode} saved. Closing editor, then changing status to Active${linked.length ? `, then adding ${linked.length} PPM(s)` : ''}.`, 'success', 8000);
     b.scheduleAuto(250);
   }
 
@@ -155,7 +155,8 @@
     await b.persistSession();
     b.render();
     const warningCount = (b.state.session.statuses?.[record.assetCode]?.validationWarnings || []).length;
-    b.showToast(`${record.assetCode} complete: Asset saved, ${savedPpms} PPM saved, ${activePpms} ACTIVE${warningCount ? `, ${warningCount} warning(s)` : ''}. Moving to next asset.`, warningCount ? 'warn' : 'success', 14000);
+    const ppmSummary = activePpms ? `${savedPpms} PPM saved, ${activePpms} ACTIVE` : `${savedPpms} PPM saved`;
+    b.showToast(`${record.assetCode} complete: Asset saved, ${ppmSummary}${warningCount ? `, ${warningCount} warning(s)` : ''}. Moving to next asset.`, warningCount ? 'warn' : 'success', 14000);
     b.addEvent('asset-cycle-snackbar', { assetCode: record.assetCode, savedPpms, activePpms, warningCount, nextAssetCode: b.state.assets[next]?.assetCode || '' });
     await wait(1500);
     location.href = b.state.session.newEntityUrl || deriveNewEntityUrl();

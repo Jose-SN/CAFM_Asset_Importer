@@ -8,6 +8,54 @@
   const { afterActivation } = root.workflow.postSave;
   const $ = () => root.runtime.b;
 
+  async function processAssetCloseAfterSave(record) {
+    const rt = $();
+    const auto = rt.state.session.auto || {};
+    const entityId = auto.assetEntityId || entityIdFromUrl();
+    if (!entityId || entityId === '-1') throw new Error(`Saved asset ID is unavailable while closing editor for ${record.assetCode}.`);
+
+    if (auto.phase === 'asset_close_wait') {
+      const started = Number(auto.assetCloseStartedAt || Date.now());
+      if (Date.now() - started > rt.state.settings.lookupTimeoutMs) {
+        throw new Error(`Asset editor did not close for ${record.assetCode} before the safety timeout.`);
+      }
+      rt.scheduleAuto(350);
+      return;
+    }
+
+    if (!isSavedAssetPage() || entityIdFromUrl() !== String(entityId)) {
+      location.href = assetEntityUrl(entityId);
+      return;
+    }
+
+    const closeButton = root.core.toolbar.findToolbarCloseButton();
+    const startedAt = Date.now();
+    rt.addEvent('asset-close-after-save-start', {
+      assetCode: record.assetCode,
+      entityId,
+      closeButtonFound: Boolean(closeButton)
+    });
+    rt.state.session.auto = {
+      ...auto,
+      phase: 'asset_close_wait',
+      assetCloseStartedAt: startedAt,
+      assetCloseRequestedAt: startedAt
+    };
+    await rt.persistSession();
+
+    if (closeButton) dispatchClick(closeButton, false);
+
+    chrome.runtime.sendMessage({
+      type: 'ASSET_CLOSE_EDITOR_TAB',
+      assetCode: record.assetCode,
+      assetEntityId: String(entityId)
+    }).catch((error) => {
+      rt.addEvent('asset-close-send-error', { message: String(error?.message || error), currentUrl: location.href });
+      rt.persistSession().catch(() => {});
+    });
+    rt.scheduleAuto(450);
+  }
+
   async function processActivationPage(record) {
     const rt = $();
     const auto = rt.state.session.auto || {};
@@ -195,5 +243,5 @@
   }
 
   root.pages = root.pages || {};
-  root.pages.assetSaved = Object.freeze({ processActivationPage });
+  root.pages.assetSaved = Object.freeze({ processAssetCloseAfterSave, processActivationPage });
 })();

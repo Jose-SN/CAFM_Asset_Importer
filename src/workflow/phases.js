@@ -10,6 +10,8 @@
     'filling',
     'saving',
     'await_save',
+    'asset_close_child',
+    'asset_close_wait',
     'activate_open',
     'activate_select',
     'activate_confirm',
@@ -35,6 +37,7 @@
 
   const WAITING_PHASES = new Set([
     'await_save',
+    'asset_close_wait',
     'activate_wait',
     'activate_wait_user',
     'ppm_wait_new',

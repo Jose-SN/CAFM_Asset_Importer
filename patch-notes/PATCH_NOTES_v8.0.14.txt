@@ -1,0 +1,12 @@
+v8.0.14 - Save-close-activate workflow
+
+Asset flow:
+1. Fill New Entity → Save → Close editor (child tab or Close toolbar).
+2. Parent tab opens saved asset URL → Change Asset Status → Active → PPM register.
+
+PPM flow (activation temporarily off):
+1. Create New → fill → Save → close child editor → parent register.
+2. Repeat Create New for next linked Excel PPM row.
+3. PPM traffic-light activation is disabled (PPM_ACTIVATION_ENABLED = false in ppm-status.js).
+
+Re-enable PPM activation later by setting PPM_ACTIVATION_ENABLED = true.

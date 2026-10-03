@@ -398,6 +398,78 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'ASSET_CLOSE_EDITOR_TAB') {
+    const assetCode = String(message.assetCode || '');
+    const assetEntityId = String(message.assetEntityId || '').trim();
+    const senderTabId = sender.tab?.id;
+
+    (async () => {
+      const stored = await chrome.storage.local.get(ASSET_TAB_KEY);
+      const registeredParent = stored[ASSET_TAB_KEY];
+      let parentTabId = typeof sender.tab?.openerTabId === 'number' ? sender.tab.openerTabId : null;
+      if (!parentTabId && registeredParent && typeof registeredParent.tabId === 'number') {
+        parentTabId = registeredParent.tabId;
+      }
+
+      const isChildEditor = typeof senderTabId === 'number'
+        && typeof parentTabId === 'number'
+        && senderTabId !== parentTabId;
+
+      let focusTabId = isChildEditor ? parentTabId : senderTabId;
+      let closedTabId = null;
+      const closeErrors = [];
+
+      if (isChildEditor && typeof senderTabId === 'number') {
+        try {
+          await chrome.tabs.remove(senderTabId);
+          closedTabId = senderTabId;
+        } catch (error) {
+          closeErrors.push({ tabId: senderTabId, error: String(error?.message || error) });
+        }
+      }
+
+      if (typeof focusTabId === 'number') {
+        try {
+          const focusTab = await chrome.tabs.get(focusTabId);
+          try { await chrome.windows.update(focusTab.windowId, { focused: true }); } catch (_) {}
+          try { await chrome.tabs.update(focusTabId, { active: true }); } catch (_) {}
+        } catch (_) {
+          focusTabId = senderTabId ?? null;
+        }
+      }
+
+      const notifyTabId = typeof focusTabId === 'number' ? focusTabId : senderTabId;
+      if (typeof notifyTabId === 'number') {
+        try {
+          await chrome.tabs.sendMessage(notifyTabId, {
+            type: 'EE_ASSET_EDITOR_CLOSED',
+            assetCode,
+            assetEntityId,
+            closedTabId,
+            closeErrors,
+            childClosed: Boolean(closedTabId),
+            parentTabId: notifyTabId
+          });
+        } catch (_) {}
+      }
+
+      sendResponseSafe(sendResponse, {
+        ok: closeErrors.length === 0,
+        assetCode,
+        assetEntityId,
+        childClosed: Boolean(closedTabId),
+        closedTabId,
+        parentTabId: notifyTabId ?? null,
+        closeErrors
+      });
+    })().catch((error) => sendResponseSafe(sendResponse, {
+      ok: false,
+      reason: String(error?.message || error),
+      currentTabId: senderTabId ?? null
+    }));
+    return true;
+  }
+
   if (message.type === 'REGISTER_ASSET_TAB') {
     const tab = sender.tab;
     if (!tab || typeof tab.id !== 'number') {

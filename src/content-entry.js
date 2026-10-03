@@ -172,8 +172,6 @@
   });
 
   async function initTop() {
-    if (!isWorkflowPage()) return;
-    if (isAssetPage()) await runtimeMessage({ type: 'REGISTER_ASSET_TAB' });
     await restoreState();
     configureRecords({ state, nearestControl });
     configureWorkbook({
@@ -181,8 +179,21 @@
       currentPpm, currentAssetStatusText, currentPpmStatusText, validationMessage, addEvent
     });
     configureEvents({ state, workflowRecord, currentRecord, persistSession, showToast });
-    configureMessages({ state, addEvent, storageGet, persistSession, render, scheduleAuto, isHashPpmParentPage });
+    configureMessages({
+      state, addEvent, storageGet, persistSession, render, scheduleAuto, isHashPpmParentPage,
+      isAssetPage,
+      assetEntityUrl: CI.core.pages.assetEntityUrl,
+      entityIdFromUrl: CI.core.pages.entityIdFromUrl,
+      isSavedAssetPage: CI.core.pages.isSavedAssetPage
+    });
     initMessageListeners();
+
+    if (!isWorkflowPage()) {
+      if (state.session.auto?.active) scheduleAuto();
+      return;
+    }
+
+    if (isAssetPage()) await runtimeMessage({ type: 'REGISTER_ASSET_TAB' });
     configurePanel({
       state, counts, validateRecord, currentRecord, statusOf, linkedPpms,
       assetCodeOnPage, ppmRecordOnCurrentPage, workflowAssetCodeOnPage,

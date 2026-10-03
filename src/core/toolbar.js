@@ -562,6 +562,7 @@ function findAssetPpmNavLink() {
     assetIsActive,
     sameOriginDocuments,
     elementFromLearnedFingerprint,
+    findToolbarCloseButton,
     findChangeAssetStatusButton,
     findChangeAssetStatusDialog,
     findChangePpmStatusButton,

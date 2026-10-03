@@ -34,7 +34,8 @@ stateDiagram-v2
   fill --> filling: Validate row
   filling --> saving: Fields filled
   saving --> await_save: Click Save
-  await_save --> activate_open: Asset saved
+  await_save --> asset_close_child: Asset saved
+  asset_close_child --> activate_open: Editor closed, parent opens saved asset
 
   activate_open --> activate_select: Status dialog open
   activate_select --> activate_confirm: Active selected
@@ -44,11 +45,7 @@ stateDiagram-v2
   ppm_open_list --> ppm_wait_new: PPM register loaded
   ppm_wait_new --> ppm_fill: New PPM editor open
   ppm_fill --> ppm_await_save: PPM fields filled
-  ppm_await_save --> ppm_status_open: PPM saved
-  ppm_status_open --> ppm_status_select: Status dialog open
-  ppm_status_select --> ppm_status_confirm: Active selected
-  ppm_status_confirm --> ppm_status_wait: Confirm clicked
-  ppm_status_wait --> ppm_child_closing: PPM ACTIVE
+  ppm_await_save --> ppm_child_closing: PPM saved (activation skipped)
 
   ppm_child_closing --> ppm_parent_refresh_wait: Close editor tab
   ppm_parent_refresh_wait --> ppm_next: Parent register refreshed

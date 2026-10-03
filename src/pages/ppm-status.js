@@ -8,6 +8,13 @@
   const { finishPostSave } = root.workflow.postSave;
   const $ = () => root.runtime.b;
 
+  /** When false, PPMs are saved and the editor closes without traffic-light activation. */
+  const PPM_ACTIVATION_ENABLED = false;
+
+  function isPpmActivationEnabled() {
+    return PPM_ACTIVATION_ENABLED;
+  }
+
   function ppmActivationTarget(auto = null) {
     const b = $();
     const sessionAuto = auto || b.state.session.auto || {};
@@ -17,6 +24,10 @@
 
   async function beginPpmActivationQueue(record, results) {
     const b = $();
+    if (!PPM_ACTIVATION_ENABLED) {
+      await finishPostSave(record, results || []);
+      return;
+    }
     const targets = (results || []).filter((item) => item.activateAfterSave === true && clean(item.ppmEntityId) && !item.active);
     if (!targets.length) {
       await finishPostSave(record, results || []);
@@ -96,6 +107,55 @@
     await b.persistSession();
     b.render();
     location.href = ppmEntityUrl(remaining[0].ppmEntityId);
+  }
+
+  async function continuePpmAfterSave(record, results, savedPpm) {
+    const b = $();
+    const auto = b.state.session.auto || {};
+    const linked = b.linkedPpms(record);
+    const nextIndex = (Number(auto.ppmIndex) || 0) + 1;
+    const hasNext = nextIndex < linked.length;
+    const afterRefreshPhase = hasNext ? 'ppm_next' : 'ppm_cycle_complete_parent';
+    const nextPhase = hasNext ? 'ppm_next' : 'ppm_cycle_complete_parent';
+
+    b.state.session.auto = {
+      ...auto,
+      phase: 'ppm_child_closing',
+      ppmIndex: hasNext ? nextIndex : Number(auto.ppmIndex || 0),
+      ppmResults: results,
+      ppmResumeAfterActivation: false,
+      ppmResumeIndex: null,
+      ppmNewClickedForIndex: -1,
+      ppmListReadyStartedAt: 0,
+      ppmAfterRefreshPhase: afterRefreshPhase,
+      ppmParentRefreshStartedAt: 0
+    };
+    await b.persistSession();
+    b.addEvent('ppm-child-complete', {
+      ppmKey: savedPpm?.ppmKey || '',
+      ppmEntityId: savedPpm?.ppmEntityId || '',
+      hasNext,
+      nextPpmIndex: hasNext ? nextIndex : null,
+      afterRefreshPhase,
+      activationSkipped: !PPM_ACTIVATION_ENABLED
+    });
+    b.addEvent('ppm-current-editor-close-request', {
+      assetCode: record.assetCode,
+      ppmKey: savedPpm?.ppmKey || '',
+      nextPhase,
+      currentUrl: location.href,
+      strategy: 'close-after-save-no-activation'
+    });
+    await b.persistSession();
+    chrome.runtime.sendMessage({
+      type: 'PPM_CLOSE_CURRENT_EDITOR_TAB',
+      assetCode: record.assetCode,
+      assetEntityId: String(auto.assetEntityId || ''),
+      nextPhase
+    }).catch((error) => {
+      b.addEvent('ppm-current-editor-close-send-error', { message: String(error?.message || error), currentUrl: location.href });
+      b.persistSession().catch(() => {});
+    });
   }
 
   async function processPpmStatusPage(record) {
@@ -220,22 +280,29 @@
       status,
       note,
       ppmEntityId,
-      activateAfterSave: status === 'saved',
+      activateAfterSave: PPM_ACTIVATION_ENABLED && status === 'saved',
       active: false,
       savedAt: new Date().toISOString()
     }];
     const linked = b.linkedPpms(record);
     const nextIndex = (Number(auto.ppmIndex) || 0) + 1;
+    const savedEntry = results[results.length - 1];
 
     if (status === 'saved' && clean(ppmEntityId)) {
-      b.state.session.auto = {
-        ...auto,
-        ppmResults: results,
-        ppmResumeAfterActivation: nextIndex < linked.length,
-        ppmResumeIndex: nextIndex < linked.length ? nextIndex : null
-      };
+      if (PPM_ACTIVATION_ENABLED) {
+        b.state.session.auto = {
+          ...auto,
+          ppmResults: results,
+          ppmResumeAfterActivation: nextIndex < linked.length,
+          ppmResumeIndex: nextIndex < linked.length ? nextIndex : null
+        };
+        await b.persistSession();
+        await beginPpmActivationQueue(record, results);
+        return;
+      }
+      b.state.session.auto = { ...auto, ppmResults: results };
       await b.persistSession();
-      await beginPpmActivationQueue(record, results);
+      await continuePpmAfterSave(record, results, savedEntry);
       return;
     }
 
@@ -261,8 +328,10 @@
 
   root.pages = root.pages || {};
   root.pages.ppmStatus = Object.freeze({
+    isPpmActivationEnabled,
     ppmActivationTarget,
     processPpmStatusPage,
-    recordPpmResult
+    recordPpmResult,
+    continuePpmAfterSave
   });
 })();

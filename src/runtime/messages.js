@@ -15,7 +15,42 @@
   function initMessageListeners() {
     chrome.runtime.onMessage.addListener((message) => {
       if (!message || typeof message !== 'object') return;
-      const { state, addEvent, storageGet, persistSession, render, scheduleAuto, isHashPpmParentPage } = C();
+      const { state, addEvent, storageGet, persistSession, render, scheduleAuto, isHashPpmParentPage, isAssetPage, assetEntityUrl, entityIdFromUrl, isSavedAssetPage } = C();
+
+      if (message.type === 'EE_ASSET_EDITOR_CLOSED') {
+        addEvent('asset-parent-editor-close-message', {
+          assetCode: message.assetCode || '',
+          assetEntityId: message.assetEntityId || '',
+          closedTabId: message.closedTabId ?? null,
+          childClosed: Boolean(message.childClosed),
+          closeErrors: Array.isArray(message.closeErrors) ? message.closeErrors : [],
+          parentUrl: location.href
+        });
+        storageGet([STORAGE.session]).then(async (stored) => {
+          if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
+          const currentAuto = state.session.auto || {};
+          const entityId = String(message.assetEntityId || currentAuto.assetEntityId || '').trim();
+          state.session.auto = {
+            ...currentAuto,
+            active: true,
+            phase: 'activate_open',
+            assetEntityId: entityId || currentAuto.assetEntityId || '',
+            assetCloseStartedAt: 0,
+            assetCloseRequestedAt: 0,
+            activationButtonStartedAt: 0,
+            activationClickAttempts: 0,
+            activationLastClickAt: 0
+          };
+          await persistSession();
+          render();
+          if (entityId && (!isSavedAssetPage() || entityIdFromUrl() !== entityId)) {
+            location.href = assetEntityUrl(entityId);
+            return;
+          }
+          scheduleAuto(150);
+        }).catch(() => scheduleAuto(250));
+        return;
+      }
 
       if (message.type === 'EE_PPM_CURRENT_EDITOR_CLOSED' && isHashPpmParentPage()) {
         addEvent('ppm-parent-current-editor-close-message', {

@@ -1,4 +1,10 @@
-# v8.0.13
+# v8.0.14
+- Asset workflow: after save, close the asset editor child window, return to parent, open saved asset, then Change Asset Status → Active.
+- PPM workflow: after save, close the PPM editor child window immediately (PPM traffic-light activation temporarily disabled via `PPM_ACTIVATION_ENABLED = false`).
+- Background handler `ASSET_CLOSE_EDITOR_TAB` and message `EE_ASSET_EDITOR_CLOSED` coordinate parent focus and activation resume.
+- Message listeners initialize on all Concept pages so parent tabs receive close/resume events even off workflow URLs.
+
+## v8.0.13
 - Begin modular architecture: extract core modules under `src/` (constants, text, DOM, lookup-spec, pages, storage, workflow phases, runtime host).
 - Extract PPM page handlers to `src/pages/ppm-register.js` and `src/pages/ppm-editor.js` (New button detection, fill/validate/save loop, processPpmListPage, processPpmItemPage).
 - Extract PPM field mappings to `src/pages/ppm-mappings.js` and PPM data helpers to `src/data/ppm.js`.
