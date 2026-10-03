@@ -1,0 +1,12 @@
+VERSION 8.0.0 - VALIDATION SUMMARY
+- Manifest and UI version updated to 8.0.0.
+- JavaScript syntax checks pass for content.js, background.js, xlsx_reader.js and asset_rules.js.
+- Default iteration behavior: one complete asset cycle when iteration checkbox is disabled.
+- Multi-iteration behavior: stops when configured asset-cycle count is reached.
+- Inter-record delay setting removed.
+- No embedded WHIPPSX/fire-door instruction/date PPM template remains in content.js.
+- Linked PPM rows remain dynamically sourced from the workbook by Asset Code.
+- Each newly-created PPM is activated immediately after its save is confirmed, before the next linked PPM is started.
+- Diagnostic JSON export added for issue isolation.
+- New v8 session/workbook storage keys prevent stale v7 run state from contaminating a v8 run.
+- 45-second lookup/save values remain safety timeouts, not pacing delays.

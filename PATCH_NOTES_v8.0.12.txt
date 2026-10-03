@@ -1,0 +1,11 @@
+Engineering Efficiency CAFM Asset + PPM Importer v8.0.12
+
+Focused PPM window-role change only:
+- The PPM register URL ending with # is the parent/controller and is kept.
+- Same-asset PPM register tabs without trailing # are closed after PPM completion.
+- PPM editor tabs are closed after completion.
+- The extension-generated PPM register URL now always ends with #.
+- Non-# PPM register pages are passive; they do not run Create New.
+- Cleanup/focus no longer uses a stored parent tab ID to decide which register survives.
+- If no # parent is found, register tabs are not closed as a safety measure.
+- Asset save and Asset Status logic are unchanged.

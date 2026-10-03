@@ -1,0 +1,17 @@
+Engineering Efficiency CAFM Asset + PPM Importer v8.0.6
+
+Baseline: v8.0.5, which itself was based on the user-confirmed v8.0.4 Exact Status Click build.
+
+Changes in this patch only:
+1. PPM child is closed first after save/status completion. Parent PPM register is then focused and explicitly told to refresh.
+2. Refresh runs only on ViewFASSETItemPPMs.aspx parent register using the exact Refresh the page / Toolbar.Refresh anchor.
+3. Parent refresh completion supports both full document reload and Evolution toolbar refresh that finishes without a new page instance.
+4. After parent refresh, the existing Create New loop resumes when another linked Excel PPM exists.
+5. Additional parsed Excel asset values are now attempted: Floor, Classification and Site Reference. Missing/uncommitted values remain non-blocking warnings with diagnostic logging.
+6. PPM parent/child transition polling was shortened; lookup readiness still remains event/state-driven with existing safety timeouts.
+
+NOT CHANGED:
+- Asset Save logic.
+- Working Change Asset Status exact-click logic from v8.0.4.
+- PPM field source-of-truth model.
+- Iteration semantics.

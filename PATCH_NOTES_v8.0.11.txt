@@ -1,0 +1,7 @@
+v8.0.11 - Close Duplicate PPM Register Tabs
+
+Confirmed change only:
+- Keep the originally registered parent PPM tab open.
+- After each PPM completes, close PPM editor tabs and any other PPM register tab for the same saved Asset ID.
+- Focus the protected parent tab and continue Create New from that parent.
+- Existing Asset workflow is unchanged.

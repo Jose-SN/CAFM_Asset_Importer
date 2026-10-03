@@ -1,0 +1,15 @@
+v8.0.3 STATUS DEBUG PATCH
+
+Only the Asset Status opening path was simplified and instrumented.
+
+- Remains in activate_open until ctl00_ctl00_assetStatusPopup_container is actually visible.
+- Re-checks the exact a[title="Change Asset Status"][onclick*="Toolbar.AssetStatus"] every 250 ms.
+- If disabled, does not click; it simply re-checks.
+- When enabled, native button.click() is retried no more often than every 700 ms until the popup appears.
+- Diagnostic JSON now captures activationStatusDebug, activationClickAttempts, activationLastClickAt and events:
+  asset-status-wait-start
+  asset-status-button-state
+  asset-status-click
+  asset-status-popup-open
+  asset-status-popup-missing-after-detect
+- No Asset/PPM data mapping, workbook parsing, PPM logic, iteration logic or save logic was changed.

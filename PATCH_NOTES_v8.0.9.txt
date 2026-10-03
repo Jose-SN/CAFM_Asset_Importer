@@ -1,0 +1,8 @@
+v8.0.9 - Close Current PPM Editor Tab
+
+Strategy change:
+- No child-window tracking is required to close a completed PPM editor.
+- The PPM editor sends PPM_CLOSE_CURRENT_EDITOR_TAB to the background worker.
+- Background closes sender.tab.id only after confirming it is not the registered parent and its URL is a PPM editor.
+- Parent is focused and receives the next phase, then retries Create New when another PPM exists.
+- Working asset save/status code is unchanged.

@@ -1,0 +1,6 @@
+v8.0.8 - PPM child self-close + parent Create New
+
+- PPM child now closes itself with window.close() after save/status completion.
+- Before closing, child asks background to focus and notify the registered parent PPM register.
+- Parent resumes at ppm_next / Create New; child is not refreshed or reused.
+- Asset save and Asset Status logic unchanged.

@@ -1,0 +1,62 @@
+{
+  "manifest_version": 3,
+  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.12",
+  "version": "8.0.12",
+  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.12: uses the trailing # on the PPM-register URL as the parent rule; closes same-asset register tabs without # and PPM editor tabs, then resumes Create New from the # parent.",
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "clipboardWrite",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://concept/*",
+    "https://concept/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://concept/*",
+        "https://concept/*"
+      ],
+      "js": [
+        "xlsx_reader.js",
+        "asset_rules.js",
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_about_blank": true
+    }
+  ],
+  "action": {
+    "default_title": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.12",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "branding/engineering_efficiency_logo.png"
+      ],
+      "matches": [
+        "http://concept/*",
+        "https://concept/*"
+      ]
+    }
+  ]
+}

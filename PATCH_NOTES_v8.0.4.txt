@@ -1,0 +1,10 @@
+Engineering Efficiency CAFM Asset Importer v8.0.4
+
+Focused Asset Status opening fix only:
+- Uses exact anchor: a[title="Change Asset Status"][onclick*="Toolbar.AssetStatus"]
+- Waits until the anchor has no disabled attribute.
+- Calls the proven native b.click() directly.
+- Retries every 500 ms until the exact popup container appears.
+- Detects popup by exact ID ctl00_ctl00_assetStatusPopup_container.
+- Keeps detailed click/debug events in the diagnostic JSON.
+- No geometry/learned selector/synthetic MouseEvent is used for this status-opening step.

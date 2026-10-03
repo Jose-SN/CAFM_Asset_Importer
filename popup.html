@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CAFM Asset + PPM Importer</title>
+  <style>
+    body { width:330px; margin:0; padding:16px; background:#111820; color:#eef3f7; font:13px/1.45 Arial,Helvetica,sans-serif; }
+    .brand { display:flex; gap:10px; align-items:center; }
+    img { width:42px; height:42px; object-fit:contain; background:#fff; border-radius:6px; }
+    h1 { font-size:16px; margin:0; }
+    .sub { color:#9eadb9; font-size:11px; margin-top:2px; }
+    .box { margin-top:13px; border:1px solid #33414e; border-radius:8px; padding:10px; background:#17212a; }
+    b { color:#fff; }
+    .small { font-size:11px; color:#aeb9c4; }
+  </style>
+</head>
+<body>
+  <div class="brand">
+    <img src="branding/engineering_efficiency_logo.png" alt="Engineering Efficiency Ltd">
+    <div><h1>CAFM Asset + PPM Importer</h1><div class="sub">Engineering Efficiency Ltd | v8.0.0</div></div>
+  </div>
+  <div class="box">
+    Open a <b>New Entity</b> page to create assets, or open any <b>saved Asset</b> to update it in place from the workbook.
+  </div>
+  <div class="box small">
+    Asset lookups use direct type-and-select. After a NEW Asset Save, v8.0 changes the Asset to ACTIVE and processes linked PPM rows. On a saved Asset, use Edit Existing Asset to refill populated workbook fields without creating a duplicate or changing existing PPMs. For large batches, enable multiple asset iterations and keep optional Notes/Spatial tabs off unless required. Contract, Instruction, Cost Centre and dates come from Excel. Every newly-created PPM is changed to ACTIVE after save.
+  </div>
+</body>
+</html>

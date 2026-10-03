@@ -1,0 +1,12 @@
+Engineering Efficiency CAFM Asset + PPM Importer v8.0.2
+
+This is a deliberately small patch to v8.0.1.
+
+Changed only:
+1. Asset pre-save audit no longer switches tabs merely to re-check values already verified while filling.
+2. After Save, Change Asset Status waits while the exact toolbar button is disabled.
+3. As soon as the button is enabled, the extension clicks it.
+4. If the Change Asset Status popup has not appeared yet, the extension retries the exact button click until the popup appears or the existing safety timeout is reached.
+5. Existing popup logic is retained: clear the status input, select Active, press OK, then continue.
+
+No PPM, workbook parsing, iteration, field mapping, duplicate, or file-handling workflow was redesigned in this patch.

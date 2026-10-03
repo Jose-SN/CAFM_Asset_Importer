@@ -1,0 +1,12 @@
+v8.0.10 - Close All PPM Children
+
+Confirmed workflow:
+1. Parent PPM register remains open.
+2. Create New opens a PPM editor child.
+3. PPM is filled, saved, and status processing completes.
+4. Background closes all PPM editor tabs belonging to that parent.
+5. Parent PPM register is focused.
+6. Existing Create New loop resumes for the next linked PPM.
+7. Repeat until no linked PPM rows remain.
+
+Asset Save / Change Asset Status logic is unchanged.

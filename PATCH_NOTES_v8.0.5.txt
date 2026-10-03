@@ -1,0 +1,18 @@
+Engineering Efficiency CAFM Asset Importer v8.0.5
+
+BASELINE
+- Built only from the user-supplied v8.0.4 Exact Status Click package.
+- Existing Asset Save and Change Asset Status workflow intentionally left unchanged.
+
+CHANGES
+1. PPM Create New uses the exact Concept Evolution anchor and retries until a child PPM window/tab is detected.
+2. After a saved PPM completes its existing ACTIVE status workflow, the child PPM window/tab is closed.
+3. Parent PPM register is focused, the exact Refresh the page button is clicked, refresh is verified, then the next linked PPM starts.
+4. Excel-backed field validation warnings are non-blocking. Warnings are stored in status/log data and the workflow continues.
+5. Detailed action events record Create New/Refresh element discovery, disabled state, onclick, click attempts, child detection, field fill/lookup results, warnings, and completion.
+6. Completion snackbar is shown before automatic navigation to the next asset.
+7. Populated Excel Spatial and Notes data are processed rather than silently skipped.
+
+SAFETY
+- PPM count remains data-driven from linked workbook rows.
+- Asset Save / Asset Status logic is unchanged from the supplied baseline.

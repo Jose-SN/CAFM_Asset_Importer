@@ -1,0 +1,8 @@
+v8.0.7 - PPM child close + second Create New fix
+
+- Keeps existing Asset Save and Change Asset Status behavior unchanged.
+- Background now tracks the exact last child tab opened from the registered PPM parent tab.
+- After a PPM is saved/activated, closes the tracked child tab, focuses the parent PPM register, and continues there.
+- Parent does not refresh the child window.
+- Parent resets Create New retry state and clicks Create New again when another linked PPM exists.
+- Adds close diagnostics: tracked child tab, childClosed, closeError, parent tab ID.
