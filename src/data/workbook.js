@@ -42,6 +42,9 @@ async function persistSession() {
     });
   }
   await storageSet({ [STORAGE.session]: C().state.session, [STORAGE.settings]: C().state.settings });
+  try {
+    chrome.runtime.sendMessage({ type: 'AUTO_ORCHESTRATOR_SYNC' }).catch(() => {});
+  } catch (_) {}
 }
 
 async function restoreState() {

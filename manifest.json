@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.19",
-  "version": "8.0.19",
-  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.19: PPM grid dedup, Building lookup fix, Save and New batch flow, and UI options.",
+  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.20",
+  "version": "8.0.20",
+  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.20: background workflow orchestrator, PPM save URL detection, and unfocused tab support.",
   "permissions": [
     "storage",
     "unlimitedStorage",
     "clipboardWrite",
-    "tabs"
+    "tabs",
+    "alarms"
   ],
   "host_permissions": [
     "http://concept/*",
@@ -66,7 +67,7 @@
     }
   ],
   "action": {
-    "default_title": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.15",
+    "default_title": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.20",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

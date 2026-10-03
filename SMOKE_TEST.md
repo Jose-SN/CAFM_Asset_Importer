@@ -1,4 +1,4 @@
-# CAFM Smoke Test Runbook (v8.0.19)
+# CAFM Smoke Test Runbook (v8.0.20)
 
 Run these three scenarios on live Concept Evolution after reloading the extension (`chrome://extensions` → Reload).
 
@@ -131,6 +131,14 @@ Add Contract / Cost Centre / dates from your live CAFM lookup values if prefill 
 4. Expected: phase restores to `failedPhase`; run continues from that phase.
 
 ---
+
+## v8.0.20 — background orchestrator, unfocused tab
+
+1. Start automatic import on an asset with **2+ linked PPM rows**.
+2. After the first PPM saves, **switch to another browser tab or app** (do not click CAFM).
+3. Expected: second PPM starts without manual focus; diagnostic JSON shows `ppm-save-url-detected` and/or background `RUN_AUTO_STEP` events.
+4. Confirm CAFM window is **not** forced to the foreground when PPM child tabs close.
+5. If save is slow while hidden, workflow should wait up to ~90s (`backgroundSaveTimeoutMs`) before timing out.
 
 ## v8.0.19 — grid dedup, Save and New, options
 

@@ -314,8 +314,8 @@
     const nextIndex = (Number(auto.ppmIndex) || 0) + 1;
     const savedEntry = results[results.length - 1];
 
-    if (status === 'saved' && clean(ppmEntityId)) {
-      if (PPM_ACTIVATION_ENABLED) {
+    if (status === 'saved') {
+      if (PPM_ACTIVATION_ENABLED && clean(ppmEntityId)) {
         b.state.session.auto = {
           ...auto,
           ppmResults: results,
@@ -326,10 +326,12 @@
         await beginPpmActivationQueue(record, results);
         return;
       }
-      b.state.session.auto = { ...auto, ppmResults: results };
-      await b.persistSession();
-      await continuePpmAfterSave(record, results, savedEntry);
-      return;
+      if (!PPM_ACTIVATION_ENABLED) {
+        b.state.session.auto = { ...auto, ppmResults: results };
+        await b.persistSession();
+        await continuePpmAfterSave(record, results, savedEntry);
+        return;
+      }
     }
 
     if (status === 'existing') {

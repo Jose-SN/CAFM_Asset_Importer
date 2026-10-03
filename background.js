@@ -10,6 +10,129 @@ const PPM_EDITOR_URL = /\/Evolution\/!System\/PPMs\/FPPM\/ViewFPPMItem\.aspx/i;
 const PPM_REGISTER_URL = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItemPPMs\.aspx/i;
 const ASSET_EDITOR_URL = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItem\.aspx/i;
 
+const SESSION_KEY = 'eeAssetImporterV80Session';
+const SETTINGS_KEY = 'eeAssetImporterV80Settings';
+const AUTO_ALARM = 'cafm-auto-orchestrator';
+const DEFAULT_ORCHESTRATOR_MS = 2500;
+const ppmSaveUrlNotified = new Map();
+
+function isConceptUrl(url) {
+  try {
+    const host = new URL(String(url || '')).hostname.toLowerCase();
+    return host === 'concept' || String(url || '').toLowerCase().includes('/evolution/');
+  } catch (_) {
+    return false;
+  }
+}
+
+async function readSessionAndSettings() {
+  const data = await chrome.storage.local.get([SESSION_KEY, SETTINGS_KEY]);
+  return {
+    session: data[SESSION_KEY] || null,
+    settings: data[SETTINGS_KEY] || {}
+  };
+}
+
+async function collectWorkflowTabIds(session, parent) {
+  const tabIds = new Set();
+  if (parent?.tabId) tabIds.add(parent.tabId);
+  for (const child of parent?.children || []) {
+    if (typeof child?.tabId === 'number') tabIds.add(child.tabId);
+  }
+  try {
+    const assetStored = await chrome.storage.local.get(ASSET_TAB_KEY);
+    if (typeof assetStored[ASSET_TAB_KEY]?.tabId === 'number') tabIds.add(assetStored[ASSET_TAB_KEY].tabId);
+  } catch (_) {}
+  const auto = session?.auto || {};
+  if (String(auto.assetEntityId || '').trim()) {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (typeof tab.id !== 'number' || !isConceptUrl(tab.url)) continue;
+      const id = assetIdFromTabUrl(tab.url);
+      if (id && id === String(auto.assetEntityId || '').trim()) tabIds.add(tab.id);
+    }
+  }
+  return tabIds;
+}
+
+async function dispatchAutoSteps(session) {
+  if (!session?.auto?.active) return { dispatched: 0 };
+  const parent = await getStoredPpmParent();
+  const tabIds = await collectWorkflowTabIds(session, parent);
+  let dispatched = 0;
+  for (const tabId of tabIds) {
+    try {
+      await chrome.tabs.sendMessage(tabId, {
+        type: 'RUN_AUTO_STEP',
+        phase: session.auto.phase || '',
+        source: 'background-orchestrator'
+      });
+      dispatched += 1;
+    } catch (_) {}
+  }
+  return { dispatched, tabCount: tabIds.size };
+}
+
+async function scheduleOrchestratorAlarm(delayMs = DEFAULT_ORCHESTRATOR_MS) {
+  const when = Date.now() + Math.max(500, Number(delayMs) || DEFAULT_ORCHESTRATOR_MS);
+  await chrome.alarms.clear(AUTO_ALARM);
+  await chrome.alarms.create(AUTO_ALARM, { when });
+}
+
+async function syncAutoOrchestrator() {
+  const { session, settings } = await readSessionAndSettings();
+  const enabled = settings.backgroundOrchestrator !== false;
+  if (!enabled || !session?.auto?.active) {
+    await chrome.alarms.clear(AUTO_ALARM);
+    return { active: false };
+  }
+  const delayMs = Math.max(500, Number(settings.backgroundOrchestratorMs) || DEFAULT_ORCHESTRATOR_MS);
+  await scheduleOrchestratorAlarm(delayMs);
+  const result = await dispatchAutoSteps(session);
+  return { active: true, ...result };
+}
+
+async function handlePpmEditorUrlUpdate(tabId, url) {
+  if (!isPpmEditorUrl(url)) return;
+  const ppmEntityId = assetIdFromTabUrl(url);
+  if (!ppmEntityId || ppmEntityId === '-1') return;
+
+  const notifyKey = `${tabId}:${ppmEntityId}`;
+  const last = Number(ppmSaveUrlNotified.get(notifyKey) || 0);
+  if (Date.now() - last < 4000) return;
+
+  const parent = await getStoredPpmParent();
+  const trackedChild = parent?.children?.some((item) => item.tabId === tabId);
+  const expectChild = Number(parent?.expectChildUntil || 0) > Date.now();
+  if (!trackedChild && tabId === parent?.tabId) return;
+  if (!trackedChild && !expectChild) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      const openerMatch = typeof tab.openerTabId === 'number' && tab.openerTabId === parent?.tabId;
+      if (!openerMatch && !expectChild) return;
+    } catch (_) {
+      return;
+    }
+  }
+
+  const { session } = await readSessionAndSettings();
+  const auto = session?.auto || {};
+  if (!auto.active) return;
+  const phase = String(auto.phase || '');
+  if (!['ppm_await_save', 'ppm_fill', 'ppm_child_closing'].includes(phase)) return;
+
+  ppmSaveUrlNotified.set(notifyKey, Date.now());
+
+  try {
+    await chrome.tabs.sendMessage(tabId, {
+      type: 'PPM_SAVED_URL_DETECTED',
+      ppmEntityId,
+      assetCode: auto.assetCode || parent?.assetCode || '',
+      url
+    });
+  } catch (_) {}
+}
+
 function isPpmEditorUrl(url) {
   return PPM_EDITOR_URL.test(String(url || ''));
 }
@@ -196,10 +319,12 @@ async function closePpmChildSurfaces(childTabIds, keepParent) {
   return { closeErrors, closedTabIds, closedWindowIds };
 }
 
-async function notifyPpmParentClosed(keepParent, payload) {
+async function notifyPpmParentClosed(keepParent, payload, options = {}) {
   if (!keepParent?.tab?.id) return false;
-  try { await chrome.windows.update(keepParent.tab.windowId, { focused: true }); } catch (_) {}
-  try { await chrome.tabs.update(keepParent.tab.id, { active: true }); } catch (_) {}
+  if (options.focusParent === true) {
+    try { await chrome.windows.update(keepParent.tab.windowId, { focused: true }); } catch (_) {}
+    try { await chrome.tabs.update(keepParent.tab.id, { active: true }); } catch (_) {}
+  }
   try {
     await chrome.tabs.sendMessage(keepParent.tab.id, payload);
     return true;
@@ -434,6 +559,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     Promise.resolve(navigator.storage?.persist?.())
       .then((persisted) => sendResponseSafe(sendResponse, { ok: true, persisted: Boolean(persisted) }))
       .catch(() => sendResponseSafe(sendResponse, { ok: true, persisted: false }));
+    return true;
+  }
+
+  if (message.type === 'AUTO_ORCHESTRATOR_SYNC') {
+    syncAutoOrchestrator()
+      .then((info) => sendResponseSafe(sendResponse, { ok: true, ...info }))
+      .catch((error) => sendResponseSafe(sendResponse, { ok: false, error: String(error?.message || error) }));
     return true;
   }
 
@@ -811,6 +943,18 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     entry.updatedAt = Date.now();
     savePpmParent(parent).catch(() => {});
   }).catch(() => {});
+  const url = String(changeInfo.url || tab?.url || '');
+  if (url && isPpmEditorUrl(url)) {
+    handlePpmEditorUrlUpdate(tabId, url).catch(() => {});
+  }
+  if (changeInfo.status === 'complete' && tab?.url && isPpmEditorUrl(tab.url)) {
+    handlePpmEditorUrlUpdate(tabId, tab.url).catch(() => {});
+  }
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== AUTO_ALARM) return;
+  syncAutoOrchestrator().catch(() => {});
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {

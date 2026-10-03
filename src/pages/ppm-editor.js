@@ -275,12 +275,15 @@
         return;
       }
       const elapsed = Date.now() - Number(auto.ppmSaveStartedAt || Date.now());
+      const saveTimeoutMs = document.hidden
+        ? Math.max(Number(b.state.settings.backgroundSaveTimeoutMs) || 0, Number(b.state.settings.saveTimeoutMs) * 3)
+        : Number(b.state.settings.saveTimeoutMs);
       const usedSaveAndClose = /saveandclose|save and close|dropdown-menu-link|menu-link/i.test(String(auto.ppmSaveMethod || ''));
       if (usedSaveAndClose && elapsed >= 1800) {
         await b.recordPpmResult(record, ppm, 'saved', 'Save and Close completed; child close handled by background registry', '');
         return;
       }
-      if (elapsed > b.state.settings.saveTimeoutMs) throw new Error(`PPM save confirmation timed out for ${ppm.ppmKey}.`);
+      if (elapsed > saveTimeoutMs) throw new Error(`PPM save confirmation timed out for ${ppm.ppmKey}.`);
       b.scheduleAuto(0);
       return;
     }

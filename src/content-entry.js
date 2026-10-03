@@ -62,6 +62,7 @@
 
   const fillCurrentRecord = (...args) => CI.pages.assetNew.fillCurrentRecord(...args);
   const scheduleAuto = (...args) => CI.workflow.engine.scheduleAuto(...args);
+  const runAutomatic = (...args) => CI.workflow.engine.runAutomatic(...args);
   const startAutomatic = (...args) => CI.workflow.engine.startAutomatic(...args);
   const pauseAutomatic = (...args) => CI.workflow.engine.pauseAutomatic(...args);
   const resumeAutomatic = (...args) => CI.workflow.engine.resumeAutomatic(...args);
@@ -193,13 +194,24 @@
     });
     configureEvents({ state, workflowRecord, currentRecord, persistSession, showToast });
     configureMessages({
-      state, addEvent, storageGet, persistSession, render, scheduleAuto, isPpmRegisterParentPage,
-      isAssetPage,
+      state, addEvent, storageGet, persistSession, render, scheduleAuto, runAutomatic,
+      isPpmRegisterParentPage, isPpmItemPage: CI.core.pages.isPpmItemPage, isAssetPage,
       assetEntityUrl: CI.core.pages.assetEntityUrl,
       entityIdFromUrl: CI.core.pages.entityIdFromUrl,
-      isSavedAssetPage: CI.core.pages.isSavedAssetPage
+      isSavedAssetPage: CI.core.pages.isSavedAssetPage,
+      workflowRecord: CI.data.records.workflowRecord,
+      currentPpm,
+      recordPpmResult: CI.pages.ppmStatus.recordPpmResult
     });
     initMessageListeners();
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && state.session.auto?.active) {
+        scheduleAuto(0);
+        try {
+          chrome.runtime.sendMessage({ type: 'AUTO_ORCHESTRATOR_SYNC' }).catch(() => {});
+        } catch (_) {}
+      }
+    }, { passive: true });
 
     let restoreError = null;
     try {

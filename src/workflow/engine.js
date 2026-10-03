@@ -21,12 +21,19 @@
   const { dispatchClick } = root.core.dom;
   const $ = () => root.runtime.b;
 
+  function syncAutoOrchestrator() {
+    try {
+      chrome.runtime.sendMessage({ type: 'AUTO_ORCHESTRATOR_SYNC' }).catch(() => {});
+    } catch (_) {}
+  }
+
   function scheduleAuto(_delay = 0) {
     const b = $();
     clearTimeout(b.state.autoTimer);
     const phase = clean(b.state.session.auto?.phase || '');
     const watchdogMs = WAITING_PHASES.has(phase) ? 750 : 0;
     b.state.autoTimer = setTimeout(() => runAutomatic().catch((error) => stopAutomaticWithError(error)), watchdogMs);
+    if (b.state.session.auto?.active) syncAutoOrchestrator();
   }
 
   async function stopAutomaticWithError(error) {
@@ -51,6 +58,7 @@
     await b.persistSession();
     b.render();
     b.showToast(message, 'error', 12000);
+    syncAutoOrchestrator();
   }
 
   async function startAutomatic() {
@@ -77,6 +85,7 @@
     await b.persistSession();
     b.render();
     scheduleAuto(100);
+    syncAutoOrchestrator();
   }
 
   async function resumeAutomatic() {
@@ -113,6 +122,7 @@
     await b.persistSession();
     b.render();
     b.showToast('Automatic import paused.', 'info');
+    syncAutoOrchestrator();
   }
 
   async function runAutomatic() {

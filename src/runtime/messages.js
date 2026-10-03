@@ -15,7 +15,46 @@
   function initMessageListeners() {
     chrome.runtime.onMessage.addListener((message) => {
       if (!message || typeof message !== 'object') return;
-      const { state, addEvent, storageGet, persistSession, render, scheduleAuto, isPpmRegisterParentPage, isAssetPage, assetEntityUrl, entityIdFromUrl, isSavedAssetPage } = C();
+      const {
+        state, addEvent, storageGet, persistSession, render, scheduleAuto, runAutomatic,
+        isPpmRegisterParentPage, isPpmItemPage, isAssetPage, assetEntityUrl, entityIdFromUrl,
+        isSavedAssetPage, workflowRecord, currentPpm, recordPpmResult
+      } = C();
+
+      if (message.type === 'RUN_AUTO_STEP') {
+        storageGet([STORAGE.session]).then(async (stored) => {
+          if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
+          if (!state.session.auto?.active) return;
+          try {
+            await runAutomatic();
+          } catch (_) {
+            scheduleAuto(0);
+          }
+        }).catch(() => {});
+        return;
+      }
+
+      if (message.type === 'PPM_SAVED_URL_DETECTED' && isPpmItemPage()) {
+        const ppmEntityId = String(message.ppmEntityId || entityIdFromUrl() || '').trim();
+        if (!ppmEntityId || ppmEntityId === '-1') return;
+        storageGet([STORAGE.session]).then(async (stored) => {
+          if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
+          const auto = state.session.auto || {};
+          const phase = String(auto.phase || '');
+          if (!auto.active || !['ppm_await_save', 'ppm_fill'].includes(phase)) return;
+          const record = workflowRecord(auto);
+          const ppm = currentPpm(record);
+          if (!record || !ppm) return;
+          addEvent('ppm-save-url-detected', {
+            ppmKey: ppm.ppmKey,
+            ppmEntityId,
+            phase,
+            source: message.source || 'background'
+          });
+          await recordPpmResult(record, ppm, 'saved', 'Background detected saved PPM URL', ppmEntityId);
+        }).catch(() => {});
+        return;
+      }
 
       if (message.type === 'EE_ASSET_EDITOR_CLOSED') {
         addEvent('asset-parent-editor-close-message', {

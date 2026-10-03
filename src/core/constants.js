@@ -5,7 +5,7 @@
   root.core = root.core || {};
 
   root.core.constants = Object.freeze({
-    VERSION: '8.0.19',
+    VERSION: '8.0.20',
     HOST_ID: 'ee-cafm-asset-importer-host',
     STORAGE: Object.freeze({
       session: 'eeAssetImporterV80Session',
@@ -20,8 +20,10 @@
     DEFAULT_SETTINGS: Object.freeze({
       lookupTimeoutMs: 20000,
       saveTimeoutMs: 20000,
+      backgroundSaveTimeoutMs: 90000,
       lookupCommitTimeoutMs: 8000,
       ppmChildTimeoutMs: 15000,
+      backgroundOrchestrator: true,
       skipInvalidRows: false,
       stopOnLookupError: true,
       panelX: null,
@@ -33,7 +35,8 @@
       iterationCount: 1,
       autoDownloadTimeline: false,
       autoContinueNext: true,
-      useSaveAndNew: true
+      useSaveAndNew: true,
+      backgroundOrchestratorMs: 2500
     }),
     assetPagePattern: /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItem\.aspx/i,
     assetListPagePattern: /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItems\.aspx/i,
