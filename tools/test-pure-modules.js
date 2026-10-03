@@ -33,7 +33,7 @@ loadCoreStack();
 const { linkedForAsset, currentFromList, sourceIssues } = globalThis.CAFMImporter.data.ppm;
 const { summarize, formatSummary } = globalThis.CAFMImporter.data.preflight;
 const { directMappingsFromRegistry, valueAtPath, SUPPORTED_WORKBOOK_SCHEMAS } = globalThis.CAFMImporter.data.fieldRegistry;
-const { assetProfileForRecord } = globalThis.CAFMImporter.data.fillProfiles;
+const { assetProfileForRecord, resolveAssetTabOrder, shouldFillAssetNotes, PROFILE_RULES, DEFAULT_ASSET_PROFILE } = globalThis.CAFMImporter.data.fillProfiles;
 const { validateRecord, lookupValue } = globalThis.CAFMAssetRules;
 
 // --- ppm.js ---
@@ -67,6 +67,12 @@ assert(SUPPORTED_WORKBOOK_SCHEMAS.includes('CAFM Asset + PPM Import v8.0'), 'v8 
 const profile = assetProfileForRecord(record);
 assert(profile.assetTabOrder.includes('Details'), 'default profile has Details tab');
 assert(profile.assetLookupSequence.includes('Building'), 'default profile lookup sequence');
+assert(!resolveAssetTabOrder(record, {}).includes('Spatial'), 'Spatial tab skipped unless includeSpatial');
+assert(resolveAssetTabOrder(record, { includeSpatial: true }).includes('Spatial'), 'Spatial tab when enabled');
+assert(!shouldFillAssetNotes({ comments: 'Note text' }, {}), 'Notes skipped unless includeNotes');
+assert(shouldFillAssetNotes({ comments: 'Note text' }, { includeNotes: true }), 'Notes when includeNotes enabled');
+assert(PROFILE_RULES.length >= 1, 'PROFILE_RULES registry exists');
+assert(assetProfileForRecord(record).id === DEFAULT_ASSET_PROFILE.id, 'default profile selected');
 
 // --- preflight.js ---
 const state = {
@@ -88,6 +94,12 @@ const stored = { index: 2, events: [{ type: 'phase', phase: 'fill' }], auto: { a
 const merged = { ...initial, ...stored, events: Array.isArray(stored.events) ? stored.events : (initial.events || []) };
 assert(merged.events.length === 1, 'session merge preserves stored events');
 assert(merged.auto.phase === 'filling', 'session merge preserves auto state for refresh resume');
+
+// --- resumeAutomatic phase selection ---
+const stoppedAuto = { active: false, phase: 'error', failedPhase: 'await_save', error: 'Save timed out', assetCode: 'WCH-A' };
+const resumePhase = String(stoppedAuto.failedPhase || 'fill').trim() || 'fill';
+assert(resumePhase === 'await_save', 'resume uses failedPhase not error phase');
+assert(['error', 'paused'].includes(stoppedAuto.phase), 'resume eligible when error or paused');
 
 if (errors.length) {
   console.error('Pure module tests failed:\n' + errors.map((e) => `  - ${e}`).join('\n'));

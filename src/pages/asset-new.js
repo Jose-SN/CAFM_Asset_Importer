@@ -6,7 +6,7 @@
   const { wait, visible, isAssistantElement, elementValue } = root.core.dom;
   const { isNewEntityPage } = root.core.pages;
   const { lookupMapping, directMappings, valueEquivalent } = root.pages.assetMappings;
-  const { assetProfileForRecord } = root.data.fillProfiles;
+  const { assetProfileForRecord, resolveAssetTabOrder, shouldFillAssetNotes } = root.data.fillProfiles;
   const $ = () => root.runtime.b;
 
   async function fillAssetFieldsByTab(record, options = {}) {
@@ -17,7 +17,7 @@
     const specs = lookupMapping(record);
     const profile = assetProfileForRecord(record);
     const lookupSequence = profile.assetLookupSequence;
-    const tabOrder = profile.assetTabOrder;
+    const tabOrder = resolveAssetTabOrder(record, b.state.settings || {});
 
     for (const tab of tabOrder) {
       const fields = mappings[tab] || [];
@@ -61,7 +61,7 @@
       }
     }
 
-    if (clean(record.comments)) {
+    if (shouldFillAssetNotes(record, b.state.settings || {})) {
       if (!(await b.clickTab('Notes'))) throw new Error('Notes tab could not be opened.');
       let textarea = b.nearestControl(['Notes'])?.control;
       if (!(textarea instanceof HTMLTextAreaElement)) {

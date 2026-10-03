@@ -112,4 +112,6 @@ Each CAFM page has an isolated handler in `src/pages/`. Direct field definitions
 
 See [ISSUE_TRACKING.md](ISSUE_TRACKING.md) for phase-based error isolation and the automation state diagram.
 
-Before live CAFM testing, run `node tools/verify-modules.js`, `node tools/verify-architecture.js`, `node tools/test-pure-modules.js`, and `node tools/test-bootstrap-load.js`. Follow [SMOKE_TEST.md](SMOKE_TEST.md) for the three required regression scenarios.
+Before live CAFM testing, run `powershell -File tools/dev.ps1` (or the individual `node tools/*.js` checks listed in [SMOKE_TEST.md](SMOKE_TEST.md)). Generate smoke workbooks with `node tools/generate-smoke-workbook.js`, then follow [SMOKE_TEST.md](SMOKE_TEST.md) for the three required regression scenarios.
+
+**Dev reload loop:** Chrome does not auto-reload unpacked extensions. After code changes: `chrome://extensions` → **Reload** → **F5** on CAFM tabs. Optional: `powershell -File tools/watch-dev.ps1` prints reload reminders when you save files.

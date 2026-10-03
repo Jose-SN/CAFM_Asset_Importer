@@ -321,7 +321,7 @@
 
   function readSchemaVersionRow(rows) {
     for (const row of rows.slice(0, 8)) {
-      const entries = [...row.cells.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+      const entries = [...row.cells.entries()].sort((a, b) => Number(a[0]) - Number(b[0]));
       for (let i = 0; i < entries.length - 1; i += 1) {
         const label = normalizeHeader(entries[i][1]);
         if (label === 'schema version' || label === 'workbook schema') {
