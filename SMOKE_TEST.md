@@ -1,4 +1,4 @@
-# CAFM Smoke Test Runbook (v8.0.20)
+# CAFM Smoke Test Runbook (v8.0.21)
 
 Run these three scenarios on live Concept Evolution after reloading the extension (`chrome://extensions` → Reload).
 
@@ -131,6 +131,13 @@ Add Contract / Cost Centre / dates from your live CAFM lookup values if prefill 
 4. Expected: phase restores to `failedPhase`; run continues from that phase.
 
 ---
+
+## v8.0.21 — General tab + Save and New between assets
+
+1. Run an asset with at least one PPM, then a **second asset row** in the workbook.
+2. After last PPM, confirm CAFM shows the **General** tab on the saved asset.
+3. Confirm **Save and New** runs (not Create New) and a blank New Entity form opens for the second asset.
+4. Diagnostic JSON should include `ppm-cycle-general-nav` and `asset-save-and-new-click` with `ok: true`.
 
 ## v8.0.20 — background orchestrator, unfocused tab
 

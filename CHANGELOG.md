@@ -1,3 +1,11 @@
+# v8.0.22
+- Fix **Extension context invalidated** uncaught errors after reloading the extension: storage APIs now detect a dead extension context, stop automatic import safely, and show a clear “press F5” message instead of console promise rejections.
+
+# v8.0.21
+- After all PPMs: reliably open **General** tab before the next asset — including from the separate PPM register page (navigate to saved asset General URL).
+- **Save and New** between assets: wait for General tab to be selected, brief settle delay, up to 5 click attempts; improved button detection for CAFM’s Save and New menu item.
+- Added **[USER_GUIDE.md](USER_GUIDE.md)** — plain-language operator manual (no technical background required).
+
 # v8.0.20
 - Background workflow orchestrator: `alarms` permission + periodic `RUN_AUTO_STEP` to parent/child workflow tabs so automatic import continues when the CAFM tab is unfocused or in another window.
 - PPM save URL detection: background `tabs.onUpdated` detects `ViewFPPMItem.aspx?id≠-1` and notifies the child editor to record save without waiting on throttled content-script timers.

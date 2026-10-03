@@ -334,7 +334,9 @@ function findSaveAndCloseButton() {
 }
 
 function findSaveAndNewButton() {
-  const exact = document.querySelector('a[onclick*="Toolbar.SaveAndNew"], a[title*="Save and New" i]');
+  const exact = document.querySelector(
+    'a[onclick*="Toolbar.SaveAndNew"], a#ctl00_ctl00_ToolbarEx_SaveAndNew, a[title*="Save and New" i], a[title*="clear the form" i]'
+  );
   if (exact && visible(exact) && !isAssistantElement(exact)) return exact;
   const candidates = [...document.querySelectorAll('a,button,[role="button"]')]
     .filter((element) => {
@@ -342,7 +344,10 @@ function findSaveAndNewButton() {
       const text = norm(element.textContent);
       const onclick = norm(element.getAttribute('onclick') || '');
       const title = norm(element.getAttribute('title') || '');
-      return /save and new/.test(text) || onclick.includes('toolbar.saveandnew') || /save and new/.test(title);
+      return /save and new/.test(text)
+        || onclick.includes('toolbar.saveandnew')
+        || /save and new/.test(title)
+        || /clear the form for setting up a new entity/.test(title);
     });
   return candidates[0]?.closest?.('a,button,[role="button"]') || candidates[0] || null;
 }

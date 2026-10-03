@@ -16,12 +16,13 @@
     chrome.runtime.onMessage.addListener((message) => {
       if (!message || typeof message !== 'object') return;
       const {
-        state, addEvent, storageGet, persistSession, render, scheduleAuto, runAutomatic,
+        state, addEvent, storageGet, persistSession, render, scheduleAuto, runAutomatic, showToast,
         isPpmRegisterParentPage, isPpmItemPage, isAssetPage, assetEntityUrl, entityIdFromUrl,
         isSavedAssetPage, workflowRecord, currentPpm, recordPpmResult
       } = C();
 
       if (message.type === 'RUN_AUTO_STEP') {
+        if (!root.core.storage.isExtensionContextValid()) return;
         storageGet([STORAGE.session]).then(async (stored) => {
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
           if (!state.session.auto?.active) return;
@@ -30,7 +31,11 @@
           } catch (_) {
             scheduleAuto(0);
           }
-        }).catch(() => {});
+        }).catch((error) => {
+          if (root.core.storage.isExtensionContextInvalidError(error)) {
+            root.core.storage.handleExtensionInvalidated(showToast, state);
+          }
+        });
         return;
       }
 

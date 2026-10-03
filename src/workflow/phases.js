@@ -41,9 +41,11 @@
     'asset_close_wait',
     'activate_wait',
     'activate_wait_user',
+    'asset_save_and_new',
     'ppm_wait_new',
     'ppm_wait_user_new',
     'ppm_await_save',
+    'ppm_cycle_general_wait',
     'ppm_status_wait',
     'ppm_status_wait_user'
   ]);

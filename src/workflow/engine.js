@@ -209,20 +209,55 @@
           return;
         }
         const general = root.core.toolbar.findAssetGeneralNavLink();
-        if (general && !general.classList.contains('fsiNavSelectedItem')) {
-          dispatchClick(general, false);
+        const onGeneral = Boolean(general?.classList.contains('fsiNavSelectedItem'));
+        const generalStarted = Number(auto.saveAndNewGeneralStartedAt || 0);
+        if (!onGeneral) {
+          if (!generalStarted) {
+            b.state.session.auto = { ...auto, saveAndNewGeneralStartedAt: Date.now(), saveAndNewGeneralReadyAt: 0 };
+            await b.persistSession();
+          }
+          if (general) dispatchClick(general, false);
+          if (Date.now() - (generalStarted || Date.now()) < b.state.settings.lookupTimeoutMs) {
+            scheduleAuto(350);
+            return;
+          }
+          b.addEvent('asset-save-and-new-general-timeout', { nextAssetCode: auto.assetCode || '', waitedMs: Date.now() - generalStarted });
+        }
+        if (onGeneral && !auto.saveAndNewGeneralReadyAt) {
+          b.state.session.auto = { ...auto, saveAndNewGeneralReadyAt: Date.now() };
+          await b.persistSession();
           scheduleAuto(300);
           return;
         }
+        const attempts = Number(auto.saveAndNewClickAttempts || 0);
         const saveAndNew = b.clickSaveAndNew?.() || { ok: false };
-        b.addEvent('asset-save-and-new-click', { ok: saveAndNew.ok, method: saveAndNew.method || '', nextAssetCode: auto.assetCode || '' });
+        b.addEvent('asset-save-and-new-click', {
+          ok: saveAndNew.ok,
+          method: saveAndNew.method || '',
+          nextAssetCode: auto.assetCode || '',
+          attempt: attempts + 1,
+          onGeneral
+        });
         if (!saveAndNew.ok) {
-          b.state.session.auto = { ...auto, phase: 'navigate', saveAndNewStartedAt: 0 };
+          if (attempts < 4) {
+            b.state.session.auto = { ...auto, saveAndNewClickAttempts: attempts + 1 };
+            await b.persistSession();
+            scheduleAuto(450);
+            return;
+          }
+          b.state.session.auto = { ...auto, phase: 'navigate', saveAndNewStartedAt: 0, saveAndNewClickAttempts: 0 };
           await b.persistSession();
           location.href = b.state.session.newEntityUrl || deriveNewEntityUrl();
           return;
         }
-        b.state.session.auto = { ...auto, phase: 'navigate', saveAndNewStartedAt: Date.now() };
+        b.state.session.auto = {
+          ...auto,
+          phase: 'navigate',
+          saveAndNewStartedAt: Date.now(),
+          saveAndNewGeneralStartedAt: 0,
+          saveAndNewGeneralReadyAt: 0,
+          saveAndNewClickAttempts: 0
+        };
         await b.persistSession();
         scheduleAuto(300);
         return;

@@ -4,7 +4,15 @@
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
   const { visible, isAssistantElement, dispatchClick } = root.core.dom;
-  const { isPpmListPage, isPpmRegisterParentPage, isEmbeddedAssetPpmPage, entityIdFromUrl } = root.core.pages;
+  const {
+    isPpmListPage,
+    isPpmRegisterParentPage,
+    isEmbeddedAssetPpmPage,
+    isHashPpmParentPage,
+    isSavedAssetPage,
+    entityIdFromUrl,
+    assetEntityUrl
+  } = root.core.pages;
   const $ = () => root.runtime.b;
 
   function findLearnedPpmNewButton() {
@@ -274,23 +282,38 @@
     return false;
   }
 
+  async function beginPpmCycleGeneralWait(record, ppmResults, reason = 'click-general') {
+    const b = $();
+    b.addEvent('ppm-cycle-general-nav', { assetCode: record?.assetCode || '', url: location.href, reason });
+    b.state.session.auto = {
+      ...(b.state.session.auto || {}),
+      phase: 'ppm_cycle_general_wait',
+      ppmResults,
+      ppmCycleGeneralStartedAt: Date.now()
+    };
+    await b.persistSession();
+  }
+
   async function completePpmCycleOnParent(record, ppmResults = []) {
     const b = $();
-    if (isEmbeddedAssetPpmPage()) {
-      const general = root.core.toolbar.findAssetGeneralNavLink();
-      if (general && !general.classList.contains('fsiNavSelectedItem')) {
-        b.addEvent('ppm-cycle-general-nav', { assetCode: record?.assetCode || '', url: location.href });
-        b.state.session.auto = {
-          ...(b.state.session.auto || {}),
-          phase: 'ppm_cycle_general_wait',
-          ppmResults
-        };
-        await b.persistSession();
-        dispatchClick(general, false);
-        b.scheduleAuto(450);
-        return;
-      }
+    const auto = b.state.session.auto || {};
+    const entityId = String(auto.assetEntityId || '').trim();
+    const general = root.core.toolbar.findAssetGeneralNavLink();
+    const onSavedAsset = isSavedAssetPage() && entityId && entityIdFromUrl() === entityId;
+
+    if ((isEmbeddedAssetPpmPage() || onSavedAsset) && general && !general.classList.contains('fsiNavSelectedItem')) {
+      await beginPpmCycleGeneralWait(record, ppmResults, 'embedded-ppm-general-click');
+      dispatchClick(general, false);
+      b.scheduleAuto(450);
+      return;
     }
+
+    if (entityId && (isHashPpmParentPage() || (isPpmListPage() && !onSavedAsset))) {
+      await beginPpmCycleGeneralWait(record, ppmResults, 'navigate-to-asset-general');
+      location.href = assetEntityUrl(entityId);
+      return;
+    }
+
     await sweepPpmChildren(record, { context: 'ppm-cycle-complete' });
     await b.finishPostSave(record, ppmResults);
   }
@@ -390,6 +413,28 @@
     }
 
     if (auto.phase === 'ppm_cycle_general_wait') {
+      const general = root.core.toolbar.findAssetGeneralNavLink();
+      const onGeneral = Boolean(general?.classList.contains('fsiNavSelectedItem'));
+      const started = Number(auto.ppmCycleGeneralStartedAt || Date.now());
+      if (!onGeneral) {
+        if (!auto.ppmCycleGeneralStartedAt) {
+          b.state.session.auto = { ...auto, ppmCycleGeneralStartedAt: Date.now() };
+          await b.persistSession();
+        }
+        if (general) dispatchClick(general, false);
+        else if (auto.assetEntityId) {
+          location.href = assetEntityUrl(auto.assetEntityId);
+          b.scheduleAuto(400);
+          return;
+        }
+        if (Date.now() - started > b.state.settings.lookupTimeoutMs) {
+          b.addEvent('ppm-cycle-general-timeout', { assetCode: record?.assetCode || '', waitedMs: Date.now() - started });
+        } else {
+          b.scheduleAuto(350);
+          return;
+        }
+      }
+      await sweepPpmChildren(record, { context: 'ppm-cycle-complete' });
       await b.finishPostSave(record, auto.ppmResults || []);
       return;
     }

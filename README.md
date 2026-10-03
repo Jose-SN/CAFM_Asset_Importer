@@ -2,6 +2,8 @@
 
 Chrome extension (Manifest V3) that automates Concept Evolution CAFM asset and PPM creation from an Excel workbook.
 
+**Operators:** start with **[USER_GUIDE.md](USER_GUIDE.md)** — step-by-step instructions in plain language (no technical background required).
+
 ## What it does
 
 1. Load an Excel workbook with asset and PPM rows
@@ -73,8 +75,7 @@ Header row must include: **Asset Code**, **Instruction**, **Import?**
 1. Prepare workbook: validate Asset Codes (`WCH-*`), set **Import? = YES** on rows to create
 2. Open Concept Evolution → navigate to **Asset New Entity** (`id=-1`)
 3. Extension panel → **Load workbook** → confirm asset and PPM counts
-4. If PPM **New** button is not detected, use **Teach New** once on the PPM register page
-5. Click **Start Automatic** (or manual step-through buttons)
+4. Click **Start Automatic** (or manual step-through buttons)
 6. On failure: **do not clear session** → **Download diagnostic JSON** + **Download CSV log**
 
 ## Architecture (v8.0.13+)

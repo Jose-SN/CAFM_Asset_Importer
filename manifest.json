@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.20",
-  "version": "8.0.20",
-  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.20: background workflow orchestrator, PPM save URL detection, and unfocused tab support.",
+  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.22",
+  "version": "8.0.22",
+  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.22: graceful handling when extension is reloaded; General Save and New between assets.",
   "permissions": [
     "storage",
     "unlimitedStorage",
@@ -67,7 +67,7 @@
     }
   ],
   "action": {
-    "default_title": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.20",
+    "default_title": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.22",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

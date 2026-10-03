@@ -41,7 +41,17 @@ async function persistSession() {
       ppmKey: C().currentPpm(C().workflowRecord(C().state.session.auto) || C().currentRecord())?.ppmKey || ''
     });
   }
-  await storageSet({ [STORAGE.session]: C().state.session, [STORAGE.settings]: C().state.settings });
+  try {
+    await storageSet({ [STORAGE.session]: C().state.session, [STORAGE.settings]: C().state.settings });
+  } catch (error) {
+    if (root.core.storage.isExtensionContextInvalidError(error)) {
+      root.core.storage.handleExtensionInvalidated(C().showToast, C().state);
+      C().addEvent?.('extension-context-invalidated', { phase });
+      try { C().render?.(); } catch (_) {}
+      return;
+    }
+    throw error;
+  }
   try {
     chrome.runtime.sendMessage({ type: 'AUTO_ORCHESTRATOR_SYNC' }).catch(() => {});
   } catch (_) {}
