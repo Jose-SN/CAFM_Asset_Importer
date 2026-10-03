@@ -4,7 +4,7 @@
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
   const { visible, isAssistantElement } = root.core.dom;
-  const { isPpmListPage, isHashPpmParentPage } = root.core.pages;
+  const { isPpmListPage, isHashPpmParentPage, entityIdFromUrl } = root.core.pages;
   const $ = () => root.runtime.b;
 
   function findLearnedPpmNewButton() {
@@ -138,9 +138,7 @@
     return true;
   }
 
-  function ppmInstructionCanon(value) {
-    return String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-  }
+  const ppmInstructionCanon = root.core.lookup.ppmInstructionCanon;
 
   function ppmListContainsCurrent(ppm) {
     if (!ppm) return false;
@@ -365,6 +363,55 @@
     b.scheduleAuto(200);
   }
 
+  async function startPpmForCurrentPage() {
+    const b = $();
+    if (!isPpmListPage()) throw new Error('Open the saved asset PPM register before starting PPM entry.');
+    if (!b.state.ppms.length) throw new Error('Load a workbook containing enabled CAFM PPM Import rows first.');
+
+    const record = root.data.records.ppmRecordOnCurrentPage();
+    if (!record) throw new Error('The PPM register could not be matched safely to an Asset Code in the loaded workbook.');
+    const assetCode = record.assetCode;
+    const linked = b.linkedPpms(record);
+    if (!linked.length) throw new Error(`No enabled PPM rows are linked to ${assetCode} in CAFM PPM Import.`);
+    const assetEntityId = entityIdFromUrl();
+    if (!assetEntityId || assetEntityId === '-1') throw new Error('The saved Asset ID could not be read from this PPM register URL.');
+
+    const newIndex = b.state.assets.findIndex((item) => norm(item.assetCode) === norm(assetCode));
+    if (newIndex >= 0) b.state.session.index = newIndex;
+    b.state.session.auto = {
+      active: true,
+      mode: 'ppm-current-page',
+      phase: 'ppm_wait_new',
+      index: newIndex >= 0 ? newIndex : b.state.session.index,
+      assetCode: record.assetCode,
+      assetEntityId,
+      ppmIndex: 0,
+      ppmResults: [],
+      ppmOpenStartedAt: Date.now(),
+      ppmNewClickedForIndex: -1,
+      startedAt: Date.now(),
+      error: ''
+    };
+
+    const persistPromise = b.persistSession();
+    b.render();
+    let openedAttempt = false;
+    try {
+      const key = `ppm-new:${record.assetCode}:0`;
+      openedAttempt = clickPpmNewToolbar(key);
+      b.state.session.auto.ppmNewClickedForIndex = 0;
+      b.state.session.auto.ppmOpenStartedAt = Date.now();
+      b.showToast(`Starting ${linked.length} PPM row(s). + New was clicked once; waiting for the New PPM window.`, 'success', 9000);
+    } catch (_) {
+      b.state.session.auto.phase = 'ppm_wait_user_new';
+      b.state.session.auto.ppmOpenStartedAt = Date.now();
+      b.showToast('CAFM + New could not be clicked safely. Click the real + New button ONCE; the extension will resume automatically in the New PPM window.', 'warn', 16000);
+    }
+    await persistPromise;
+    await b.persistSession();
+    b.scheduleAuto(openedAttempt ? 1800 : 900);
+  }
+
   root.pages = root.pages || {};
   root.pages.ppmRegister = Object.freeze({
     findNewButton,
@@ -375,6 +422,7 @@
     ppmInstructionCanon,
     ppmListContainsCurrent,
     ppmListEntityId,
-    processPpmListPage
+    processPpmListPage,
+    startPpmForCurrentPage
   });
 })();

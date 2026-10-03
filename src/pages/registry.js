@@ -30,8 +30,15 @@
       id: 'ppm-editor',
       label: 'PPM Editor',
       test: () => pages.isPpmItemPage(),
-      phases: ['ppm_fill', 'ppm_await_save', 'ppm_status_open', 'ppm_status_select', 'ppm_status_confirm', 'ppm_status_wait', 'ppm_status_wait_user'],
+      phases: ['ppm_fill', 'ppm_await_save'],
       handler: 'processPpmItemPage'
+    },
+    {
+      id: 'ppm-status',
+      label: 'PPM Saved (activation)',
+      test: () => pages.isSavedPpmPage(),
+      phases: ['ppm_status_open', 'ppm_status_select', 'ppm_status_confirm', 'ppm_status_wait', 'ppm_status_wait_user'],
+      handler: 'processPpmStatusPage'
     }
   ]);
 

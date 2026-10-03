@@ -22,6 +22,8 @@ The extension expects two sheets in the same `.xlsx` file:
 
 ### Sheet: `CAFM Import`
 
+Optional row above headers: **Schema Version** | `CAFM Asset + PPM Import v8.0` (forward compatibility; omitted files default to v8.0).
+
 Header row must include at least: **Asset Code**, **Building CAFM Value** (or **Building Code**), **Location Code**.
 
 | Column | Required | Notes |
@@ -80,31 +82,34 @@ Header row must include: **Asset Code**, **Instruction**, **Import?**
 ```
 src/
   bootstrap.js            — CAFMImporter namespace
-  runtime/host.js         — dependency injection bridge (CI.runtime.bind)
+  content-entry.js        — IIFE bootstrap: state, configure, runtime bind, initTop
+  runtime/
+    host.js               — CI.runtime.bind dependency bridge
+    messages.js           — background tab lifecycle message handlers
   core/
-    constants.js          — version, storage keys, page URL patterns
-    text.js               — clean, norm, uniqueId
-    dom.js                — visible, wait, dispatchClick, isAssistantElement
-    lookup-spec.js        — makeLookupSpec, splitLookupValue
-    pages.js              — isAssetPage, isPpmListPage, URL builders
-    storage.js            — chrome.storage + IndexedDB workbook I/O
+    constants.js, state.js, text.js, dom.js, events.js
+    lookup-spec.js, lookup.js, toolbar.js, teach.js
+    pages.js, storage.js
   data/
-    ppm.js                — linkedForAsset, sourceIssues (0..N PPMs per asset)
+    ppm.js, workbook.js, records.js, preflight.js, asset-rules.js
   pages/
-    ppm-mappings.js       — ppmDirectMapping, ppmLookupMapping (declarative field maps)
-    ppm-register.js       — findNewButton, processPpmListPage (# parent register)
-    ppm-editor.js         — fillPpm*, validatePpmPageBeforeSave, processPpmItemPage
-    registry.js           — page handler metadata
+    asset-mappings.js, asset-new.js, asset-saved.js, asset-manual.js
+    ppm-mappings.js, ppm-register.js, ppm-editor.js, ppm-status.js
+    registry.js           — page handler metadata (one handler per CAFM page)
   workflow/
-    phases.js             — automation phase constants
-content.js                — UI panel, lookup engine, asset workflow, runtime bind
+    phases.js, post-save.js, engine.js
+  ui/panel.js             — shadow DOM panel, render, toasts
 background.js             — tab lifecycle (PPM parent/child)
 xlsx_reader.js            — XLSX parser
-asset_rules.js            — shared validation
+src/data/asset-rules.js   — shared validation (legacy path: asset_rules.js)
 ```
 
-**Extracted:** PPM register + PPM editor page handlers. **Still in content.js:** asset fill, activation, workflow engine (`runAutomatic`), UI panel.
+Each CAFM page has an isolated handler in `src/pages/`. Direct field definitions live in `src/data/field-registry.js`; lookup spec builders stay in `asset-mappings.js` / `ppm-mappings.js`. Tab fill order is controlled by `src/data/fill-profiles.js`. New Excel columns for text/checkbox fields typically need one registry line only.
+
+**Preflight:** after loading a workbook, the panel shows row/PPM counts, validation issues, and schema version. **Resume:** if automatic import stops with an error, use Previous/Next or the row jump control, then **Resume from stopped row**.
 
 ## Troubleshooting
 
 See [ISSUE_TRACKING.md](ISSUE_TRACKING.md) for phase-based error isolation and the automation state diagram.
+
+Before live CAFM testing, run `node tools/verify-modules.js`, `node tools/verify-architecture.js`, `node tools/test-pure-modules.js`, and `node tools/test-bootstrap-load.js`. Follow [SMOKE_TEST.md](SMOKE_TEST.md) for the three required regression scenarios.

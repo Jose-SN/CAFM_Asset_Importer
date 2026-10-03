@@ -319,6 +319,20 @@
       .toLowerCase();
   }
 
+  function readSchemaVersionRow(rows) {
+    for (const row of rows.slice(0, 8)) {
+      const entries = [...row.cells.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+      for (let i = 0; i < entries.length - 1; i += 1) {
+        const label = normalizeHeader(entries[i][1]);
+        if (label === 'schema version' || label === 'workbook schema') {
+          const value = trimValue(entries[i + 1][1]);
+          if (value) return value;
+        }
+      }
+    }
+    return '';
+  }
+
   function findImportHeaderRow(rows) {
     for (const row of rows.slice(0, 25)) {
       const values = [...row.cells.values()].map(normalizeHeader);
@@ -462,6 +476,7 @@
 
     const importXml = await sheetXml(zip, workbookXml, relsXml, 'CAFM Import');
     const rows = parseWorksheet(importXml, sharedStrings, null);
+    const schemaFromWorkbook = readSchemaVersionRow(rows);
     const headerRow = findImportHeaderRow(rows);
     const headers = headerRow.cells;
     const ppmXml = await optionalSheetXml(zip, workbookXml, relsXml, 'CAFM PPM Import');
@@ -615,7 +630,7 @@
       fileName: file.name,
       fileSize: file.size,
       fileModified: file.lastModified,
-      schema: 'CAFM Asset + PPM Import v6.0'
+      schema: schemaFromWorkbook || 'CAFM Asset + PPM Import v8.0'
     };
   }
 

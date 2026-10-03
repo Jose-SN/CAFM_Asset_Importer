@@ -3,7 +3,7 @@
 
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
-  const { wait, visible, isAssistantElement, elementValue, dispatchClick } = root.core.dom;
+  const { wait, visible, isAssistantElement, elementValue, dispatchClick, labelElements, allVisibleControls, setNativeValue } = root.core.dom;
   const { makeLookupSpec, splitLookupValue } = root.core.lookupSpec;
   const { ppmDirectMapping, ppmLookupMapping } = root.pages.ppmMappings;
   const {
@@ -13,6 +13,28 @@
     ppmListUrl
   } = root.core.pages;
   const $ = () => root.runtime.b;
+
+  function fillEstimatedTime(ppm) {
+    const hours = clean(ppm?.estTimeHours);
+    const minutes = clean(ppm?.estTimeMinutes);
+    if (!hours && !minutes) return { status: 'blank', label: 'Est. Time' };
+    const labels = labelElements(['Est. Time', 'Est Time', 'Estimated Time']);
+    if (!labels.length) return { status: 'missing', label: 'Est. Time' };
+    const label = labels[0];
+    const lr = label.getBoundingClientRect();
+    const lcy = lr.top + lr.height / 2;
+    const inputs = allVisibleControls(document)
+      .filter((el) => el instanceof HTMLInputElement)
+      .filter((el) => {
+        const r = el.getBoundingClientRect();
+        return Math.abs((r.top + r.height / 2) - lcy) < 28 && r.left >= lr.right - 12 && r.left < lr.right + 300;
+      })
+      .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+    if (inputs.length < 2) return { status: 'missing-inputs', label: 'Est. Time' };
+    setNativeValue(inputs[0], hours || '0');
+    setNativeValue(inputs[1], minutes || '0');
+    return { status: 'filled', label: 'Est. Time' };
+  }
 
   async function fillPpmFields(ppm) {
     const b = $();
@@ -187,6 +209,7 @@
 
   root.pages = root.pages || {};
   root.pages.ppmEditor = Object.freeze({
+    fillEstimatedTime,
     fillPpmFields,
     fillPpmLookups,
     fillFireDoorPpmExact,
