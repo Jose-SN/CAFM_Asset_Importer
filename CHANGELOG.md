@@ -1,4 +1,9 @@
-# v8.0.14
+# v8.0.15
+- Fix panel not appearing on New Entity (`ViewFASSETItem.aspx?id=-1`): `restoreState()` ran before `configureWorkbook()` and threw; the error was swallowed so `injectPanel()` never ran.
+- Show the importer panel on the Asset list page (`ViewFASSETItems.aspx`) so workbooks can be loaded before clicking + New.
+- Log init failures to the console and show an in-panel error toast instead of failing silently.
+
+## v8.0.14
 - Asset workflow: after save, close the asset editor child window, return to parent, open saved asset, then Change Asset Status → Active.
 - PPM workflow: after save, close the PPM editor child window immediately (PPM traffic-light activation temporarily disabled via `PPM_ACTIVATION_ENABLED = false`).
 - Background handler `ASSET_CLOSE_EDITOR_TAB` and message `EE_ASSET_EDITOR_CLOSED` coordinate parent focus and activation resume.

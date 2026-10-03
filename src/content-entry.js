@@ -42,6 +42,8 @@
     isAssetPage,
     entityIdFromUrl,
     isHashPpmParentPage,
+    isAssetListPage,
+    isPanelPage,
     isWorkflowPage
   } = CI.core.pages;
   const { runtimeMessage, storageGet, storageSet, storageRemove } = CI.core.storage;
@@ -171,8 +173,13 @@
     showToast: CI.ui.panel.showToast
   });
 
+  function reportInitFailure(error) {
+    const message = clean(error?.message || error || 'Importer failed to start.');
+    console.error('[CAFM Importer]', error);
+    try { showToast(`Importer failed to start: ${message}`, 'error', 14000); } catch (_) {}
+  }
+
   async function initTop() {
-    await restoreState();
     configureRecords({ state, nearestControl });
     configureWorkbook({
       state, render, showToast, validateRecord, currentRecord, linkedPpms, workflowRecord,
@@ -188,12 +195,18 @@
     });
     initMessageListeners();
 
-    if (!isWorkflowPage()) {
+    let restoreError = null;
+    try {
+      await restoreState();
+    } catch (error) {
+      restoreError = error;
+    }
+
+    if (!isPanelPage()) {
       if (state.session.auto?.active) scheduleAuto();
       return;
     }
 
-    if (isAssetPage()) await runtimeMessage({ type: 'REGISTER_ASSET_TAB' });
     configurePanel({
       state, counts, validateRecord, currentRecord, statusOf, linkedPpms,
       assetCodeOnPage, ppmRecordOnCurrentPage, workflowAssetCodeOnPage,
@@ -206,6 +219,11 @@
     });
     injectPanel();
     render();
+    if (restoreError) reportInitFailure(restoreError);
+
+    if (!isWorkflowPage()) return;
+
+    if (isAssetPage() || isAssetListPage()) await runtimeMessage({ type: 'REGISTER_ASSET_TAB' });
     if (isAssetPage()) await handlePostReloadSaveState();
     const autoObserver = new MutationObserver(() => {
       if (state.session.auto?.active) scheduleAuto();
@@ -219,8 +237,8 @@
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => initTop().catch(() => {}), { once: true });
+    document.addEventListener('DOMContentLoaded', () => initTop().catch(reportInitFailure), { once: true });
   } else {
-    initTop().catch(() => {});
+    initTop().catch(reportInitFailure);
   }
 })();

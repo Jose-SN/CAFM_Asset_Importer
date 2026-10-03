@@ -6,6 +6,7 @@
   const { visible } = root.core.dom;
   const {
     assetPagePattern,
+    assetListPagePattern,
     ppmListPagePattern,
     ppmItemPagePattern
   } = root.core.constants;
@@ -57,8 +58,17 @@
     return entityIdFromUrl() === '-1' || /new entity/i.test(clean(document.body?.innerText || '').slice(0, 1500));
   }
 
+  function isAssetListPage() {
+    return assetListPagePattern.test(location.pathname);
+  }
+
   function isWorkflowPage() {
     return isAssetPage() || isPpmListPage() || isPpmItemPage();
+  }
+
+  /** Pages where the floating importer panel (workbook upload) should appear. */
+  function isPanelPage() {
+    return isWorkflowPage() || isAssetListPage();
   }
 
   function assetEntityUrl(assetEntityId) {
@@ -102,7 +112,9 @@
     isHashPpmParentPage,
     isPpmItemPage,
     isPpmNewEntityPage,
+    isAssetListPage,
     isWorkflowPage,
+    isPanelPage,
     assetEntityUrl,
     ppmListUrl,
     ppmEntityUrl,

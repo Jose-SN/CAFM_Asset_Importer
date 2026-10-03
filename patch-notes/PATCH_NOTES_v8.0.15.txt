@@ -1,0 +1,13 @@
+v8.0.15 - Panel init fix + asset list upload
+
+Bug fix:
+- New Entity popup (ViewFASSETItem.aspx?id=-1) did not show the importer panel because
+  restoreState() called configureWorkbook's C() before configureWorkbook() ran.
+  initTop() swallowed the error silently.
+
+Enhancements:
+- Panel now also appears on ViewFASSETItems.aspx (asset list) for workbook upload before + New.
+- Workbook/session persists across list → New Entity popup via extension storage.
+- Init failures are logged to console and shown as a panel toast.
+
+Reload extension + F5 CAFM tabs after update.

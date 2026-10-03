@@ -11,6 +11,8 @@
     isPpmListPage,
     isPpmNewEntityPage,
     isSavedPpmPage,
+    isAssetListPage,
+    isPanelPage,
     isWorkflowPage
   } = root.core.pages;
   const { lookupMapping } = root.pages.assetMappings;
@@ -97,6 +99,12 @@ function render() {
       C().state.els.row.textContent = `PPM register | Excel row ${ppmPageMatch.workbookRow}`;
       C().state.els.assetCode.textContent = ppmPageMatch.assetCode;
     }
+  } else if (isAssetListPage() && loaded) {
+    C().state.els.validation.textContent = 'Workbook loaded. Click + New, then Start automatic on the New Entity form.';
+    C().state.els.validation.className = 'validation goodtext';
+  } else if (isAssetListPage()) {
+    C().state.els.validation.textContent = 'Load workbook here, or on the New Entity form opened via + New.';
+    C().state.els.validation.className = 'validation goodtext';
   } else {
     C().state.els.validation.textContent = validation.length ? validation.join(' | ') : 'Workbook row passed local validation.';
     C().state.els.validation.className = validation.length ? 'validation badtext' : 'validation goodtext';
@@ -196,7 +204,7 @@ function render() {
   C().state.els.fileInput.value = '';
 
   if (C().state.els.contextSub) {
-    const page = isPpmListPage() ? 'PPM register' : isPpmNewEntityPage() ? 'New PPM' : isSavedPpmPage() ? 'Saved PPM' : isSavedAssetPage() ? 'Saved asset' : 'Asset entry';
+    const page = isPpmListPage() ? 'PPM register' : isPpmNewEntityPage() ? 'New PPM' : isSavedPpmPage() ? 'Saved PPM' : isSavedAssetPage() ? 'Saved asset' : isAssetListPage() ? 'Asset list' : isNewEntityPage() ? 'New asset' : 'Asset entry';
     const phase = auto?.active ? String(auto.phase || 'running').replace(/_/g, ' ') : 'idle';
     C().state.els.contextSub.textContent = `Engineering Efficiency Ltd | v${VERSION} | ${page} | ${phase}`;
   }
@@ -245,7 +253,7 @@ function makeDraggable() {
 }
 
 function injectPanel() {
-  if (!isWorkflowPage() || document.getElementById(HOST_ID)) return;
+  if (!isPanelPage() || document.getElementById(HOST_ID)) return;
   const host = document.createElement('div');
   host.id = HOST_ID;
   host.style.all = 'initial';

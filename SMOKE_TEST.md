@@ -1,4 +1,4 @@
-# CAFM Smoke Test Runbook (v8.0.14)
+# CAFM Smoke Test Runbook (v8.0.15)
 
 Run these three scenarios on live Concept Evolution after reloading the extension (`chrome://extensions` → Reload).
 
@@ -73,7 +73,7 @@ Add Contract / Cost Centre / dates from your live CAFM lookup values if prefill 
 
 | Step | Expected |
 |------|----------|
-| Open Asset **New Entity** (`id=-1`) | Panel visible |
+| Open Asset list or **New Entity** (`ViewFASSETItem.aspx?id=-1`) | Panel visible (list or form) |
 | Start Automatic | Preflight toast; phase progresses `fill` → `saving` → `await_save` |
 | Asset saves | URL gains entity `id=` |
 | Editor close | Asset child window closes; parent opens saved asset |
