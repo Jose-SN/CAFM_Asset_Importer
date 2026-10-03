@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.25",
-  "version": "8.0.25",
-  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.25: PPM register refresh storm fix and smarter background orchestrator when tab is focused.",
+  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.28",
+  "version": "8.0.28",
+  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.28: fill Instruction Set and PPM Priority on new PPM forms.",
   "permissions": [
     "storage",
     "unlimitedStorage",
@@ -67,7 +67,7 @@
     }
   ],
   "action": {
-    "default_title": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.25",
+    "default_title": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.28",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

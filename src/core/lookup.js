@@ -32,6 +32,14 @@
     return String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
+  function isInstructionLookupField(field) {
+    return field === 'Instruction' || field === 'Instruction Set';
+  }
+
+  function lookupLabelNames(spec) {
+    return uniqueNonBlank([spec.field, ...(spec.labelAliases || [])]);
+  }
+
 function clickableLookupNode(element) {
   if (!element) return null;
   return element.closest?.('button,a,input[type="button"],input[type="image"],[role="button"],[onclick]') || element;
@@ -109,7 +117,7 @@ function lookupTextMatches(text, spec) {
   const code = norm(spec.strictCode);
   const description = norm(spec.description);
 
-  if (spec.field === 'Instruction') {
+  if (isInstructionLookupField(spec.field)) {
     const cc = ppmInstructionCanon(candidate);
     const cf = ppmInstructionCanon(full);
     const cd = ppmInstructionCanon(description);
@@ -140,7 +148,7 @@ function lookupScore(text, spec) {
   const description = norm(spec.description);
   let score = 0;
 
-  if (spec.field === 'Instruction') {
+  if (isInstructionLookupField(spec.field)) {
     const cc = ppmInstructionCanon(candidate);
     const cf = ppmInstructionCanon(full);
     const cd = ppmInstructionCanon(description);
@@ -652,7 +660,7 @@ async function commitInlineSelectionWithKeyboard(spec, control) {
 
 async function waitForCommittedLookup(spec, beforeFingerprint, timeoutMs = C().state.settings.lookupTimeoutMs) {
   const evaluate = () => {
-    const live = C().nearestControl([spec.field])?.control;
+    const live = C().nearestControl(lookupLabelNames(spec))?.control;
     if (!live) return null;
     const value = elementValue(live);
     const fp = lookupCommitFingerprint(live);
@@ -675,7 +683,7 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
   // workbook instruction from the filtered dropdown. The workbook remains the
   // source of truth for which option is selected.
   const buildingShort = spec.field === 'Building' ? buildingNumber(spec.value || spec.display || spec.strictCode) : '';
-  const terms = spec.field === 'Instruction'
+  const terms = isInstructionLookupField(spec.field)
     ? uniqueNonBlank([...(spec.searchTerms || []), spec.strictCode, spec.sourceCode, spec.description, spec.value, spec.display])
     : spec.field === 'Building'
       ? uniqueNonBlank([buildingShort, ...(spec.searchTerms || []), spec.strictCode, spec.sourceCode, spec.description, spec.value, spec.display])
@@ -688,7 +696,7 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
           ...(spec.searchTerms || [])
         ]);
   const commitTimeoutMs = Number(C().state.settings.lookupCommitTimeoutMs) || 8000;
-  const clickFirstField = spec.field === 'Instruction' || spec.field === 'Building';
+  const clickFirstField = isInstructionLookupField(spec.field) || spec.field === 'Building';
 
   let lastTyped = '';
   for (const term of terms) {
@@ -735,7 +743,7 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
     if (!committed) {
       // Re-open the dropdown before the click fallback. The Enter attempt can
       // close/re-render the popup, so never click a stale option node.
-      const liveControl = C().nearestControl([spec.field])?.control || control;
+      const liveControl = C().nearestControl(lookupLabelNames(spec))?.control || control;
       await typeIntoInlineLookup(liveControl, term);
       let freshOptions = await waitForInlineOptions(spec, liveControl, spec.field === 'Location' ? 5200 : 4300);
       freshOptions = freshOptions.filter((item) => lookupTextMatches(item.text, spec));
@@ -767,7 +775,7 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
 
     // Do not allow visible search text to masquerade as a selected CAFM
     // record. Clear it before trying another search term.
-    const live = C().nearestControl([spec.field])?.control || control;
+    const live = C().nearestControl(lookupLabelNames(spec))?.control || control;
     if (live && !lookupTextMatches(elementValue(live), spec)) {
       try { live.focus(); } catch (_) {}
       setFocusedInputValue(live, '', null);
@@ -776,7 +784,7 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
   }
 
   if (lastTyped) {
-    const live = C().nearestControl([spec.field])?.control || control;
+    const live = C().nearestControl(lookupLabelNames(spec))?.control || control;
     if (live && !lookupTextMatches(elementValue(live), spec)) {
       try { live.focus(); } catch (_) {}
       setFocusedInputValue(live, '', null);
@@ -787,7 +795,7 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
 
 async function selectLookup(spec) {
   await C().clickTab(spec.tab);
-  const found = C().nearestControl([spec.field]);
+  const found = C().nearestControl(lookupLabelNames(spec));
   if (!found) throw new Error(`${spec.field} dropdown field was not found on the ${spec.tab} tab.`);
   const control = found.control;
   const beforeValue = elementValue(control);

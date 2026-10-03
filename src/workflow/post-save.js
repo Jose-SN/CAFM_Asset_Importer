@@ -341,11 +341,11 @@
       assetEntityId: entityId,
       ppmIndex: 0,
       ppmResults: auto.ppmResults || [],
-      ppmGridRefreshedForIndex: -1
+      ppmGridRefreshedForIndex: 0
     };
     await b.persistSession();
     b.render();
-    b.showToast(`${record.assetCode} is ACTIVE. Opening PPM from the asset's left-hand PPM menu for ${linked.length} linked PPM(s).`, 'success', 7000);
+    b.showToast(`${record.assetCode} is ACTIVE. Opening PPM register for ${linked.length} linked PPM(s) — Create New for the first PPM (no refresh wait).`, 'success', 7000);
     await wait(0);
     const ppmNav = b.findAssetPpmNavLink();
     if (ppmNav) {

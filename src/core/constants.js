@@ -5,7 +5,7 @@
   root.core = root.core || {};
 
   root.core.constants = Object.freeze({
-    VERSION: '8.0.25',
+    VERSION: '8.0.28',
     HOST_ID: 'ee-cafm-asset-importer-host',
     STORAGE: Object.freeze({
       session: 'eeAssetImporterV80Session',
@@ -40,7 +40,8 @@
       autoDownloadTimeline: false,
       autoContinueNext: true,
       useSaveAndNew: true,
-      backgroundOrchestratorMs: 2500
+      backgroundOrchestratorMs: 2500,
+      defaultPpmPriority: '3'
     }),
     assetPagePattern: /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItem\.aspx/i,
     assetListPagePattern: /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItems\.aspx/i,

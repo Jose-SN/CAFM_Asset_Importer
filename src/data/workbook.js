@@ -86,46 +86,82 @@ async function restoreState() {
   }
 }
 
+function formatWorkbookFileSize(bytes) {
+  const n = Math.max(0, Number(bytes) || 0);
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 async function loadWorkbookFile(file) {
-  if (!globalThis.CAFMXlsx?.readWorkbook) throw new Error('Workbook reader is unavailable. Reload the extension.');
-  const parsed = await globalThis.CAFMXlsx.readWorkbook(file);
-  if (!parsed.allAssets?.length && !parsed.ppms?.length) throw new Error('No CAFM asset or PPM rows were found in this workbook.');
-  const cache = {
-    assets: parsed.assets || [],
-    allAssets: parsed.allAssets || parsed.assets || [],
-    ppms: parsed.ppms || [],
-    ppmCount: Number(parsed.ppmCount || (parsed.ppms || []).length || 0),
-    ppmExcludedRows: Number(parsed.ppmExcludedRows || 0),
-    fileName: parsed.fileName,
-    fileSize: parsed.fileSize,
-    fileModified: parsed.fileModified,
-    headerRow: parsed.headerRow,
-    excludedRows: parsed.excludedRows,
-    locationCount: parsed.locationCount,
-    schema: parsed.schema,
-    loadedAt: new Date().toISOString()
-  };
-  await saveLargeWorkbook(cache);
-  C().state.cache = cache;
-  C().state.assets = cache.assets || [];
-  C().state.allAssets = cache.allAssets || cache.assets || [];
-  C().state.ppms = cache.ppms || [];
-  C().state.session = {
-    fileName: cache.fileName,
-    fileSize: cache.fileSize,
-    fileModified: cache.fileModified,
-    index: 0,
-    statuses: {},
-    newEntityUrl: isNewEntityPage() ? deriveNewEntityUrl() : (C().state.session.newEntityUrl || deriveNewEntityUrl()),
-    auto: null,
-    manualAwaitSave: null,
-    currentLookupEvidence: [],
-    events: []
-  };
-  await persistSession();
+  if (!file) throw new Error('No file selected.');
+  if (C().state.workbookLoading) throw new Error('A workbook is already loading. Please wait for it to finish.');
+  const displayName = clean(file.name || 'workbook.xlsx');
+  const sizeLabel = formatWorkbookFileSize(file.size);
+  const startedAt = Date.now();
+  C().state.workbookLoading = { fileName: displayName, fileSize: Number(file.size) || 0, sizeLabel, startedAt };
   C().render();
-  const preflight = root.data.preflight.summarize(C().state);
-  C().showToast(`${C().state.assets.length} NEW-import asset row(s), ${C().state.allAssets.length} total asset row(s) available for editing, and ${C().state.ppms.length} enabled PPM row(s) loaded from ${cache.fileName}. ${root.data.preflight.formatSummary(preflight)}`, preflight.blocking.length ? 'warn' : 'success', 12000);
+  C().showToast(
+    `Reading workbook ${displayName} (${sizeLabel}). Large files may take 30–60 seconds — please wait.`,
+    'info',
+    0
+  );
+
+  try {
+    if (!globalThis.CAFMXlsx?.readWorkbook) throw new Error('Workbook reader is unavailable. Reload the extension.');
+    const parsed = await globalThis.CAFMXlsx.readWorkbook(file);
+    if (!parsed.allAssets?.length && !parsed.ppms?.length) throw new Error('No CAFM asset or PPM rows were found in this workbook.');
+    const cache = {
+      assets: parsed.assets || [],
+      allAssets: parsed.allAssets || parsed.assets || [],
+      ppms: parsed.ppms || [],
+      ppmCount: Number(parsed.ppmCount || (parsed.ppms || []).length || 0),
+      ppmExcludedRows: Number(parsed.ppmExcludedRows || 0),
+      fileName: parsed.fileName,
+      fileSize: parsed.fileSize,
+      fileModified: parsed.fileModified,
+      headerRow: parsed.headerRow,
+      excludedRows: parsed.excludedRows,
+      locationCount: parsed.locationCount,
+      schema: parsed.schema,
+      loadedAt: new Date().toISOString()
+    };
+    await saveLargeWorkbook(cache);
+    C().state.cache = cache;
+    C().state.assets = cache.assets || [];
+    C().state.allAssets = cache.allAssets || cache.assets || [];
+    C().state.ppms = cache.ppms || [];
+    C().state.session = {
+      fileName: cache.fileName,
+      fileSize: cache.fileSize,
+      fileModified: cache.fileModified,
+      index: 0,
+      statuses: {},
+      newEntityUrl: isNewEntityPage() ? deriveNewEntityUrl() : (C().state.session.newEntityUrl || deriveNewEntityUrl()),
+      auto: null,
+      manualAwaitSave: null,
+      currentLookupEvidence: [],
+      events: []
+    };
+    await persistSession();
+    const elapsedMs = Date.now() - startedAt;
+    C().addEvent('workbook-loaded', {
+      fileName: cache.fileName,
+      newAssetRows: C().state.assets.length,
+      totalAssetRows: C().state.allAssets.length,
+      ppmRows: C().state.ppms.length,
+      elapsedMs
+    });
+    const preflight = root.data.preflight.summarize(C().state);
+    C().showToast(
+      `Workbook loaded in ${Math.max(1, Math.round(elapsedMs / 1000))}s: ${C().state.assets.length} NEW-import asset row(s), ${C().state.allAssets.length} total asset row(s), and ${C().state.ppms.length} enabled PPM row(s) from ${cache.fileName}. ${root.data.preflight.formatSummary(preflight)}`,
+      preflight.blocking.length ? 'warn' : 'success',
+      12000
+    );
+  } finally {
+    C().state.workbookLoading = null;
+    C().render();
+  }
 }
 
 async function jumpToIndex(index) {

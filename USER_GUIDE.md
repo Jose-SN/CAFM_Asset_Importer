@@ -62,9 +62,10 @@ Click the extension icon in Chrome for a popup with shortcuts to the **asset lis
 
 ### Step 1 — Load your workbook
 
-1. On the importer panel, click **Choose file** (or similar) under the workbook section  
+1. On the importer panel, click **Load workbook…** (Summary) or choose a file under **Workbook** (Details)  
 2. Select your `.xlsx` file  
-3. Check the counts shown: total assets, saved, remaining, and any validation issues  
+3. Wait for the **Reading workbook…** message — large files can take 30–60 seconds; buttons are disabled until loading finishes  
+4. Check the counts shown: total assets, saved, remaining, and any validation issues  
 
 Fix any **blocking** issues in Excel before continuing.
 
@@ -189,6 +190,8 @@ The **Last saved / Next to save** line shows batch progress during automatic run
 | Validation message on CAFM | Required field or bad lookup | Fix Excel or complete field manually, then Resume |
 | Stuck after PPM save | Slow CAFM or tab in background | Wait up to ~90 seconds; switch back to CAFM tab if needed |
 | PPM register feels slow or keeps refreshing | Old versions could click Refresh too often | Update to **v8.0.25+**, reload extension, refresh CAFM tab (F5) |
+| “Refresh button did not become available” on first PPM | First PPM no longer waits for Refresh (v8.0.27+) | Reload extension; Resume on PPM register — should click **Create New** directly |
+| PPM save: “Instruction Set” or “PPM Priority” required | Workbook had blank Priority; wrong CAFM field label (v8.0.28+) | Reload extension; optional **Priority** column in Excel; default priority is **3** |
 | “Timed out” on Save and New | General tab not ready | Resume; extension retries General + Save and New |
 | Wrong asset code on screen | Workbook row mismatch | Use Previous/Next to select correct row |
 | Duplicate PPM | Already in CAFM | Normal skip — check log for **existing** |

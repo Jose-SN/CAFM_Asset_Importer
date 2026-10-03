@@ -5,7 +5,7 @@
   const { clean, norm } = root.core.text;
   const { wait, visible, isAssistantElement, elementValue, dispatchClick, labelElements, allVisibleControls, setNativeValue } = root.core.dom;
   const { makeLookupSpec, splitLookupValue } = root.core.lookupSpec;
-  const { ppmDirectMapping, ppmLookupMapping } = root.pages.ppmMappings;
+  const { ppmDirectMapping, ppmLookupMapping, REQUIRED_PPM_LOOKUP_FIELDS } = root.pages.ppmMappings;
   const {
     entityIdFromUrl,
     isPpmNewEntityPage,
@@ -86,7 +86,7 @@
   async function fillPpmLookups(ppm) {
     const b = $();
     const evidence = [];
-    for (const spec of ppmLookupMapping(ppm)) {
+    for (const spec of ppmLookupMapping(ppm, b.state.settings)) {
       const stepStart = performance.now();
       b.showToast(`PPM: selecting ${spec.field}...`, 'info', 5000);
       try {
@@ -119,6 +119,9 @@
           reason: error.message || String(error)
         });
         await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: spec.tab || 'General', field: spec.field, expected: spec.value || spec.display || '', actual: '', reason: error.message || String(error), ppmKey: ppm.ppmKey });
+        if (REQUIRED_PPM_LOOKUP_FIELDS.includes(spec.field)) {
+          throw new Error(`Required PPM field ${spec.field} could not be set: ${error.message || error}`);
+        }
       }
       await wait(0);
     }
@@ -131,12 +134,22 @@
     const contractSpec = makeLookupSpec('Contract', ppm.contract, { tab: 'General', description: splitLookupValue(ppm.contract).description });
     await b.selectLookup(contractSpec);
     await wait(0);
-    const instructionSpec = makeLookupSpec('Instruction', ppm.instruction, {
+    const instructionSpec = makeLookupSpec('Instruction Set', ppm.instruction, {
       tab: 'General',
       description: ppm.instruction,
+      labelAliases: ['Instruction Set'],
       searchTerms: [/fire\s+doors?/i.test(clean(ppm.instruction)) ? 'fire doors' : clean(ppm.instruction).split(/\s+/).slice(0, 2).join(' '), ppm.instruction]
     });
     await b.selectLookup(instructionSpec);
+    await wait(0);
+    const priority = root.pages.ppmMappings.resolvePpmPriority(ppm, b.state.settings);
+    const prioritySpec = makeLookupSpec('PPM Priority', priority, {
+      tab: 'General',
+      description: priority,
+      labelAliases: ['Priority', 'PPM Priority'],
+      searchTerms: [priority.match(/^(\d+)/)?.[1] || priority, priority]
+    });
+    await b.selectLookup(prioritySpec);
     await wait(0);
     const last = b.fillByLabel(['Last Service'], ppm.lastService);
     if (!last || ['missing', 'failed', 'readonly'].includes(last.status)) {
@@ -153,18 +166,23 @@
     }
     return [
       { field: 'Contract', selected: ppm.contract },
-      { field: 'Instruction', selected: ppm.instruction },
+      { field: 'Instruction Set', selected: ppm.instruction },
+      { field: 'PPM Priority', selected: priority },
       { field: 'Last Service', selected: ppm.lastService }
     ];
   }
 
-  async function validatePpmPageBeforeSave(ppm) {
+  async function validatePpmPageBeforeSave(ppm, settings = {}) {
     const b = $();
     const errors = [];
     await b.clickTab('General');
-    for (const spec of ppmLookupMapping(ppm)) {
-      const found = b.nearestControl([spec.field]);
-      if (!found) { errors.push(`${spec.field} dropdown missing`); continue; }
+    for (const spec of ppmLookupMapping(ppm, settings)) {
+      const labels = [spec.field, ...(spec.labelAliases || [])];
+      const found = b.nearestControl(labels);
+      if (!found) {
+        if (REQUIRED_PPM_LOOKUP_FIELDS.includes(spec.field)) errors.push(`${spec.field} dropdown missing`);
+        continue;
+      }
       const actual = elementValue(found.control);
       if (!b.lookupTextMatches(actual, spec)) errors.push(`${spec.field} is not selected from the CAFM dropdown`);
       const hidden = b.nearbyHiddenValues(found.control);
@@ -229,10 +247,11 @@
         instruction: ppm.instruction,
         durationMs: Math.round(performance.now() - fillStart)
       });
-      const errors = await validatePpmPageBeforeSave(ppm);
+      const errors = await validatePpmPageBeforeSave(ppm, b.state.settings);
       if (errors.length) {
         for (const problem of errors) await b.recordValidationWarning(record, { scope: 'ppm', field: 'Pre-save audit', expected: 'Excel-backed value committed', actual: '', reason: problem, ppmKey: ppm.ppmKey });
         b.addEvent('ppm-pre-save-warning-summary', { ppmKey: ppm.ppmKey, warningCount: errors.length, warnings: errors });
+        throw new Error(`PPM ${ppm.ppmKey} pre-save audit failed: ${errors.join('; ')}`);
       }
       const linked = b.linkedPpms(record);
       const nextIndex = (Number(auto.ppmIndex) || 0) + 1;

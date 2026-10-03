@@ -27,6 +27,7 @@
       shadow: null,
       els: {},
       busy: false,
+      workbookLoading: null,
       lookupAgentBusy: false,
       lookupTimer: null,
       autoTimer: null,

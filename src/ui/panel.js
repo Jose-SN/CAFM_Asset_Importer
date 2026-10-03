@@ -47,7 +47,10 @@ function showToast(message, type = 'info', duration = 4500) {
   C().state.els.toast.textContent = clean(message);
   C().state.els.toast.className = `toast show ${type}`;
   clearTimeout(C().state.els.toast._timer);
-  C().state.els.toast._timer = setTimeout(() => { C().state.els.toast.className = 'toast'; }, duration);
+  C().state.els.toast._timer = null;
+  if (duration > 0) {
+    C().state.els.toast._timer = setTimeout(() => { C().state.els.toast.className = 'toast'; }, duration);
+  }
 }
 
 function applyPanelGeometry() {
@@ -126,7 +129,14 @@ function render() {
   const editPool = C().state.allAssets.length ? C().state.allAssets : C().state.assets;
   const savedMatch = pageAssetCode ? editPool.find((item) => norm(item.assetCode) === norm(pageAssetCode)) : null;
 
-  C().state.els.fileName.textContent = C().state.cache?.fileName ? `${C().state.cache.fileName} | ${C().state.assets.length} NEW row(s) | ${C().state.allAssets.length} editable asset row(s) | ${C().state.ppms.length} enabled PPM row(s)` : 'No workbook loaded';
+  const workbookLoading = C().state.workbookLoading;
+  if (workbookLoading) {
+    const sizePart = workbookLoading.fileSize ? ` (${workbookLoading.sizeLabel})` : '';
+    const loadingLabel = `Reading ${workbookLoading.fileName}${sizePart}… please wait`;
+    C().state.els.fileName.textContent = loadingLabel;
+  } else {
+    C().state.els.fileName.textContent = C().state.cache?.fileName ? `${C().state.cache.fileName} | ${C().state.assets.length} NEW row(s) | ${C().state.allAssets.length} editable asset row(s) | ${C().state.ppms.length} enabled PPM row(s)` : 'No workbook loaded';
+  }
   C().state.els.total.textContent = String(c.total);
   C().state.els.saved.textContent = String(c.saved);
   C().state.els.remaining.textContent = String(c.remaining);
@@ -158,7 +168,10 @@ function render() {
   C().state.els.assetCode.textContent = record?.assetCode || '-';
   C().state.els.status.textContent = record ? status.toUpperCase() : '-';
   C().state.els.status.className = `pill ${statusClass(status)}`;
-  if (savedAssetPage && loaded) {
+  if (workbookLoading) {
+    C().state.els.validation.textContent = 'Workbook is loading — please wait. Large files can take 30–60 seconds. Do not start automatic import until loading finishes.';
+    C().state.els.validation.className = 'validation goodtext';
+  } else if (savedAssetPage && loaded) {
     C().state.els.validation.textContent = pageAssetCode
       ? (savedMatch ? `Saved asset ${pageAssetCode} matches Excel row ${savedMatch.workbookRow}. Edit Existing Asset is available.` : `Saved asset ${pageAssetCode} is not present in the loaded import rows.`)
       : 'Saved asset page detected, but Asset Code could not be read.';
@@ -209,6 +222,7 @@ function render() {
 
   if (C().state.els.panel) {
     C().state.els.panel.classList.toggle('collapsed', Boolean(C().state.settings.collapsed));
+    C().state.els.panel.classList.toggle('workbook-loading', Boolean(workbookLoading));
     if (C().state.els.collapse) C().state.els.collapse.textContent = C().state.settings.collapsed ? '+' : '-';
   }
 
@@ -233,10 +247,18 @@ function render() {
   }
 
   const assetEntryPage = isAssetPage() && isNewEntityPage();
-  for (const id of ['fill', 'saveCurrent', 'skip', 'prev', 'next', 'markSaved']) C().state.els[id].disabled = !loaded || !assetEntryPage;
-  C().state.els.editExisting.disabled = !loaded || !savedAssetPage || !savedMatch;
-  C().state.els.saveExisting.disabled = !loaded || !savedAssetPage || !savedMatch;
-  C().state.els.downloadLog.disabled = !loaded;
+  const loadingWorkbook = Boolean(workbookLoading);
+  if (C().state.els.mainLoadWorkbook) {
+    C().state.els.mainLoadWorkbook.disabled = loadingWorkbook;
+    C().state.els.mainLoadWorkbook.textContent = loadingWorkbook ? 'Loading workbook…' : 'Load workbook…';
+  }
+  if (C().state.els.fileInput) C().state.els.fileInput.disabled = loadingWorkbook;
+  for (const id of ['fill', 'saveCurrent', 'skip', 'prev', 'next', 'markSaved']) {
+    C().state.els[id].disabled = loadingWorkbook || !loaded || !assetEntryPage;
+  }
+  C().state.els.editExisting.disabled = loadingWorkbook || !loaded || !savedAssetPage || !savedMatch;
+  C().state.els.saveExisting.disabled = loadingWorkbook || !loaded || !savedAssetPage || !savedMatch;
+  C().state.els.downloadLog.disabled = loadingWorkbook || !loaded;
   C().state.els.pauseAuto.disabled = !auto?.active;
   const stoppedWithError = auto?.phase === 'error' || auto?.phase === 'paused';
   C().state.els.resumeAuto.hidden = !stoppedWithError;
@@ -251,13 +273,16 @@ function render() {
     C().state.els.resumeRowInput.max = String(C().state.assets.length);
     C().state.els.resumeRowInput.value = String(C().state.session.index + 1);
   }
-  C().state.els.startAuto.disabled = !C().state.assets.length || Boolean(auto?.active) || !assetEntryPage;
+  C().state.els.startAuto.disabled = loadingWorkbook || !C().state.assets.length || Boolean(auto?.active) || !assetEntryPage;
+  if (C().state.els.mainStartAuto) {
+    C().state.els.mainStartAuto.disabled = loadingWorkbook || !C().state.assets.length || Boolean(auto?.active) || !assetEntryPage;
+  }
   const ppmQueue = ppmPageMatch ? C().linkedPpms(ppmPageMatch) : [];
   const ppmReadyCount = ppmQueue.length;
   C().state.els.startPpmHere.hidden = !ppmRegisterPage;
   // Do not let an old failed Asset-status workflow block manual PPM entry.
   // Only disable while a live workflow is actually running.
-  C().state.els.startPpmHere.disabled = !loaded || !ppmRegisterPage || !ppmPageMatch || !ppmReadyCount || Boolean(auto?.active);
+  C().state.els.startPpmHere.disabled = loadingWorkbook || !loaded || !ppmRegisterPage || !ppmPageMatch || !ppmReadyCount || Boolean(auto?.active);
   C().state.els.startPpmHere.textContent = ppmPageMatch ? `START PPM FOR THIS ASSET (${ppmReadyCount})` : 'START PPM FOR THIS ASSET';
   C().state.els.openPpmNew.hidden = !ppmRegisterPage;
   C().state.els.openPpmNew.disabled = !ppmRegisterPage;
@@ -278,7 +303,7 @@ function render() {
       C().state.els.ppmQueuePreview.className = 'validation goodtext';
     }
   }
-  C().state.els.fileInput.value = '';
+  if (!loadingWorkbook) C().state.els.fileInput.value = '';
 
   if (C().state.els.contextSub) {
     const page = isPpmListPage() ? 'PPM register' : isPpmNewEntityPage() ? 'New PPM' : isSavedPpmPage() ? 'Saved PPM' : isSavedAssetPage() ? 'Saved asset' : isAssetListPage() ? 'Asset list' : isNewEntityPage() ? 'New asset' : 'Asset entry';
@@ -443,6 +468,10 @@ function injectPanel() {
       .toast.success { background:#1c5134; }
       .toast.warn { background:#6a5319; }
       .toast.error { background:#702b31; }
+      .toast.info { background:#1a4a6e; }
+      .panel.workbook-loading { opacity:.92; }
+      .panel.workbook-loading button, .panel.workbook-loading input[type=file] { pointer-events:none; opacity:.65; }
+      .panel.workbook-loading #mainLoadWorkbook { pointer-events:none; }
       .footer { color:#80909c; text-align:center; font-size:10px; margin:3px 0 1px; }
     </style>
     <div id="panel">
@@ -607,16 +636,22 @@ function injectPanel() {
     C().state.settings.panelView = 'main';
     location.href = assetListUrl();
   });
-  C().state.els.mainLoadWorkbook.addEventListener('click', () => C().state.els.fileInput.click());
+  C().state.els.mainLoadWorkbook.addEventListener('click', () => {
+    if (C().state.workbookLoading) return;
+    C().state.els.fileInput.click();
+  });
   C().state.els.mainStartAuto.addEventListener('click', () => C().startAutomatic());
   C().state.els.mainPauseAuto.addEventListener('click', () => C().pauseAutomatic());
   C().state.els.mainResumeAuto.addEventListener('click', () => C().resumeAutomatic());
 
   C().state.els.fileInput.addEventListener('change', async (event) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file || C().state.workbookLoading) return;
     try { await C().loadWorkbookFile(file); }
-    catch (error) { showToast(error.message || String(error), 'error', 12000); }
+    catch (error) {
+      showToast(error.message || String(error), 'error', 12000);
+      render();
+    }
   });
   C().state.els.fill.addEventListener('click', async () => {
     if (C().state.busy) return;

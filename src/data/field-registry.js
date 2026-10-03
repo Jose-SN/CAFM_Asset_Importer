@@ -68,7 +68,7 @@
     { kind: 'select', labels: ['Frequency'], path: 'frequency' }
   ];
 
-  const PPM_LOOKUP_FIELDS = ['Contract', 'Instruction', 'Priority', 'Shift', 'Compliance', 'Cost Code', 'Cost Centre'];
+  const PPM_LOOKUP_FIELDS = ['Contract', 'Instruction Set', 'PPM Priority', 'Shift', 'Compliance', 'Cost Code', 'Cost Centre'];
 
   const SUPPORTED_WORKBOOK_SCHEMAS = [
     'CAFM Asset + PPM Import v6.0',

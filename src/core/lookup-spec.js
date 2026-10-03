@@ -33,6 +33,7 @@
       description: clean(options.description || parts.description),
       aliases: uniqueNonBlank([value, options.display, strictCode, options.description, ...(options.aliases || [])]),
       searchTerms: uniqueNonBlank([strictCode, options.description, value, options.display, ...(options.searchTerms || [])]),
+      labelAliases: uniqueNonBlank(options.labelAliases || []),
       buildingName: clean(options.buildingName || ''),
       locationDescription: clean(options.locationDescription || ''),
       floorName: clean(options.floorName || ''),

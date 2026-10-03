@@ -1,3 +1,16 @@
+# v8.0.28
+- Fix PPM save validation: fill **Instruction Set** (not the separate Instruction label) and **PPM Priority** — CAFM requires both on new PPM forms.
+- Default **PPM Priority** to `3` when the workbook Priority column is blank (`defaultPpmPriority` setting).
+- Pre-save audit now blocks Save when required PPM lookups are missing or uncommitted.
+
+# v8.0.27
+- **First PPM skips register Refresh** after asset save: go straight to **Create New** when `ppmIndex` is 0 (empty grid on a new asset). Refresh is still used before 2nd+ PPM on the same asset.
+- Fallback: if Refresh never becomes available for the first PPM, skip refresh instead of timing out with an error.
+
+# v8.0.26
+- **Workbook loading feedback**: persistent toast, panel status line, and disabled controls while an Excel file is being read (large workbooks may take 30–60 seconds).
+- Success toast includes load time and row counts; `workbook-loaded` event logged for diagnostics.
+
 # v8.0.25
 - Fix **PPM register refresh storm**: guard repeat Refresh clicks until one cycle finishes; fix fall-through after `ppm_parent_refresh_wait`; require visible Refresh/Create New buttons.
 - **Debounce** MutationObserver and `scheduleAuto` during `ppm_parent_refresh`, `ppm_parent_refresh_wait`, and `ppm_wait_new` (longer minimum delays, fewer session writes).

@@ -59,6 +59,7 @@ Header row must include: **Asset Code**, **Instruction**, **Import?**
 | Asset Code | Yes* | Links PPM to asset; can inherit from same Excel row on CAFM Import sheet |
 | Instruction | Yes | PPM instruction lookup |
 | Contract, Family, Cost Centre | No | Lookups |
+| Priority / PPM Priority | No | Defaults to `3` when blank (override in workbook or `defaultPpmPriority` setting) |
 | Stock Cost, Labour Cost, Est. Staff | No | |
 | Est. Time Hours / Minutes | No | |
 | Permit?, H&S Task?, Controller? | No | Checkbox (`YES`/`NO`) |

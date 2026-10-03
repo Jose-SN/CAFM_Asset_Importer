@@ -278,7 +278,10 @@
   }
 
   function needsPpmGridRefresh(auto, ppmIndex) {
-    return Number(auto.ppmGridRefreshedForIndex ?? -1) !== Number(ppmIndex);
+    const index = Number(ppmIndex ?? 0);
+    // First linked PPM on a fresh asset: grid is empty — go straight to Create New.
+    if (index === 0) return false;
+    return Number(auto.ppmGridRefreshedForIndex ?? -1) !== index;
   }
 
   async function trySkipExistingPpm(record, ppm, auto, note = 'Equivalent PPM already exists on this asset; duplicate creation skipped') {
@@ -359,7 +362,32 @@
           await b.persistSession();
           auto = b.state.session.auto || {};
         }
-        if (Date.now() - started > b.state.settings.lookupTimeoutMs) throw new Error('Parent PPM Refresh button did not become available before timeout.');
+        if (Date.now() - started > b.state.settings.lookupTimeoutMs) {
+          const ppmIndex = Number(auto.ppmIndex ?? 0);
+          const nextPhase = auto.ppmAfterRefreshPhase || 'ppm_next';
+          if (ppmIndex === 0 && ['ppm_open_list', 'ppm_next'].includes(nextPhase)) {
+            b.addEvent('ppm-parent-refresh-skipped', {
+              reason: 'refresh-unavailable-first-ppm',
+              ppmIndex,
+              targetPhase: nextPhase,
+              parentUrl: location.href
+            });
+            b.state.session.auto = {
+              ...auto,
+              phase: nextPhase,
+              ppmParentRefreshStartedAt: 0,
+              ppmParentRefreshClickedAt: 0,
+              ppmParentRefreshPageInstance: '',
+              ppmParentRefreshSawDisabled: false,
+              ppmAfterRefreshPhase: '',
+              ppmGridRefreshedForIndex: ppmIndex
+            };
+            await b.persistSession();
+            b.scheduleAuto(300);
+            return;
+          }
+          throw new Error('Parent PPM Refresh button did not become available before timeout.');
+        }
         b.scheduleAuto(450);
         return;
       }
@@ -633,7 +661,7 @@
       assetEntityId,
       ppmIndex: 0,
       ppmResults: [],
-      ppmGridRefreshedForIndex: -1,
+      ppmGridRefreshedForIndex: 0,
       ppmOpenStartedAt: Date.now(),
       ppmNewClickedForIndex: -1,
       startedAt: Date.now(),
@@ -642,7 +670,7 @@
 
     await b.persistSession();
     b.render();
-    b.showToast(`Checking PPM register for ${assetCode} (${linked.length} linked row(s)) before Create New.`, 'info', 7000);
+    b.showToast(`Opening Create New for ${assetCode} (${linked.length} linked PPM row(s)) — first PPM skips register refresh.`, 'info', 7000);
     b.scheduleAuto(200);
   }
 

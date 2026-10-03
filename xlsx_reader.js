@@ -436,7 +436,7 @@
         costCentre: trimValue(valueByAliases(obj, ['Cost Centre'])),
         contract: trimValue(valueByAliases(obj, ['Contract'])),
         disciplineExpected: trimValue(valueByAliases(obj, ['Discipline (Expected)', 'Discipline'])),
-        priority: trimValue(valueByAliases(obj, ['Priority'])),
+        priority: trimValue(valueByAliases(obj, ['Priority', 'PPM Priority'])),
         shift: trimValue(valueByAliases(obj, ['Shift'])),
         compliance: trimValue(valueByAliases(obj, ['Compliance'])),
         costCode: trimValue(valueByAliases(obj, ['Cost Code'])),
