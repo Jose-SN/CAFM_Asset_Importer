@@ -1,0 +1,196 @@
+(() => {
+  'use strict';
+
+  const root = globalThis.CAFMImporter;
+  const { clean, norm } = root.core.text;
+  const { wait, visible, isAssistantElement, elementValue, dispatchClick } = root.core.dom;
+  const { makeLookupSpec, splitLookupValue } = root.core.lookupSpec;
+  const { ppmDirectMapping, ppmLookupMapping } = root.pages.ppmMappings;
+  const {
+    entityIdFromUrl,
+    isPpmNewEntityPage,
+    isSavedPpmPage,
+    ppmListUrl
+  } = root.core.pages;
+  const $ = () => root.runtime.b;
+
+  async function fillPpmFields(ppm) {
+    const b = $();
+    const results = [];
+    await b.clickTab('General');
+    for (const item of ppmDirectMapping(ppm)) {
+      if (item.kind === 'checkbox' && item.value == null) continue;
+      if (item.kind !== 'checkbox' && !clean(item.value)) continue;
+      let result;
+      if (item.kind === 'checkbox') result = b.setCheckboxByLabel(item.label, Boolean(item.value));
+      else if (item.kind === 'select') result = b.setSelectByLabel(item.label, item.value);
+      else result = b.fillByLabel(item.label, item.value);
+      results.push({ ...result, field: item.label[0], kind: item.kind });
+      b.addEvent('ppm-field-fill', { ppmKey: ppm.ppmKey, field: item.label[0], expected: clean(item.value), status: result.status || '', actual: result.control ? clean(elementValue(result.control)) : '' });
+      if (['missing', 'failed', 'missing-select', 'option-missing'].includes(result.status)) {
+        await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: 'General', field: item.label[0], expected: item.value, actual: '', reason: `Fill result: ${result.status}`, ppmKey: ppm.ppmKey });
+      }
+    }
+    const timeResult = b.fillEstimatedTime(ppm);
+    if (!['blank', 'filled'].includes(timeResult.status)) await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: 'General', field: 'Estimated Time', expected: `${ppm.estTimeHours || ''}:${ppm.estTimeMinutes || ''}`, actual: '', reason: `Fill result: ${timeResult.status}`, ppmKey: ppm.ppmKey });
+    for (const [month, enabled] of Object.entries(ppm.months || {})) {
+      if (enabled == null) continue;
+      const result = b.setCheckboxByLabel([month], Boolean(enabled));
+      if (result.status === 'missing') continue;
+      if (result.status !== 'filled') await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: 'General', field: month, expected: String(Boolean(enabled)), actual: '', reason: `Checkbox result: ${result.status}`, ppmKey: ppm.ppmKey });
+    }
+    if (clean(ppm.notes)) {
+      if (await b.clickTab('Notes')) {
+        let result = b.fillByLabel(['Notes'], ppm.notes);
+        if (result.status === 'missing') {
+          const area = [...document.querySelectorAll('textarea')].find((el) => visible(el) && !isAssistantElement(el));
+          if (!area || !b.setNativeValue(area, ppm.notes)) await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: 'Notes', field: 'Notes', expected: ppm.notes, actual: area ? elementValue(area) : '', reason: 'Notes could not be filled', ppmKey: ppm.ppmKey });
+        }
+      }
+    }
+    await b.clickTab('General');
+    return results;
+  }
+
+  async function fillPpmLookups(ppm) {
+    const b = $();
+    const evidence = [];
+    for (const spec of ppmLookupMapping(ppm)) {
+      try {
+        const result = await b.selectLookup(spec);
+        evidence.push(result);
+        b.addEvent('ppm-lookup-selected', { ppmKey: ppm.ppmKey, field: spec.field, expected: clean(spec.value || spec.display || ''), selected: clean(result.selected || result.selectedText || ''), commitVerified: Boolean(result.commitVerified || result.alreadySelected || result.nativeSelect || result.hiddenCommitted) });
+      } catch (error) {
+        await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: spec.tab || 'General', field: spec.field, expected: spec.value || spec.display || '', actual: '', reason: error.message || String(error), ppmKey: ppm.ppmKey });
+      }
+      await wait(0);
+    }
+    return evidence;
+  }
+
+  async function fillFireDoorPpmExact(ppm) {
+    const b = $();
+    await b.clickTab('General');
+    const contractSpec = makeLookupSpec('Contract', ppm.contract, { tab: 'General', description: splitLookupValue(ppm.contract).description });
+    await b.selectLookup(contractSpec);
+    await wait(0);
+    const instructionSpec = makeLookupSpec('Instruction', ppm.instruction, {
+      tab: 'General',
+      description: ppm.instruction,
+      searchTerms: [/fire\s+doors?/i.test(clean(ppm.instruction)) ? 'fire doors' : clean(ppm.instruction).split(/\s+/).slice(0, 2).join(' '), ppm.instruction]
+    });
+    await b.selectLookup(instructionSpec);
+    await wait(0);
+    const last = b.fillByLabel(['Last Service'], ppm.lastService);
+    if (!last || ['missing', 'failed', 'readonly'].includes(last.status)) {
+      throw new Error(`Fire-door PPM Last Service could not be entered (${last?.status || 'missing'}).`);
+    }
+    try {
+      last.control?.dispatchEvent(new Event('change', { bubbles: true }));
+      last.control?.dispatchEvent(new Event('blur', { bubbles: true }));
+    } catch (_) {}
+    await wait(0);
+    const lastActual = clean(elementValue(last.control));
+    if (lastActual && norm(lastActual) !== norm(ppm.lastService)) {
+      throw new Error(`Fire-door PPM Last Service did not retain ${ppm.lastService} (shows ${lastActual}).`);
+    }
+    return [
+      { field: 'Contract', selected: ppm.contract },
+      { field: 'Instruction', selected: ppm.instruction },
+      { field: 'Last Service', selected: ppm.lastService }
+    ];
+  }
+
+  async function validatePpmPageBeforeSave(ppm) {
+    const b = $();
+    const errors = [];
+    await b.clickTab('General');
+    for (const spec of ppmLookupMapping(ppm)) {
+      const found = b.nearestControl([spec.field]);
+      if (!found) { errors.push(`${spec.field} dropdown missing`); continue; }
+      const actual = elementValue(found.control);
+      if (!b.lookupTextMatches(actual, spec)) errors.push(`${spec.field} is not selected from the CAFM dropdown`);
+      const hidden = b.nearbyHiddenValues(found.control);
+      if (hidden.length && !b.hiddenCommitted(found.control)) errors.push(`${spec.field} backing lookup ID is blank`);
+    }
+    if (clean(ppm?.lastService)) {
+      const last = b.nearestControl(['Last Service']);
+      const actual = clean(elementValue(last?.control));
+      if (!last?.control) errors.push('Last Service field is missing');
+      else if (norm(actual) !== norm(ppm.lastService)) errors.push(`Last Service is ${actual || 'blank'} instead of ${ppm.lastService}`);
+    }
+    return errors;
+  }
+
+  async function processPpmItemPage(record) {
+    const b = $();
+    const auto = b.state.session.auto || {};
+    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait', 'ppm_cycle_complete_parent'].includes(auto.phase)) {
+      return;
+    }
+    const ppm = b.currentPpm(record);
+    if (!ppm) throw new Error(`No linked PPM row is available for ${record.assetCode}.`);
+
+    const ppmEntityId = entityIdFromUrl();
+    if (ppmEntityId && ppmEntityId !== '-1') {
+      if (auto.phase === 'ppm_await_save') {
+        await b.recordPpmResult(record, ppm, 'saved', 'CAFM PPM entity page detected after Save', ppmEntityId);
+      } else {
+        b.state.session.auto = { ...auto, phase: 'ppm_open_list' };
+        await b.persistSession();
+        location.href = ppmListUrl(auto.assetEntityId);
+      }
+      return;
+    }
+
+    if (!isPpmNewEntityPage()) throw new Error(`Expected a New PPM page for ${record.assetCode}.`);
+    const issues = b.ppmSourceIssues(ppm);
+    if (issues.length) throw new Error(`PPM ${ppm.ppmKey} cannot be imported: ${issues.join('; ')}`);
+
+    if (['ppm_wait_new', 'ppm_wait_user_new', 'ppm_open_list', 'ppm_next'].includes(auto.phase)) {
+      b.state.session.auto = { ...auto, phase: 'ppm_fill' };
+      await b.persistSession();
+      b.scheduleAuto(100);
+      return;
+    }
+
+    if (auto.phase === 'ppm_fill') {
+      b.showToast(`Creating PPM for ${record.assetCode}: ${ppm.instruction}`, 'info', 7000);
+      await fillPpmLookups(ppm);
+      await fillPpmFields(ppm);
+      const errors = await validatePpmPageBeforeSave(ppm);
+      if (errors.length) {
+        for (const problem of errors) await b.recordValidationWarning(record, { scope: 'ppm', field: 'Pre-save audit', expected: 'Excel-backed value committed', actual: '', reason: problem, ppmKey: ppm.ppmKey });
+        b.addEvent('ppm-pre-save-warning-summary', { ppmKey: ppm.ppmKey, warningCount: errors.length, warnings: errors });
+      }
+      const save = b.findSaveButton();
+      if (!save) throw new Error(`CAFM PPM Save button was not detected for ${ppm.ppmKey}.`);
+      b.state.session.auto = { ...b.state.session.auto, phase: 'ppm_await_save', ppmSaveStartedAt: Date.now() };
+      await b.persistSession();
+      dispatchClick(save, false);
+      b.scheduleAuto(0);
+      return;
+    }
+
+    if (auto.phase === 'ppm_await_save') {
+      const validation = b.validationMessage();
+      if (validation) throw new Error(`CAFM did not save PPM ${ppm.ppmKey}: ${validation}`);
+      if (Date.now() - Number(auto.ppmSaveStartedAt || Date.now()) > b.state.settings.saveTimeoutMs) throw new Error(`PPM save confirmation timed out for ${ppm.ppmKey}.`);
+      b.scheduleAuto(0);
+      return;
+    }
+
+    b.state.session.auto = { ...auto, phase: 'ppm_fill' };
+    await b.persistSession();
+    b.scheduleAuto(100);
+  }
+
+  root.pages = root.pages || {};
+  root.pages.ppmEditor = Object.freeze({
+    fillPpmFields,
+    fillPpmLookups,
+    fillFireDoorPpmExact,
+    validatePpmPageBeforeSave,
+    processPpmItemPage
+  });
+})();

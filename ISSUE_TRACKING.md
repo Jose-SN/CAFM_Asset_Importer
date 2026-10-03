@@ -22,3 +22,43 @@ The diagnostic JSON is intentionally small and trace-oriented. It stores no CAFM
 ## Resume principle
 
 The importer persists the session after state transitions. Keep the workbook unchanged when troubleshooting a stopped run. Do not start a new bulk run until the failed record has been reviewed.
+
+## Automation state diagram
+
+```mermaid
+stateDiagram-v2
+  direction LR
+
+  [*] --> navigate: Start Automatic
+  navigate --> fill: New Entity page ready
+  fill --> filling: Validate row
+  filling --> saving: Fields filled
+  saving --> await_save: Click Save
+  await_save --> activate_open: Asset saved
+
+  activate_open --> activate_select: Status dialog open
+  activate_select --> activate_confirm: Active selected
+  activate_confirm --> activate_wait: Confirm clicked
+  activate_wait --> ppm_open_list: Asset ACTIVE
+
+  ppm_open_list --> ppm_wait_new: PPM register loaded
+  ppm_wait_new --> ppm_fill: New PPM editor open
+  ppm_fill --> ppm_await_save: PPM fields filled
+  ppm_await_save --> ppm_status_open: PPM saved
+  ppm_status_open --> ppm_status_select: Status dialog open
+  ppm_status_select --> ppm_status_confirm: Active selected
+  ppm_status_confirm --> ppm_status_wait: Confirm clicked
+  ppm_status_wait --> ppm_child_closing: PPM ACTIVE
+
+  ppm_child_closing --> ppm_parent_refresh_wait: Close editor tab
+  ppm_parent_refresh_wait --> ppm_next: Parent register refreshed
+
+  ppm_next --> ppm_wait_new: More PPMs for asset
+  ppm_next --> navigate: No more PPMs, next asset
+  navigate --> [*]: All assets complete
+
+  note right of ppm_next
+    Zero linked PPM rows skip
+    the PPM loop entirely
+  end note
+```

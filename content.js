@@ -1,33 +1,48 @@
 (() => {
   'use strict';
 
-  const VERSION = '8.0.11';
+  const CI = globalThis.CAFMImporter;
+  if (!CI?.core?.constants) return;
+
+  const {
+    VERSION,
+    HOST_ID,
+    STORAGE,
+    DEFAULT_SETTINGS
+  } = CI.core.constants;
+  const { clean, norm, uniqueNonBlank, uniqueId } = CI.core.text;
+  const { wait, visible, isAssistantElement, elementValue, dispatchClick } = CI.core.dom;
+  const {
+    isAssetPage,
+    entityIdFromUrl,
+    isNewEntityPage,
+    isSavedAssetPage,
+    isPpmListPage,
+    isHashPpmParentPage,
+    isPpmItemPage,
+    isPpmNewEntityPage,
+    isWorkflowPage,
+    assetEntityUrl,
+    ppmListUrl,
+    ppmEntityUrl,
+    isSavedPpmPage,
+    deriveNewEntityUrl
+  } = CI.core.pages;
+  const {
+    runtimeMessage,
+    storageGet,
+    storageSet,
+    storageRemove,
+    saveLargeWorkbook,
+    loadLargeWorkbook,
+    clearLargeWorkbook
+  } = CI.core.storage;
+  const { WAITING_PHASES } = CI.workflow.phases;
+  const ppmData = CI.data.ppm;
+  const { splitLookupValue, buildingNumber, makeLookupSpec } = CI.core.lookupSpec;
+
   const PAGE_INSTANCE = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const TOP = window.top === window.self;
-  const HOST_ID = 'ee-cafm-asset-importer-host';
-  const STORAGE = {
-    session: 'eeAssetImporterV80Session',
-    settings: 'eeAssetImporterV80Settings',
-    pendingLookup: 'eeAssetImporterV80PendingLookup',
-    statusLearnRequest: 'eeAssetImporterV58StatusLearnRequest',
-    learnedStatus: 'eeAssetImporterV58LearnedStatus',
-    newLearnRequest: 'eeAssetImporterV69NewLearnRequest',
-    learnedNew: 'eeAssetImporterV69LearnedNew'
-  };
-  const LARGE_KEY = 'eeAssetImporterV80Workbook';
-  const DEFAULT_SETTINGS = {
-    lookupTimeoutMs: 45000,
-    saveTimeoutMs: 45000,
-    skipInvalidRows: false,
-    stopOnLookupError: true,
-    panelX: null,
-    panelY: 76,
-    collapsed: false,
-    includeNotes: false,
-    includeSpatial: false,
-    iterationEnabled: false,
-    iterationCount: 1
-  };
 
   const state = {
     assets: [],
@@ -62,16 +77,8 @@
     lastLoggedPhase: ''
   };
 
-  const assetPagePattern = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItem\.aspx/i;
-  const ppmListPagePattern = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItemPPMs\.aspx/i;
-  const ppmItemPagePattern = /\/Evolution\/!System\/PPMs\/FPPM\/ViewFPPMItem\.aspx/i;
   const isConceptHost = location.hostname.toLowerCase() === 'concept' || location.pathname.toLowerCase().includes('/evolution/');
   if (!isConceptHost) return;
-
-  function wait(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
 
   function waitForDom(predicate, timeoutMs = state.settings.lookupTimeoutMs, description = 'CAFM page state') {
     return new Promise((resolve, reject) => {
@@ -143,165 +150,7 @@
     showToast(`Warning: ${where} did not match Excel. Continuing.`, 'warn', 9000);
   }
 
-  function norm(value) {
-    return String(value ?? '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
-  }
-
-  function clean(value) {
-    return String(value ?? '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
-  }
-
-  function uniqueNonBlank(values) {
-    const output = [];
-    const seen = new Set();
-    for (const value of values || []) {
-      const text = clean(value);
-      const key = norm(text);
-      if (!text || seen.has(key)) continue;
-      seen.add(key);
-      output.push(text);
-    }
-    return output;
-  }
-
-  function uniqueId(prefix = 'id') {
-    if (globalThis.crypto?.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
-    return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  }
-
-  function visible(element) {
-    if (!element || !(element instanceof Element)) return false;
-    const style = getComputedStyle(element);
-    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
-    const rect = element.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  }
-
-  function runtimeMessage(message) {
-    return new Promise((resolve) => {
-      try {
-        chrome.runtime.sendMessage(message, (response) => {
-          if (chrome.runtime.lastError) resolve(null);
-          else resolve(response || null);
-        });
-      } catch (_) {
-        resolve(null);
-      }
-    });
-  }
-
-  function storageGet(keys) {
-    return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
-  }
-
-  function storageSet(values) {
-    return new Promise((resolve) => chrome.storage.local.set(values, resolve));
-  }
-
-  function storageRemove(keys) {
-    return new Promise((resolve) => chrome.storage.local.remove(keys, resolve));
-  }
-
-  async function saveLargeWorkbook(cache) {
-    const result = await runtimeMessage({ type: 'LARGE_STORAGE_PUT', key: LARGE_KEY, value: cache });
-    if (!result?.ok) throw new Error(result?.error || 'Unable to cache workbook data.');
-    return result;
-  }
-
-  async function loadLargeWorkbook() {
-    const result = await runtimeMessage({ type: 'LARGE_STORAGE_GET', key: LARGE_KEY });
-    if (!result?.ok) return null;
-    return result.value || null;
-  }
-
-  async function clearLargeWorkbook() {
-    await runtimeMessage({ type: 'LARGE_STORAGE_REMOVE', key: LARGE_KEY });
-  }
-
-  function isAssetPage() {
-    return assetPagePattern.test(location.pathname);
-  }
-
-  function entityIdFromUrl() {
-    try {
-      const url = new URL(location.href);
-      return url.searchParams.get('id') || '';
-    } catch (_) {
-      return '';
-    }
-  }
-
-  function isNewEntityPage() {
-    if (!isAssetPage()) return false;
-    const id = entityIdFromUrl();
-    if (id === '-1') return true;
-    const text = [...document.querySelectorAll('h1,h2,h3,a,span,div')]
-      .filter(visible)
-      .map((el) => clean(el.textContent))
-      .find((textValue) => textValue === 'New Entity');
-    return Boolean(text);
-  }
-
-  function isSavedAssetPage() {
-    if (!isAssetPage()) return false;
-    const id = entityIdFromUrl();
-    return Boolean(id && id !== '-1');
-  }
-
-  function isPpmListPage() {
-    return ppmListPagePattern.test(location.pathname);
-  }
-
-  function isHashPpmParentPage() {
-    return isPpmListPage() && String(location.href || '').endsWith('#');
-  }
-
-  function isPpmItemPage() {
-    return ppmItemPagePattern.test(location.pathname);
-  }
-
-  function isPpmNewEntityPage() {
-    if (!isPpmItemPage()) return false;
-    return entityIdFromUrl() === '-1' || /new entity/i.test(clean(document.body?.innerText || '').slice(0, 1500));
-  }
-
-  function isWorkflowPage() {
-    return isAssetPage() || isPpmListPage() || isPpmItemPage();
-  }
-
-  function assetEntityUrl(assetEntityId) {
-    const id = clean(assetEntityId);
-    return `${location.origin}/Evolution/!System/Asset/FASSET/ViewFASSETItem.aspx?id=${encodeURIComponent(id)}&SubNav=true`;
-  }
-
-  function ppmListUrl(assetEntityId) {
-    const id = clean(assetEntityId);
-    return `${location.origin}/Evolution/!System/Asset/FASSET/ViewFASSETItemPPMs.aspx?id=${encodeURIComponent(id)}&SubNav=true#`;
-  }
-
-  function ppmEntityUrl(ppmEntityId) {
-    const id = clean(ppmEntityId);
-    return `${location.origin}/Evolution/!System/PPMs/FPPM/ViewFPPMItem.aspx?id=${encodeURIComponent(id)}&SubNav=true`;
-  }
-
-  function isSavedPpmPage() {
-    if (!isPpmItemPage()) return false;
-    const id = entityIdFromUrl();
-    return Boolean(id && id !== '-1');
-  }
-
-  function deriveNewEntityUrl() {
-    try {
-      const url = new URL(location.href);
-      if (!assetPagePattern.test(url.pathname)) return '';
-      url.searchParams.set('id', '-1');
-      return url.toString();
-    } catch (_) {
-      return '';
-    }
-  }
-
-  function elementValue(element) {
+  function fieldCandidates(element) {
     if (!element) return '';
     if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
       if (element instanceof HTMLSelectElement) {
@@ -516,30 +365,6 @@
     return candidates[0]?.clickable || null;
   }
 
-  function dispatchClick(target, doubleClick = false) {
-    if (!target) return;
-    try { target.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (_) {}
-    // Evolution's legacy popup controls do not always respond to a synthetic
-    // dispatchEvent('click'). Reproduce the pointer sequence and then use the
-    // element's native click() method so onclick/default actions are executed.
-    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) {
-      try {
-        const EventType = type.startsWith('pointer') && typeof PointerEvent !== 'undefined' ? PointerEvent : MouseEvent;
-        target.dispatchEvent(new EventType(type, { bubbles: true, cancelable: true, view: window }));
-      } catch (_) {}
-    }
-    try {
-      if (typeof target.click === 'function') target.click();
-      else target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-    } catch (_) {
-      try { target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window })); } catch (_) {}
-    }
-    if (doubleClick) {
-      try { target.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, view: window, detail: 2 })); } catch (_) {}
-    }
-  }
-
-
   // Legacy toolbar actions such as Change Status and PPM + New can bind their
   // popup action to more than one mouse event. The generic dispatchClick()
   // intentionally reproduces a full pointer sequence for lookup widgets, but
@@ -592,46 +417,6 @@
       const value = clean(entry.split('=').slice(1).join('='));
       return value && value !== '0' && norm(value) !== 'false' && norm(value) !== 'null';
     });
-  }
-
-  function splitLookupValue(value) {
-    const full = clean(value);
-    const sep = full.indexOf(' - ');
-    if (sep > 0) return { full, code: clean(full.slice(0, sep)), description: clean(full.slice(sep + 3)) };
-    const condition = full.match(/^([A-Za-z0-9_.]+)\s+(.+)$/);
-    if (condition && /^[0-9]+$/.test(condition[1])) return { full, code: condition[1], description: condition[2] };
-    return { full, code: '', description: full };
-  }
-
-  function buildingNumber(value) {
-    const match = clean(value).match(/(?:WCH-)?(\d{1,3})/i);
-    return match ? String(Number(match[1])) : '';
-  }
-
-  function makeLookupSpec(field, value, options = {}) {
-    const parts = splitLookupValue(value);
-    let strictCode = clean(options.strictCode || parts.code || '');
-    if (field === 'Building') strictCode = buildingNumber(options.strictCode || value) || strictCode;
-    if (field === 'Condition' && !strictCode) strictCode = clean(value).match(/^([A-Za-z0-9_.]+)/)?.[1] || '';
-    return {
-      id: uniqueId('lookup'),
-      field,
-      tab: options.tab || 'Details',
-      value: clean(value),
-      display: clean(options.display || value),
-      strictCode,
-      description: clean(options.description || parts.description),
-      aliases: uniqueNonBlank([value, options.display, strictCode, options.description, ...(options.aliases || [])]),
-      searchTerms: uniqueNonBlank([strictCode, options.description, value, options.display, ...(options.searchTerms || [])]),
-      buildingName: clean(options.buildingName || ''),
-      locationDescription: clean(options.locationDescription || ''),
-      floorName: clean(options.floorName || ''),
-      sourceCode: clean(options.sourceCode || strictCode),
-      createdAt: Date.now(),
-      openedAt: 0,
-      status: 'created',
-      attempts: 0
-    };
   }
 
   function lookupMapping(record) {
@@ -759,11 +544,6 @@
       if (desc && candidate.includes(desc)) score += 500;
     }
     return score;
-  }
-
-  function isAssistantElement(element) {
-    if (!element) return false;
-    return Boolean(element.closest?.(`#${HOST_ID}`));
   }
 
   function explicitLookupSurfaces() {
@@ -2142,321 +1922,24 @@
     return { status: 'filled', label: 'Est. Time' };
   }
 
-  function ppmDirectMapping(ppm) {
-    return [
-      { kind: 'text', label: ['Family'], value: ppm.family },
-      { kind: 'text', label: ['Stock Cost'], value: ppm.stockCost },
-      { kind: 'text', label: ['Labour Cost'], value: ppm.labourCost },
-      { kind: 'text', label: ['Est. Staff', 'Est Staff'], value: ppm.estStaff },
-      { kind: 'checkbox', label: ['Permit'], value: ppm.permit },
-      { kind: 'checkbox', label: ['H & S Task', 'H&S Task'], value: ppm.healthSafetyTask },
-      { kind: 'checkbox', label: ['Controller'], value: ppm.controller },
-      { kind: 'select', label: ['Class'], value: ppm.classValue },
-      { kind: 'checkbox', label: ['Action before Task complete'], value: ppm.actionBeforeComplete },
-      { kind: 'checkbox', label: ['Action before Task sign off'], value: ppm.actionBeforeSignoff },
-      { kind: 'select', label: ['Generate Task Actions'], value: ppm.generateTaskActions },
-      { kind: 'text', label: ['Last Service'], value: ppm.lastService },
-      { kind: 'text', label: ['Next Service'], value: ppm.nextService },
-      { kind: 'select', label: ['Default Day'], value: ppm.defaultDay },
-      { kind: 'text', label: ['Period'], value: ppm.period },
-      { kind: 'select', label: ['Frequency'], value: ppm.frequency }
-    ];
-  }
 
-  function ppmLookupMapping(ppm) {
-    if (!ppm) return [];
-    const mk = (field, value, options = {}) => makeLookupSpec(field, value, { tab: 'General', ...options });
-    return [
-      // Contract first matches the demonstrated fire-door PPM workflow.
-      mk('Contract', ppm.contract, { description: ppm.contract }),
-      mk('Instruction', ppm.instruction, { description: ppm.instruction, searchTerms: [/fire\s+doors?/i.test(clean(ppm.instruction)) ? 'fire doors' : clean(ppm.instruction).split(/\s+/).slice(0, 2).join(' '), ppm.instruction] }),
-      mk('Priority', ppm.priority, { description: ppm.priority }),
-      mk('Shift', ppm.shift, { description: ppm.shift }),
-      mk('Compliance', ppm.compliance, { description: ppm.compliance }),
-      mk('Cost Code', ppm.costCode, { description: ppm.costCode }),
-      mk('Cost Centre', ppm.costCentre, { ...splitLookupValue(ppm.costCentre), description: splitLookupValue(ppm.costCentre).description })
-    ].filter((item) => clean(item.value));
-  }
 
-  async function fillPpmFields(ppm) {
-    const results = [];
-    await clickTab('General');
-    for (const item of ppmDirectMapping(ppm)) {
-      if (item.kind === 'checkbox' && item.value == null) continue;
-      if (item.kind !== 'checkbox' && !clean(item.value)) continue;
-      let result;
-      if (item.kind === 'checkbox') result = setCheckboxByLabel(item.label, Boolean(item.value));
-      else if (item.kind === 'select') result = setSelectByLabel(item.label, item.value);
-      else result = fillByLabel(item.label, item.value);
-      results.push({ ...result, field: item.label[0], kind: item.kind });
-      addEvent('ppm-field-fill', { ppmKey: ppm.ppmKey, field: item.label[0], expected: clean(item.value), status: result.status || '', actual: result.control ? clean(elementValue(result.control)) : '' });
-      if (['missing', 'failed', 'missing-select', 'option-missing'].includes(result.status)) {
-        await recordValidationWarning(currentRecord(), { scope: 'ppm', tab: 'General', field: item.label[0], expected: item.value, actual: '', reason: `Fill result: ${result.status}`, ppmKey: ppm.ppmKey });
-      }
-    }
-    const timeResult = fillEstimatedTime(ppm);
-    if (!['blank', 'filled'].includes(timeResult.status)) await recordValidationWarning(currentRecord(), { scope: 'ppm', tab: 'General', field: 'Estimated Time', expected: `${ppm.estTimeHours || ''}:${ppm.estTimeMinutes || ''}`, actual: '', reason: `Fill result: ${timeResult.status}`, ppmKey: ppm.ppmKey });
-    for (const [month, enabled] of Object.entries(ppm.months || {})) {
-      if (enabled == null) continue;
-      const result = setCheckboxByLabel([month], Boolean(enabled));
-      if (result.status === 'missing') continue;
-      if (result.status !== 'filled') await recordValidationWarning(currentRecord(), { scope: 'ppm', tab: 'General', field: month, expected: String(Boolean(enabled)), actual: '', reason: `Checkbox result: ${result.status}`, ppmKey: ppm.ppmKey });
-    }
-    if (clean(ppm.notes)) {
-      if (await clickTab('Notes')) {
-        let result = fillByLabel(['Notes'], ppm.notes);
-        if (result.status === 'missing') {
-          const area = [...document.querySelectorAll('textarea')].find((el) => visible(el) && !isAssistantElement(el));
-          if (!area || !setNativeValue(area, ppm.notes)) await recordValidationWarning(currentRecord(), { scope: 'ppm', tab: 'Notes', field: 'Notes', expected: ppm.notes, actual: area ? elementValue(area) : '', reason: 'Notes could not be filled', ppmKey: ppm.ppmKey });
-        }
-      }
-    }
-    await clickTab('General');
-    return results;
-  }
 
-  async function fillPpmLookups(ppm) {
-    const evidence = [];
-    for (const spec of ppmLookupMapping(ppm)) {
-      try {
-        const result = await selectLookup(spec);
-        evidence.push(result);
-        addEvent('ppm-lookup-selected', { ppmKey: ppm.ppmKey, field: spec.field, expected: clean(spec.value || spec.display || ''), selected: clean(result.selected || result.selectedText || ''), commitVerified: Boolean(result.commitVerified || result.alreadySelected || result.nativeSelect || result.hiddenCommitted) });
-      } catch (error) {
-        await recordValidationWarning(currentRecord(), { scope: 'ppm', tab: spec.tab || 'General', field: spec.field, expected: spec.value || spec.display || '', actual: '', reason: error.message || String(error), ppmKey: ppm.ppmKey });
-      }
-      await wait(0);
-    }
-    return evidence;
-  }
 
-  async function fillFireDoorPpmExact(ppm) {
-    await clickTab('General');
 
-    // Exact demonstrated order: Contract -> Instruction -> Last Service.
-    const contractSpec = makeLookupSpec('Contract', ppm.contract, {
-      tab: 'General',
-      description: splitLookupValue(ppm.contract).description
-    });
-    await selectLookup(contractSpec);
-    await wait(0);
 
-    const instructionSpec = makeLookupSpec('Instruction', ppm.instruction, {
-      tab: 'General',
-      description: ppm.instruction,
-      searchTerms: [/fire\s+doors?/i.test(clean(ppm.instruction)) ? 'fire doors' : clean(ppm.instruction).split(/\s+/).slice(0, 2).join(' '), ppm.instruction]
-    });
-    await selectLookup(instructionSpec);
-    // Let Evolution apply the Instruction defaults (Discipline, Priority,
-    // Compliance, period/frequency, time, months, etc.) before entering date.
-    await wait(0);
 
-    const last = fillByLabel(['Last Service'], ppm.lastService);
-    if (!last || ['missing', 'failed', 'readonly'].includes(last.status)) {
-      throw new Error(`Fire-door PPM Last Service could not be entered (${last?.status || 'missing'}).`);
-    }
-    try {
-      last.control?.dispatchEvent(new Event('change', { bubbles: true }));
-      last.control?.dispatchEvent(new Event('blur', { bubbles: true }));
-    } catch (_) {}
-    await wait(0);
-
-    const lastActual = clean(elementValue(last.control));
-    if (lastActual && norm(lastActual) !== norm(ppm.lastService)) {
-      throw new Error(`Fire-door PPM Last Service did not retain ${ppm.lastService} (shows ${lastActual}).`);
-    }
-
-    return [
-      { field: 'Contract', selected: ppm.contract },
-      { field: 'Instruction', selected: ppm.instruction },
-      { field: 'Last Service', selected: ppm.lastService }
-    ];
-  }
-
-  async function validatePpmPageBeforeSave(ppm) {
-    const errors = [];
-    await clickTab('General');
-    for (const spec of ppmLookupMapping(ppm)) {
-      const found = nearestControl([spec.field]);
-      if (!found) { errors.push(`${spec.field} dropdown missing`); continue; }
-      const actual = elementValue(found.control);
-      if (!lookupTextMatches(actual, spec)) errors.push(`${spec.field} is not selected from the CAFM dropdown`);
-      const hidden = nearbyHiddenValues(found.control);
-      if (hidden.length && !hiddenCommitted(found.control)) errors.push(`${spec.field} backing lookup ID is blank`);
-    }
-    if (clean(ppm?.lastService)) {
-      const last = nearestControl(['Last Service']);
-      const actual = clean(elementValue(last?.control));
-      if (!last?.control) errors.push('Last Service field is missing');
-      else if (norm(actual) !== norm(ppm.lastService)) errors.push(`Last Service is ${actual || 'blank'} instead of ${ppm.lastService}`);
-    }
-    return errors;
-  }
-
-  function findLearnedPpmNewButton() {
-    const learned = state.learnedNew;
-    if (!learned) return null;
-    const docs = sameOriginDocuments();
-    const preferred = docs.filter((doc) => {
-      try { return !learned.frameUrl || doc.location.href === learned.frameUrl || new URL(doc.location.href).pathname === new URL(learned.frameUrl).pathname; }
-      catch (_) { return false; }
-    });
-    for (const doc of [...preferred, ...docs.filter((d) => !preferred.includes(d))]) {
-      const found = elementFromLearnedFingerprint(doc, learned);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  function ppmNewTextNodeFallback() {
-    if (!isPpmListPage()) return null;
-    try {
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      const hits = [];
-      let node;
-      while ((node = walker.nextNode())) {
-        if (norm(node.nodeValue) !== 'new') continue;
-        let el = node.parentElement;
-        if (!el || !visible(el) || isAssistantElement(el)) continue;
-        const r = el.getBoundingClientRect();
-        if (r.top < -8 || r.top > 92 || r.left < 140 || r.left > 360) continue;
-        let clickable = el;
-        for (let depth = 0; clickable && depth < 9; depth += 1, clickable = clickable.parentElement) {
-          if (!visible(clickable) || isAssistantElement(clickable)) continue;
-          const cr = clickable.getBoundingClientRect();
-          if (cr.top < -10 || cr.top > 105 || cr.left < 135 || cr.left > 410 || cr.width > 280 || cr.height > 105) continue;
-          const clue = norm(`${clickable.textContent || ''} ${clickable.getAttribute?.('onclick') || ''} ${clickable.getAttribute?.('href') || ''} ${clickable.getAttribute?.('title') || ''}`);
-          let score = 0;
-          if (clickable.matches?.('a,button,[role="button"],[onclick],td,li')) score += 3000;
-          if (/new/.test(clue)) score += 1800;
-          if (getComputedStyle(clickable).cursor === 'pointer') score += 900;
-          score += Math.max(0, 1200 - Math.abs(cr.left - 200) * 6 - Math.abs(cr.top - 73) * 9);
-          hits.push({ node: clickable, score, rect: cr });
-        }
-      }
-      hits.sort((a,b) => b.score - a.score || a.rect.width - b.rect.width);
-      return hits[0]?.node || null;
-    } catch (_) { return null; }
-  }
 
   // PPM register toolbar detector. Concept Evolution renders the visible
   // "+ New" action differently across builds (anchor, onclick cell, nested
   // span/image). Learned control is always preferred; then use DOM/text fallbacks.
-  function findNewButton() {
-    if (!isPpmListPage()) return null;
-    for (const doc of sameOriginDocuments()) {
-      try {
-        const exact = doc.querySelector('a[title="Create New"][onclick*="Toolbar.New"]');
-        if (exact && visible(exact)) return exact;
-      } catch (_) {}
-    }
-    const learned = findLearnedPpmNewButton();
-    if (learned) return learned;
-    const nodes = [...document.querySelectorAll('a,button,[role="button"],[onclick],td,li,span,div,input[type="button"],input[type="image"],img')];
-    const scored = [];
-    for (const el of nodes) {
-      if (!visible(el) || isAssistantElement(el)) continue;
-      const rect = el.getBoundingClientRect();
-      if (rect.top < -8 || rect.top > 92 || rect.left < 145 || rect.left > 450 || rect.height < 8 || rect.height > 85) continue;
-      const text = norm(`${el.textContent || ''} ${el.getAttribute?.('value') || ''} ${el.getAttribute?.('title') || ''} ${el.getAttribute?.('aria-label') || ''} ${el.getAttribute?.('alt') || ''}`);
-      const isNew = text === 'new' || text === '+ new' || /(^|\s|\+)new($|\s)/.test(text) || /create\s+(new\s+)?ppm/.test(text);
-      if (!isNew) continue;
 
-      let clickable = el.closest?.('a,button,[role="button"],[onclick]') || null;
-      if (!clickable) {
-        let node = el;
-        for (let depth = 0; node && depth < 5; depth += 1, node = node.parentElement) {
-          if (node.matches?.('a,button,[role="button"],[onclick],td,li')) { clickable = node; break; }
-        }
-      }
-      clickable = clickable || el;
-      if (!visible(clickable)) continue;
-      const cr = clickable.getBoundingClientRect();
-      if (cr.top < -10 || cr.top > 105 || cr.left < 135 || cr.left > 490 || cr.width > 280 || cr.height > 100) continue;
-      let score = 0;
-      if (clickable.matches?.('a,button,[role="button"],[onclick]')) score += 2500;
-      if (text === 'new' || text === '+ new') score += 1800;
-      score += Math.max(0, 1000 - Math.abs(cr.left - 205) * 5 - Math.abs(cr.top - 74) * 8);
-      score -= Math.max(0, cr.width - 100) * 2;
-      scored.push({ node: clickable, score, rect: cr });
-    }
-    scored.sort((a, b) => b.score - a.score || a.rect.width - b.rect.width);
-    if (scored[0]?.node) return scored[0].node;
-    return ppmNewTextNodeFallback();
-  }
 
-  function ppmToolbarButtonState(button, selector = '') {
-    if (!button) return { found: false, selector, disabled: null, ariaDisabled: '', onclick: '', title: '' };
-    return {
-      found: true,
-      selector,
-      disabled: button.getAttribute('disabled'),
-      ariaDisabled: button.getAttribute('aria-disabled') || '',
-      onclick: button.getAttribute('onclick') || '',
-      title: button.getAttribute('title') || '',
-      visible: visible(button)
-    };
-  }
 
-  function exactPpmNewButton() {
-    if (!isPpmListPage()) return null;
-    try {
-      return document.querySelector('a[title="Create New"][onclick*="Toolbar.New"]');
-    } catch (_) { return null; }
-  }
 
-  function exactPpmRefreshButton() {
-    if (!isPpmListPage()) return null;
-    try {
-      return document.querySelector('a[title="Refresh the page"][onclick*="Toolbar.Refresh"]');
-    } catch (_) { return null; }
-  }
 
-  function clickPpmNewToolbar(guardKey = 'ppm-new') {
-    const selector = 'a[title="Create New"][onclick*="Toolbar.New"]';
-    const button = exactPpmNewButton() || findNewButton();
-    const stateInfo = ppmToolbarButtonState(button, selector);
-    addEvent('ppm-create-new-check', { guardKey, ...stateInfo });
-    if (!button) throw new Error('The Create New control was not detected on the PPM register toolbar.');
-    if (button.hasAttribute('disabled') || String(button.getAttribute('aria-disabled') || '').toLowerCase() === 'true') {
-      throw new Error('The Create New control is currently disabled.');
-    }
-    button.click();
-    addEvent('ppm-create-new-click', { guardKey, ...stateInfo, clickCalled: true });
-    return true;
-  }
 
-  function ppmInstructionCanon(value) {
-    return String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-  }
 
-  function ppmListContainsCurrent(ppm) {
-    if (!ppm) return false;
-    const text = ppmInstructionCanon(document.body?.innerText || '');
-    const instruction = ppmInstructionCanon(ppm.instruction || '');
-    return Boolean(instruction && text.includes(instruction));
-  }
-
-  function ppmListEntityId(ppm) {
-    if (!ppm) return '';
-    const instruction = ppmInstructionCanon(ppm.instruction || '');
-    if (!instruction) return '';
-    const rows = [...document.querySelectorAll('tr')].filter(visible);
-    for (const row of rows) {
-      const text = ppmInstructionCanon(row.textContent || '');
-      if (!text.includes(instruction)) continue;
-      for (const link of row.querySelectorAll('a[href]')) {
-        try {
-          const u = new URL(link.href, location.href);
-          if (/ViewFPPMItem\.aspx/i.test(u.pathname) && u.searchParams.get('id')) return u.searchParams.get('id');
-        } catch (_) {}
-      }
-      const cells = [...row.querySelectorAll('td')].map((td) => clean(td.textContent));
-      const numeric = cells.find((value) => /^\d{2,}$/.test(value));
-      if (numeric) return numeric;
-    }
-    return '';
-  }
 
   function currentRecord() {
     return state.assets[state.session.index] || null;
@@ -3316,12 +2799,7 @@
     // network/UI completion is never gated by a fixed sleep.
     clearTimeout(state.autoTimer);
     const phase = clean(state.session.auto?.phase || '');
-    const waitingPhases = new Set([
-      'await_save', 'activate_wait', 'activate_wait_user',
-      'ppm_wait_new', 'ppm_wait_user_new', 'ppm_await_save',
-      'ppm_status_wait', 'ppm_status_wait_user'
-    ]);
-    const watchdogMs = waitingPhases.has(phase) ? 750 : 0;
+    const watchdogMs = WAITING_PHASES.has(phase) ? 750 : 0;
     state.autoTimer = setTimeout(() => runAutomatic().catch((error) => stopAutomaticWithError(error)), watchdogMs);
   }
 
@@ -3988,270 +3466,7 @@
     location.href = ppmListUrl(auto.assetEntityId);
   }
 
-  async function processPpmListPage(record) {
-    let auto = state.session.auto || {};
 
-    // v8.0.12: only the PPM register whose URL ends with # is the controller/parent.
-    // A register without the trailing # is treated as a disposable secondary window.
-    if (!isHashPpmParentPage()) {
-      addEvent('ppm-register-passive-no-hash', { url: location.href, assetCode: record?.assetCode || '' });
-      await persistSession();
-      return;
-    }
-
-    if (auto.phase === 'ppm_parent_refresh') {
-      const selector = 'a[title="Refresh the page"][onclick*="Toolbar.Refresh"]';
-      const button = exactPpmRefreshButton();
-      const info = ppmToolbarButtonState(button, selector);
-      addEvent('ppm-parent-refresh-check', {
-        ...info,
-        targetPhase: auto.ppmAfterRefreshPhase || '',
-        parentUrl: location.href,
-        isPpmParentRegister: isPpmListPage()
-      });
-      await persistSession();
-      if (!button || button.hasAttribute('disabled') || String(button.getAttribute('aria-disabled') || '').toLowerCase() === 'true') {
-        const started = Number(auto.ppmParentRefreshStartedAt || Date.now());
-        if (!auto.ppmParentRefreshStartedAt) { state.session.auto = { ...auto, ppmParentRefreshStartedAt: started }; await persistSession(); }
-        if (Date.now() - started > state.settings.lookupTimeoutMs) throw new Error('Parent PPM Refresh button did not become available before timeout.');
-        scheduleAuto(300);
-        return;
-      }
-      const clickedAt = Date.now();
-      state.session.auto = {
-        ...auto,
-        phase: 'ppm_parent_refresh_wait',
-        ppmParentRefreshPageInstance: PAGE_INSTANCE,
-        ppmParentRefreshClickedAt: clickedAt,
-        ppmParentRefreshSawDisabled: false
-      };
-      await persistSession();
-      addEvent('ppm-parent-refresh-click', { ...info, clickCalled: true, parentUrl: location.href });
-      await persistSession();
-      button.click();
-      scheduleAuto(250);
-      return;
-    }
-
-    if (auto.phase === 'ppm_parent_refresh_wait') {
-      const refreshButton = exactPpmRefreshButton();
-      const disabledNow = Boolean(refreshButton) && (refreshButton.hasAttribute('disabled') || String(refreshButton.getAttribute('aria-disabled') || '').toLowerCase() === 'true');
-      const elapsed = Date.now() - Number(auto.ppmParentRefreshClickedAt || Date.now());
-      const pageReloaded = auto.ppmParentRefreshPageInstance !== PAGE_INSTANCE;
-      const sawDisabled = Boolean(auto.ppmParentRefreshSawDisabled || disabledNow);
-      if (sawDisabled !== Boolean(auto.ppmParentRefreshSawDisabled)) {
-        state.session.auto = { ...auto, ppmParentRefreshSawDisabled: sawDisabled };
-        await persistSession();
-        auto = state.session.auto || {};
-      }
-      const toolbarReadyAgain = Boolean(refreshButton) && !disabledNow && document.readyState === 'complete' && elapsed >= 500;
-      if (!pageReloaded && !toolbarReadyAgain) {
-        if (elapsed > state.settings.lookupTimeoutMs) throw new Error('Parent PPM page refresh did not complete before timeout.');
-        scheduleAuto(250);
-        return;
-      }
-      const nextPhase = auto.ppmAfterRefreshPhase || 'ppm_next';
-      addEvent('ppm-parent-refresh-complete', {
-        nextPhase,
-        pageReloaded,
-        toolbarReadyAgain,
-        sawDisabled,
-        elapsedMs: elapsed,
-        parentUrl: location.href
-      });
-      state.session.auto = { ...auto, phase: nextPhase, ppmParentRefreshStartedAt: 0, ppmParentRefreshClickedAt: 0, ppmParentRefreshPageInstance: '', ppmParentRefreshSawDisabled: false, ppmAfterRefreshPhase: '' };
-      await persistSession();
-      auto = state.session.auto || {};
-      if (nextPhase === 'ppm_cycle_complete_parent') {
-        await finishPostSave(record, auto.ppmResults || []);
-        return;
-      }
-    }
-
-    const ppm = currentPpm(record);
-    if (!ppm) {
-      await finishPostSave(record, auto.ppmResults || []);
-      return;
-    }
-    if (auto.phase === 'ppm_await_save') {
-      if (ppmListContainsCurrent(ppm)) {
-        await recordPpmResult(record, ppm, 'saved', 'PPM detected in asset PPM register after Save', ppmListEntityId(ppm));
-        return;
-      }
-      if (Date.now() - Number(auto.ppmSaveStartedAt || Date.now()) > state.settings.saveTimeoutMs) {
-        throw new Error(`PPM Save could not be verified for ${ppm.ppmKey}.`);
-      }
-      scheduleAuto(0);
-      return;
-    }
-
-    if (['ppm_open_list', 'ppm_next'].includes(auto.phase) && ppmListContainsCurrent(ppm)) {
-      await recordPpmResult(record, ppm, 'existing', 'Equivalent PPM already exists; duplicate creation skipped', ppmListEntityId(ppm));
-      return;
-    }
-
-    if (auto.phase === 'ppm_wait_new') {
-      const child = await runtimeMessage({ type: 'PPM_CHILD_STATE', assetCode: record.assetCode });
-      addEvent('ppm-child-check', { found: Boolean(child?.found), childTabId: child?.tabId ?? null, childUrl: child?.url || '', childStatus: child?.status || '' });
-      await persistSession();
-      if (child?.found) {
-        scheduleAuto(150);
-        return;
-      }
-
-      const elapsed = Date.now() - Number(auto.ppmOpenStartedAt || Date.now());
-      if (elapsed > state.settings.lookupTimeoutMs) {
-        throw new Error(`Create New was clicked/retried, but the PPM child window did not open for ${ppm.ppmKey}.`);
-      }
-
-      const button = exactPpmNewButton() || findNewButton();
-      const info = ppmToolbarButtonState(button, 'a[title="Create New"][onclick*="Toolbar.New"]');
-      const attempts = Number(auto.ppmNewClickAttempts || 0);
-      const lastClick = Number(auto.ppmNewLastClickAt || 0);
-      addEvent('ppm-create-new-retry-check', { ...info, attempt: attempts + 1, elapsedMs: elapsed });
-      await persistSession();
-      if (!button || button.hasAttribute('disabled') || String(button.getAttribute('aria-disabled') || '').toLowerCase() === 'true') {
-        scheduleAuto(500);
-        return;
-      }
-      if (!lastClick || Date.now() - lastClick >= 700) {
-        button.click();
-        const now = Date.now();
-        state.session.auto = { ...auto, ppmNewClickAttempts: attempts + 1, ppmNewLastClickAt: now };
-        await persistSession();
-        addEvent('ppm-create-new-retry-click', { ...info, attempt: attempts + 1, clickCalled: true });
-        await persistSession();
-      }
-      scheduleAuto(200);
-      return;
-    }
-
-    if (auto.phase === 'ppm_wait_user_new') {
-      // Deliberately do not click + New again. A manual click opens the legacy
-      // popup reliably and prevents duplicate windows. The popup content script
-      // sees this same session and continues with ppm_fill automatically.
-      scheduleAuto(900);
-      return;
-    }
-
-    const ppmIndex = Number(auto.ppmIndex || 0);
-    const alreadyClicked = Number(auto.ppmNewClickedForIndex ?? -1) === ppmIndex;
-    if (alreadyClicked) {
-      state.session.auto = { ...auto, phase: 'ppm_wait_new', ppmOpenStartedAt: Number(auto.ppmOpenStartedAt || Date.now()) };
-      await persistSession();
-      scheduleAuto(200);
-      return;
-    }
-
-    const newButton = findNewButton();
-    if (!newButton) {
-      const started = Number(auto.ppmListReadyStartedAt || Date.now());
-      if (!auto.ppmListReadyStartedAt) {
-        state.session.auto = { ...auto, ppmListReadyStartedAt: started };
-        await persistSession();
-      }
-      if (Date.now() - started > state.settings.lookupTimeoutMs) {
-        state.session.auto = { ...state.session.auto, phase: 'ppm_wait_user_new', ppmOpenStartedAt: Date.now() };
-        await persistSession();
-        render();
-        showToast('Click the real CAFM + New button ONCE to add the next PPM. Automatic filling will continue in the new window.', 'warn', 16000);
-        scheduleAuto(900);
-        return;
-      }
-      scheduleAuto(450);
-      return;
-    }
-    await runtimeMessage({ type: 'REGISTER_PPM_PARENT', assetCode: record.assetCode });
-    const info = ppmToolbarButtonState(newButton, 'a[title="Create New"][onclick*="Toolbar.New"]');
-    addEvent('ppm-create-new-ready', { ...info, ppmIndex, ppmKey: ppm.ppmKey });
-    await persistSession();
-    if (newButton.hasAttribute('disabled') || String(newButton.getAttribute('aria-disabled') || '').toLowerCase() === 'true') {
-      state.session.auto = { ...auto, phase: 'ppm_wait_new', ppmOpenStartedAt: Date.now(), ppmListReadyStartedAt: 0, ppmNewClickedForIndex: ppmIndex, ppmNewClickAttempts: 0, ppmNewLastClickAt: 0 };
-      await persistSession();
-      scheduleAuto(400);
-      return;
-    }
-    state.session.auto = {
-      ...auto,
-      phase: 'ppm_wait_new',
-      ppmOpenStartedAt: Date.now(),
-      ppmListReadyStartedAt: 0,
-      ppmNewClickedForIndex: ppmIndex,
-      ppmNewClickAttempts: 1,
-      ppmNewLastClickAt: Date.now()
-    };
-    await persistSession();
-    newButton.click();
-    addEvent('ppm-create-new-click', { ...info, ppmIndex, ppmKey: ppm.ppmKey, attempt: 1, clickCalled: true });
-    await persistSession();
-    scheduleAuto(200);
-  }
-
-  async function processPpmItemPage(record) {
-    const auto = state.session.auto || {};
-    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait', 'ppm_cycle_complete_parent'].includes(auto.phase)) {
-      return;
-    }
-    const ppm = currentPpm(record);
-    if (!ppm) throw new Error(`No linked PPM row is available for ${record.assetCode}.`);
-
-    const ppmEntityId = entityIdFromUrl();
-    if (ppmEntityId && ppmEntityId !== '-1') {
-      if (auto.phase === 'ppm_await_save') {
-        await recordPpmResult(record, ppm, 'saved', 'CAFM PPM entity page detected after Save', ppmEntityId);
-      } else {
-        state.session.auto = { ...auto, phase: 'ppm_open_list' };
-        await persistSession();
-        location.href = ppmListUrl(auto.assetEntityId);
-      }
-      return;
-    }
-
-    if (!isPpmNewEntityPage()) throw new Error(`Expected a New PPM page for ${record.assetCode}.`);
-    const issues = ppmSourceIssues(ppm);
-    if (issues.length) throw new Error(`PPM ${ppm.ppmKey} cannot be imported: ${issues.join('; ')}`);
-
-    if (['ppm_wait_new', 'ppm_wait_user_new', 'ppm_open_list', 'ppm_next'].includes(auto.phase)) {
-      state.session.auto = { ...auto, phase: 'ppm_fill' };
-      await persistSession();
-      scheduleAuto(100);
-      return;
-    }
-
-    if (auto.phase === 'ppm_fill') {
-      showToast(`Creating PPM for ${record.assetCode}: ${ppm.instruction}`, 'info', 7000);
-      // Data-driven workflow: resolve lookup controls first (Contract then
-      // Instruction, followed by any other populated lookup columns). This lets
-      // Evolution apply Instruction defaults before Last Service/direct fields
-      // from the workbook are entered.
-      await fillPpmLookups(ppm);
-      await fillPpmFields(ppm);
-      const errors = await validatePpmPageBeforeSave(ppm);
-      if (errors.length) {
-        for (const problem of errors) await recordValidationWarning(record, { scope: 'ppm', field: 'Pre-save audit', expected: 'Excel-backed value committed', actual: '', reason: problem, ppmKey: ppm.ppmKey });
-        addEvent('ppm-pre-save-warning-summary', { ppmKey: ppm.ppmKey, warningCount: errors.length, warnings: errors });
-      }
-      const save = findSaveButton();
-      if (!save) throw new Error(`CAFM PPM Save button was not detected for ${ppm.ppmKey}.`);
-      state.session.auto = { ...state.session.auto, phase: 'ppm_await_save', ppmSaveStartedAt: Date.now() };
-      await persistSession();
-      dispatchClick(save, false);
-      scheduleAuto(0);
-      return;
-    }
-
-    if (auto.phase === 'ppm_await_save') {
-      const validation = validationMessage();
-      if (validation) throw new Error(`CAFM did not save PPM ${ppm.ppmKey}: ${validation}`);
-      if (Date.now() - Number(auto.ppmSaveStartedAt || Date.now()) > state.settings.saveTimeoutMs) throw new Error(`PPM save confirmation timed out for ${ppm.ppmKey}.`);
-      scheduleAuto(0);
-      return;
-    }
-
-    state.session.auto = { ...auto, phase: 'ppm_fill' };
-    await persistSession();
-    scheduleAuto(100);
-  }
 
   async function runAutomatic() {
     if (state.busy) return;
@@ -4923,6 +4138,49 @@
       }).catch(() => scheduleAuto(150));
     }
   });
+
+  CI.runtime.bind({
+    state,
+    PAGE_INSTANCE,
+    clean,
+    norm,
+    wait,
+    visible,
+    isAssistantElement,
+    elementValue,
+    dispatchClick,
+    addEvent,
+    persistSession,
+    scheduleAuto,
+    finishPostSave,
+    recordPpmResult,
+    currentPpm,
+    currentRecord,
+    runtimeMessage,
+    render,
+    showToast,
+    sameOriginDocuments,
+    elementFromLearnedFingerprint,
+    clickTab,
+    fillByLabel,
+    setCheckboxByLabel,
+    setSelectByLabel,
+    fillEstimatedTime,
+    setNativeValue,
+    selectLookup,
+    nearestControl,
+    lookupTextMatches,
+    nearbyHiddenValues,
+    hiddenCommitted,
+    findSaveButton,
+    validationMessage,
+    ppmSourceIssues
+  });
+
+  const processPpmListPage = (...args) => CI.pages.ppmRegister.processPpmListPage(...args);
+  const processPpmItemPage = (...args) => CI.pages.ppmEditor.processPpmItemPage(...args);
+  const findNewButton = (...args) => CI.pages.ppmRegister.findNewButton(...args);
+  const clickPpmNewToolbar = (...args) => CI.pages.ppmRegister.clickPpmNewToolbar(...args);
 
   async function initTop() {
     if (!isWorkflowPage()) return;

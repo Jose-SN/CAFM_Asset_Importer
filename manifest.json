@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.12",
-  "version": "8.0.12",
-  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.12: uses the trailing # on the PPM-register URL as the parent rule; closes same-asset register tabs without # and PPM editor tabs, then resumes Create New from the # parent.",
+  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.13",
+  "version": "8.0.13",
+  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.13: modular page-based architecture; uses the trailing # on the PPM-register URL as the parent rule.",
   "permissions": [
     "storage",
     "unlimitedStorage",
@@ -23,6 +23,20 @@
         "https://concept/*"
       ],
       "js": [
+        "src/bootstrap.js",
+        "src/core/constants.js",
+        "src/core/text.js",
+        "src/core/dom.js",
+        "src/core/lookup-spec.js",
+        "src/core/pages.js",
+        "src/core/storage.js",
+        "src/workflow/phases.js",
+        "src/runtime/host.js",
+        "src/data/ppm.js",
+        "src/pages/ppm-mappings.js",
+        "src/pages/ppm-register.js",
+        "src/pages/ppm-editor.js",
+        "src/pages/registry.js",
         "xlsx_reader.js",
         "asset_rules.js",
         "content.js"
@@ -33,7 +47,7 @@
     }
   ],
   "action": {
-    "default_title": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.12",
+    "default_title": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.13",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

@@ -1,4 +1,13 @@
-# v8.0.12
+# v8.0.13
+- Begin modular architecture: extract core modules under `src/` (constants, text, DOM, lookup-spec, pages, storage, workflow phases, runtime host).
+- Extract PPM page handlers to `src/pages/ppm-register.js` and `src/pages/ppm-editor.js` (New button detection, fill/validate/save loop, processPpmListPage, processPpmItemPage).
+- Extract PPM field mappings to `src/pages/ppm-mappings.js` and PPM data helpers to `src/data/ppm.js`.
+- `content.js` binds runtime dependencies via `CI.runtime.bind()` and delegates to extracted modules.
+- Expand README with workbook column reference and operator runbook.
+- Add automation state diagram to ISSUE_TRACKING.md.
+- No automation behaviour changes intended.
+
+## v8.0.12
 - PPM parent identity is now determined by the trailing `#` in `ViewFASSETItemPPMs.aspx?...#`.
 - PPM register tabs for the same asset without trailing `#` are closed after PPM completion.
 - PPM editor tabs are closed as before.
