@@ -7,6 +7,8 @@
 
   /** @type {null | Record<string, unknown>} */
   let cfg = null;
+  let phaseStartedAt = 0;
+  let lastStepAt = 0;
 
   function configure(deps) {
     cfg = Object.freeze({ ...deps });
@@ -17,8 +19,25 @@
     return cfg;
   }
 
+  function markRunStart() {
+    phaseStartedAt = performance.now();
+    lastStepAt = phaseStartedAt;
+  }
+
+  function stepDurationMs() {
+    const now = performance.now();
+    const durationMs = Math.round(now - lastStepAt);
+    lastStepAt = now;
+    return durationMs;
+  }
+
   function addEvent(type, details = {}) {
     const b = C();
+    const now = performance.now();
+    let durationMs = details.durationMs;
+    if (durationMs == null && clean(type) === 'phase' && phaseStartedAt) {
+      durationMs = Math.round(now - phaseStartedAt);
+    }
     const event = {
       at: new Date().toISOString(),
       type: clean(type),
@@ -26,8 +45,10 @@
       url: location.href,
       assetCode: clean(b.workflowRecord(b.state.session.auto)?.assetCode || b.currentRecord()?.assetCode || ''),
       phase: clean(b.state.session.auto?.phase || ''),
+      ...(durationMs != null ? { durationMs } : {}),
       ...details
     };
+    if (clean(type) === 'phase') phaseStartedAt = now;
     b.state.session.events = [...(b.state.session.events || []), event].slice(-2000);
     return event;
   }
@@ -62,5 +83,5 @@
   }
 
   root.core = root.core || {};
-  root.core.events = Object.freeze({ configure, addEvent, recordValidationWarning });
+  root.core.events = Object.freeze({ configure, addEvent, recordValidationWarning, markRunStart, stepDurationMs });
 })();

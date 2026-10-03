@@ -206,10 +206,32 @@ function downloadLog() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function downloadDiagnostic() {
+function summarizeEvents(events = []) {
+  const slowestSteps = events
+    .filter((event) => ['ppm-fill-step', 'ppm-post-refresh-close-sweep', 'ppm-fill-complete', 'ppm-parent-refresh-complete'].includes(event.type))
+    .map((event) => ({
+      type: event.type,
+      step: event.step || event.context || event.phase || '',
+      durationMs: Number(event.durationMs || 0)
+    }))
+    .sort((a, b) => b.durationMs - a.durationMs)
+    .slice(0, 12);
+  const phaseDurations = events
+    .filter((event) => event.type === 'phase' && event.durationMs != null)
+    .map((event) => ({ phase: event.phase, durationMs: event.durationMs }))
+    .slice(-40);
+  return {
+    totalEvents: events.length,
+    slowestSteps,
+    phaseDurations
+  };
+}
+
+function buildDiagnosticPayload(record) {
   const auto = C().state.session.auto || null;
-  const record = C().workflowRecord(auto) || C().currentRecord();
-  const payload = {
+  const resolved = record || C().workflowRecord(auto) || C().currentRecord();
+  const recentEvents = (C().state.session.events || []).slice(-2000);
+  return {
     generatedAt: new Date().toISOString(),
     extensionVersion: VERSION,
     page: { url: location.href, title: document.title, readyState: document.readyState },
@@ -221,12 +243,12 @@ function downloadDiagnostic() {
       ppmRowsLoaded: C().state.ppms.length
     } : null,
     current: {
-      assetCode: record?.assetCode || '',
-      workbookRow: record?.workbookRow || '',
+      assetCode: resolved?.assetCode || '',
+      workbookRow: resolved?.workbookRow || '',
       assetIndex: C().state.session.index,
       phase: auto?.phase || '',
       ppmIndex: auto?.ppmIndex ?? null,
-      ppmKey: C().currentPpm(record)?.ppmKey || '',
+      ppmKey: C().currentPpm(resolved)?.ppmKey || '',
       currentAssetStatus: C().currentAssetStatusText(),
       currentPpmStatus: C().currentPpmStatusText()
     },
@@ -238,19 +260,40 @@ function downloadDiagnostic() {
     },
     settings: { ...C().state.settings },
     auto,
-    status: record ? C().state.session.statuses?.[record.assetCode] || null : null,
-    recentEvents: (C().state.session.events || []).slice(-2000),
+    status: resolved ? C().state.session.statuses?.[resolved.assetCode] || null : null,
+    recentEvents,
+    timingSummary: summarizeEvents(recentEvents),
     validationMessage: C().validationMessage() || '',
     learnedControls: { status: C().state.learnedStatus || null, ppmNew: C().state.learnedNew || null }
   };
+}
+
+function downloadAssetTimeline(record, options = {}) {
+  const payload = buildDiagnosticPayload(record);
+  const assetCode = clean(record?.assetCode || payload.current?.assetCode || 'no-asset').replace(/[^A-Za-z0-9_-]+/g, '_');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const prefix = options.diagnostic ? 'EE_CAFM_Diagnostic' : 'EE_CAFM_Timeline';
+  const fileName = `${prefix}_v${VERSION}_${assetCode}_${stamp}.json`;
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   a.href = url;
-  a.download = `EE_CAFM_Diagnostic_v${VERSION}_${clean(record?.assetCode || 'no-asset').replace(/[^A-Za-z0-9_-]+/g, '_')}_${stamp}.json`;
+  a.download = fileName;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  try {
+    C().addEvent('asset-timeline-download', {
+      assetCode: record?.assetCode || payload.current?.assetCode || '',
+      auto: Boolean(options.auto),
+      fileName
+    });
+  } catch (_) {}
+  return fileName;
+}
+
+function downloadDiagnostic() {
+  const record = C().workflowRecord(C().state.session.auto) || C().currentRecord();
+  downloadAssetTimeline(record, { diagnostic: true });
 }
 
 async function setStatus(record, status, note = '', extra = {}) {
@@ -296,6 +339,9 @@ function nextPendingIndex(start = C().state.session.index + 1) {
     clearSession,
     downloadLog,
     downloadDiagnostic,
+    buildDiagnosticPayload,
+    downloadAssetTimeline,
+    summarizeEvents,
     setStatus,
     statusOf,
     nextPendingIndex

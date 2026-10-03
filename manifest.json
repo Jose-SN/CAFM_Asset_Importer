@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.17",
-  "version": "8.0.17",
-  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.17: PPM popup child registry, close-all, and parent refresh loop.",
+  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.18",
+  "version": "8.0.18",
+  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.18: PPM close sweep, fill progress toasts, timing logs, and auto timeline export.",
   "permissions": [
     "storage",
     "unlimitedStorage",

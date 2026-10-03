@@ -43,12 +43,21 @@
     for (const item of ppmDirectMapping(ppm)) {
       if (item.kind === 'checkbox' && item.value == null) continue;
       if (item.kind !== 'checkbox' && !clean(item.value)) continue;
+      const fieldStart = performance.now();
+      b.showToast(`PPM: filling ${item.label[0]}...`, 'info', 3500);
       let result;
       if (item.kind === 'checkbox') result = b.setCheckboxByLabel(item.label, Boolean(item.value));
       else if (item.kind === 'select') result = b.setSelectByLabel(item.label, item.value);
       else result = b.fillByLabel(item.label, item.value);
       results.push({ ...result, field: item.label[0], kind: item.kind });
-      b.addEvent('ppm-field-fill', { ppmKey: ppm.ppmKey, field: item.label[0], expected: clean(item.value), status: result.status || '', actual: result.control ? clean(elementValue(result.control)) : '' });
+      b.addEvent('ppm-field-fill', {
+        ppmKey: ppm.ppmKey,
+        field: item.label[0],
+        expected: clean(item.value),
+        status: result.status || '',
+        actual: result.control ? clean(elementValue(result.control)) : '',
+        durationMs: Math.round(performance.now() - fieldStart)
+      });
       if (['missing', 'failed', 'missing-select', 'option-missing'].includes(result.status)) {
         await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: 'General', field: item.label[0], expected: item.value, actual: '', reason: `Fill result: ${result.status}`, ppmKey: ppm.ppmKey });
       }
@@ -78,11 +87,37 @@
     const b = $();
     const evidence = [];
     for (const spec of ppmLookupMapping(ppm)) {
+      const stepStart = performance.now();
+      b.showToast(`PPM: selecting ${spec.field}...`, 'info', 5000);
       try {
         const result = await b.selectLookup(spec);
         evidence.push(result);
-        b.addEvent('ppm-lookup-selected', { ppmKey: ppm.ppmKey, field: spec.field, expected: clean(spec.value || spec.display || ''), selected: clean(result.selected || result.selectedText || ''), commitVerified: Boolean(result.commitVerified || result.alreadySelected || result.nativeSelect || result.hiddenCommitted) });
+        const durationMs = Math.round(performance.now() - stepStart);
+        b.addEvent('ppm-fill-step', {
+          ppmKey: ppm.ppmKey,
+          step: spec.field,
+          kind: 'lookup',
+          durationMs,
+          selected: clean(result.selected || result.selectedText || ''),
+          commitVerified: Boolean(result.commitVerified || result.alreadySelected || result.nativeSelect || result.hiddenCommitted)
+        });
+        b.addEvent('ppm-lookup-selected', {
+          ppmKey: ppm.ppmKey,
+          field: spec.field,
+          expected: clean(spec.value || spec.display || ''),
+          selected: clean(result.selected || result.selectedText || ''),
+          commitVerified: Boolean(result.commitVerified || result.alreadySelected || result.nativeSelect || result.hiddenCommitted),
+          durationMs
+        });
       } catch (error) {
+        b.addEvent('ppm-fill-step', {
+          ppmKey: ppm.ppmKey,
+          step: spec.field,
+          kind: 'lookup',
+          durationMs: Math.round(performance.now() - stepStart),
+          status: 'error',
+          reason: error.message || String(error)
+        });
         await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: spec.tab || 'General', field: spec.field, expected: spec.value || spec.display || '', actual: '', reason: error.message || String(error), ppmKey: ppm.ppmKey });
       }
       await wait(0);
@@ -183,9 +218,17 @@
     }
 
     if (auto.phase === 'ppm_fill') {
+      root.core.events.markRunStart();
+      const fillStart = performance.now();
       b.showToast(`Creating PPM for ${record.assetCode}: ${ppm.instruction}`, 'info', 7000);
       await fillPpmLookups(ppm);
+      b.showToast(`PPM: filling remaining fields...`, 'info', 4000);
       await fillPpmFields(ppm);
+      b.addEvent('ppm-fill-complete', {
+        ppmKey: ppm.ppmKey,
+        instruction: ppm.instruction,
+        durationMs: Math.round(performance.now() - fillStart)
+      });
       const errors = await validatePpmPageBeforeSave(ppm);
       if (errors.length) {
         for (const problem of errors) await b.recordValidationWarning(record, { scope: 'ppm', field: 'Pre-save audit', expected: 'Excel-backed value committed', actual: '', reason: problem, ppmKey: ppm.ppmKey });

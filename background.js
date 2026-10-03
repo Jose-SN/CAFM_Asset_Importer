@@ -236,7 +236,8 @@ async function closeAllPpmChildrenAndNotifyParent(options) {
   }
 
   let parentNotified = false;
-  if (keepParent) {
+  const notifyParent = options.notifyParent !== false;
+  if (keepParent && notifyParent) {
     parentNotified = await notifyPpmParentClosed(keepParent, {
       type: 'EE_PPM_CURRENT_EDITOR_CLOSED',
       closedTabId: closedTabIds[0] ?? senderTabId ?? null,
@@ -544,6 +545,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'PPM_SWEEP_CHILDREN') {
+    const assetCode = String(message.assetCode || '');
+    const assetEntityId = String(message.assetEntityId || '').trim();
+    const senderTabId = sender.tab?.id;
+
+    (async () => {
+      const result = await closeAllPpmChildrenAndNotifyParent({
+        assetCode,
+        assetEntityId,
+        senderTabId,
+        nextPhase: String(message.nextPhase || 'ppm_next'),
+        notifyParent: false
+      });
+      sendResponseSafe(sendResponse, { assetCode, assetEntityId, ...result });
+    })().catch((error) => sendResponseSafe(sendResponse, {
+      ok: false,
+      reason: String(error?.message || error),
+      currentTabId: senderTabId ?? null
+    }));
+    return true;
+  }
+
   if (message.type === 'PPM_CLOSE_CURRENT_EDITOR_TAB') {
     const assetCode = String(message.assetCode || '');
     const assetEntityId = String(message.assetEntityId || '').trim();
@@ -554,7 +577,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         assetCode,
         assetEntityId,
         senderTabId,
-        nextPhase: String(message.nextPhase || 'ppm_next')
+        nextPhase: String(message.nextPhase || 'ppm_next'),
+        notifyParent: true
       });
       const parent = await getStoredPpmParent();
       if (parent) {

@@ -1,4 +1,12 @@
-# v8.0.17
+# v8.0.18
+- Post-refresh PPM close sweep: `PPM_SWEEP_CHILDREN` closes leftover FPPM popup tabs/windows without re-triggering parent refresh.
+- Duplicate/existing PPM path: detect saved-ppm or parent-register child URLs during `ppm_wait_new`, sweep, and refresh sooner.
+- Existing PPM skip now sweeps children before advancing to the next linked PPM row.
+- PPM fill progress toasts and `ppm-fill-step` / `ppm-fill-complete` events with `durationMs` for lookups and fields.
+- Phase events include elapsed `durationMs` between transitions; diagnostic JSON includes `timingSummary`.
+- Auto-download per-asset timeline JSON (`EE_CAFM_Timeline_*.json`) when each asset cycle completes.
+
+## v8.0.17
 - Background PPM child registry: track every FPPM popup/tab by unique id (`ppm-{tabId}-{timestamp}`) in the parent workflow record.
 - `PPM_EXPECT_CHILD` when parent clicks + New; register children on tab create/update even without `openerTabId`.
 - `PPM_PREPARE_CLOSE` stores pending refresh/next phase before close; `PPM_CLOSE_CURRENT_EDITOR_TAB` closes all registered FPPM tabs and popup windows, then notifies parent.

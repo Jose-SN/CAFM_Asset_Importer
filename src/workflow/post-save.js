@@ -96,6 +96,11 @@
       activePpmCount: activePpms
     });
 
+    try {
+      const fileName = root.data.workbook.downloadAssetTimeline(record, { auto: true });
+      b.showToast(`Timeline log downloaded: ${fileName}`, 'info', 6000);
+    } catch (_) {}
+
     const next = b.nextPendingIndex(b.state.session.index + 1);
     if (auto.mode === 'manual-post-save') {
       b.state.session.auto = { active: false, mode: auto.mode, phase: 'complete', completedAt: Date.now(), assetEntityId: entityId };

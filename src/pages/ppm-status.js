@@ -327,6 +327,10 @@
       return;
     }
 
+    if (status === 'existing') {
+      await root.pages.ppmRegister.sweepPpmChildren(record, { context: 'existing-ppm-skip' });
+    }
+
     if (nextIndex >= linked.length) {
       b.state.session.auto = { ...auto, ppmResults: results, ppmResumeAfterActivation: false, ppmResumeIndex: null };
       await b.persistSession();

@@ -1,4 +1,4 @@
-# CAFM Smoke Test Runbook (v8.0.17)
+# CAFM Smoke Test Runbook (v8.0.18)
 
 Run these three scenarios on live Concept Evolution after reloading the extension (`chrome://extensions` → Reload).
 
@@ -132,10 +132,20 @@ Add Contract / Cost Centre / dates from your live CAFM lookup values if prefill 
 
 ---
 
+## v8.0.18 — close sweep, timing, auto timeline
+
+1. Run an asset where at least one linked PPM **already exists** in CAFM.
+2. After parent refresh, confirm leftover FPPM popup windows close automatically (no manual close).
+3. Diagnostic JSON should include `ppm-post-refresh-close-sweep` and/or `ppm-duplicate-child-detected` events.
+4. When creating a new PPM, confirm step toasts (`PPM: selecting Contract...`, etc.) and `ppm-fill-step` events with `durationMs`.
+5. When the asset cycle completes, confirm a timeline JSON auto-downloads (`EE_CAFM_Timeline_*.json` in browser Downloads).
+
+---
+
 ## On failure
 
 1. Do **not** clear session.
-2. Download **diagnostic JSON** + **CSV log**.
+2. Download **diagnostic JSON** + **CSV log** (or use the auto-downloaded timeline JSON from step 5 above).
 3. Note phase name from panel auto-state line.
 4. See [ISSUE_TRACKING.md](ISSUE_TRACKING.md) for phase → cause mapping.
 

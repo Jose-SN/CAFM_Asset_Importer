@@ -34,6 +34,7 @@
     clearSession,
     downloadLog,
     downloadDiagnostic,
+    downloadAssetTimeline,
     setStatus,
     statusOf,
     nextPendingIndex
@@ -172,7 +173,9 @@
     recordValidationWarning: CI.core.events.recordValidationWarning,
     dispatchLegacySingleClick: CI.core.toolbar.dispatchLegacySingleClick,
     render: CI.ui.panel.render,
-    showToast: CI.ui.panel.showToast
+    showToast: CI.ui.panel.showToast,
+    downloadAssetTimeline: CI.data.workbook.downloadAssetTimeline,
+    sweepPpmChildren: CI.pages.ppmRegister.sweepPpmChildren
   });
 
   function reportInitFailure(error) {

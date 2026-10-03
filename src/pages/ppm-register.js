@@ -129,6 +129,70 @@
     } catch (_) {}
   }
 
+  function analyzePpmChildUrl(url) {
+    if (!url) return { kind: 'unknown' };
+    try {
+      const u = new URL(url, location.href);
+      if (/ViewFASSETItemPPMs\.aspx/i.test(u.pathname)) return { kind: 'parent-register' };
+      if (/ViewFPPMItem\.aspx/i.test(u.pathname)) {
+        const id = u.searchParams.get('id');
+        if (id && id !== '-1') return { kind: 'saved-ppm', ppmEntityId: id };
+        return { kind: 'new-ppm' };
+      }
+    } catch (_) {}
+    return { kind: 'unknown' };
+  }
+
+  async function sweepPpmChildren(record, options = {}) {
+    const b = $();
+    const auto = b.state.session.auto || {};
+    const assetCode = record?.assetCode || auto.assetCode || '';
+    const assetEntityId = String(options.assetEntityId || auto.assetEntityId || entityIdFromUrl() || '');
+    const context = clean(options.context || 'post-refresh');
+    const started = performance.now();
+    try {
+      const sweep = await b.runtimeMessage({
+        type: 'PPM_SWEEP_CHILDREN',
+        assetCode,
+        assetEntityId
+      });
+      const durationMs = Math.round(performance.now() - started);
+      b.addEvent('ppm-post-refresh-close-sweep', {
+        context,
+        durationMs,
+        closedCount: sweep?.closedCount ?? 0,
+        closedTabIds: sweep?.closedTabIds ?? [],
+        closeErrors: sweep?.closeErrors ?? [],
+        parentNotified: false
+      });
+      if (Number(sweep?.closedCount || 0) > 0) {
+        b.showToast(`Closed ${sweep.closedCount} leftover PPM popup(s).`, 'info', 4000);
+      }
+      return sweep;
+    } catch (error) {
+      b.addEvent('ppm-post-refresh-close-sweep-error', {
+        context,
+        message: String(error?.message || error)
+      });
+      return null;
+    }
+  }
+
+  async function beginPpmParentRefresh(auto, afterRefreshPhase) {
+    const b = $();
+    b.state.session.auto = {
+      ...auto,
+      phase: 'ppm_parent_refresh',
+      ppmAfterRefreshPhase: afterRefreshPhase,
+      ppmParentRefreshStartedAt: 0,
+      ppmParentRefreshClickedAt: 0,
+      ppmParentRefreshPageInstance: '',
+      ppmParentRefreshSawDisabled: false
+    };
+    await b.persistSession();
+    b.scheduleAuto(100);
+  }
+
   function clickPpmNewToolbar(guardKey = 'ppm-new') {
     const b = $();
     const selector = 'a[title="Create New"][onclick*="Toolbar.New"]';
@@ -191,6 +255,7 @@
         return;
       }
     }
+    await sweepPpmChildren(record, { context: 'ppm-cycle-complete' });
     await b.finishPostSave(record, ppmResults);
   }
 
@@ -264,6 +329,7 @@
         elapsedMs: elapsed,
         parentUrl: location.href
       });
+      await sweepPpmChildren(record, { context: 'post-refresh' });
       b.state.session.auto = { ...auto, phase: nextPhase, ppmParentRefreshStartedAt: 0, ppmParentRefreshClickedAt: 0, ppmParentRefreshPageInstance: '', ppmParentRefreshSawDisabled: false, ppmAfterRefreshPhase: '' };
       await b.persistSession();
       auto = b.state.session.auto || {};
@@ -310,6 +376,22 @@
       b.addEvent('ppm-child-check', { found: Boolean(child?.found), childTabId: child?.tabId ?? null, childUrl: child?.url || '', childStatus: child?.status || '' });
       await b.persistSession();
       if (child?.found) {
+        const analysis = analyzePpmChildUrl(child.url);
+        const openElapsed = Date.now() - Number(auto.ppmOpenStartedAt || Date.now());
+        const duplicateReady = analysis.kind === 'parent-register'
+          || (analysis.kind === 'saved-ppm' && openElapsed >= 2500);
+        if (duplicateReady) {
+          b.addEvent('ppm-duplicate-child-detected', {
+            childTabId: child.tabId ?? null,
+            childUrl: child.url || '',
+            kind: analysis.kind,
+            ppmEntityId: analysis.ppmEntityId || '',
+            elapsedMs: openElapsed
+          });
+          await sweepPpmChildren(record, { context: 'duplicate-child-detected' });
+          await beginPpmParentRefresh(auto, 'ppm_next');
+          return;
+        }
         b.scheduleAuto(150);
         return;
       }
@@ -462,6 +544,9 @@
     ppmInstructionCanon,
     ppmListContainsCurrent,
     ppmListEntityId,
+    analyzePpmChildUrl,
+    sweepPpmChildren,
+    beginPpmParentRefresh,
     processPpmListPage,
     startPpmForCurrentPage
   });
