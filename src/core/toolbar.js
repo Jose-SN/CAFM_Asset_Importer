@@ -532,6 +532,19 @@ async function selectActiveFromStatusDropdown(control, dialogRoot, label = 'Stat
   return true;
 }
 
+function findAssetGeneralNavLink() {
+  const exact = document.querySelector('a.fsiNavItem[title="General"], a#Fsi\\.Concept\\.Asset\\.Entities\\.FASSET\\.Common\\.Edit');
+  if (exact && visible(exact) && !isAssistantElement(exact)) return exact;
+  const candidates = [...document.querySelectorAll('a.fsiNavItem, a[title="General"]')]
+    .filter((element) => {
+      if (!visible(element) || isAssistantElement(element)) return false;
+      const title = norm(element.getAttribute('title') || '');
+      const text = norm(element.querySelector('.fsiNavItemText')?.textContent || element.textContent || '');
+      return title === 'general' || text === 'general';
+    });
+  return candidates[0] || null;
+}
+
 function findAssetPpmNavLink() {
   const candidates = [...document.querySelectorAll('a,button,[role="button"],[onclick],li,span,div,td')]
     .filter((element) => {
@@ -569,6 +582,7 @@ function findAssetPpmNavLink() {
     findChangePpmStatusDialog,
     findConfirmButton,
     selectActiveFromStatusDropdown,
+    findAssetGeneralNavLink,
     findAssetPpmNavLink,
     currentPpmStatusText,
     ppmIsActive

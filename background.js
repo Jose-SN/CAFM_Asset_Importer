@@ -142,7 +142,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponseSafe(sendResponse, { ok: false, reason: 'missing-parent-tab-or-asset' });
       return false;
     }
-    const parent = { assetCode, tabId: tab.id, windowId: tab.windowId, registeredAt: Date.now() };
+    const parent = {
+      assetCode,
+      assetEntityId: String(message.assetEntityId || '').trim(),
+      tabId: tab.id,
+      windowId: tab.windowId,
+      registeredAt: Date.now()
+    };
     chrome.storage.local.set({ [PPM_PARENT_KEY]: parent })
       .then(() => chrome.storage.local.remove(PPM_CHILD_KEY))
       .then(() => sendResponseSafe(sendResponse, { ok: true, parentTabId: tab.id }))
@@ -193,7 +199,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       const ppmEditorPattern = /\/Evolution\/!System\/PPMs\/FPPM\/ViewFPPMItem\.aspx/i;
       const ppmRegisterPattern = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItemPPMs\.aspx/i;
+      const assetEditorPattern = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItem\.aspx/i;
       const tabs = await chrome.tabs.query({});
+      const storedParent = await chrome.storage.local.get([PPM_PARENT_KEY]).then((data) => data[PPM_PARENT_KEY] || null).catch(() => null);
 
       const registerTabs = [];
       for (const tab of tabs) {
@@ -214,14 +222,51 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // The single source of truth for parent/duplicate identity is the trailing #.
       // KEEP a PPM register ending in #. CLOSE same-asset PPM registers without #.
       const hashParents = registerTabs.filter((item) => item.hasTrailingHash);
-      const keepParent = hashParents.find((item) => item.tab.active) || hashParents[0] || null;
+      let keepParent = hashParents.find((item) => item.tab.active) || hashParents[0] || null;
+
+      if (!keepParent && storedParent && storedParent.assetCode === assetCode && typeof storedParent.tabId === 'number') {
+        try {
+          const tab = await chrome.tabs.get(storedParent.tabId);
+          keepParent = {
+            tab,
+            rawUrl: String(tab.url || ''),
+            assetId: String(storedParent.assetEntityId || assetEntityId || '').trim(),
+            hasTrailingHash: String(tab.url || '').endsWith('#')
+          };
+        } catch (_) {}
+      }
+
+      if (!keepParent && assetEntityId) {
+        const embeddedParents = tabs.filter((tab) => {
+          if (typeof tab.id !== 'number') return false;
+          const rawUrl = String(tab.url || '');
+          if (!assetEditorPattern.test(rawUrl)) return false;
+          try {
+            const id = String(new URL(rawUrl).searchParams.get('id') || '').trim();
+            return id && id !== '-1' && id === assetEntityId;
+          } catch (_) { return false; }
+        });
+        const embedded = embeddedParents.find((tab) => tab.active) || embeddedParents[0];
+        if (embedded) {
+          keepParent = {
+            tab: embedded,
+            rawUrl: String(embedded.url || ''),
+            assetId: assetEntityId,
+            hasTrailingHash: false
+          };
+        }
+      }
 
       const candidateIds = [];
       const candidateInfo = [];
       const registerTabIds = new Set(registerTabs.map((item) => item.tab.id));
+      const parentTabIds = new Set(registerTabIds);
+      if (keepParent?.tab?.id) parentTabIds.add(keepParent.tab.id);
+      if (storedParent && typeof storedParent.tabId === 'number') parentTabIds.add(storedParent.tabId);
 
       for (const item of registerTabs) {
         if (item.hasTrailingHash) continue;
+        if (keepParent?.tab?.id === item.tab.id) continue;
         candidateIds.push(item.tab.id);
         candidateInfo.push({
           tabId: item.tab.id,
@@ -234,14 +279,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       // Close PPM editor windows associated with this workflow. The current sender is
-      // always eligible; other editors are eligible when opened by one of the current
-      // asset PPM-register tabs.
+      // always eligible; other editors are eligible when opened by the parent register tab.
       for (const tab of tabs) {
         if (typeof tab.id !== 'number') continue;
         const rawUrl = String(tab.url || '');
         if (!ppmEditorPattern.test(rawUrl)) continue;
         const isSender = typeof senderTabId === 'number' && tab.id === senderTabId;
-        const belongsToCurrentRegister = typeof tab.openerTabId === 'number' && registerTabIds.has(tab.openerTabId);
+        const belongsToCurrentRegister = typeof tab.openerTabId === 'number' && parentTabIds.has(tab.openerTabId);
         if (!isSender && !belongsToCurrentRegister) continue;
         if (candidateIds.includes(tab.id)) continue;
         candidateIds.push(tab.id);
@@ -290,16 +334,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             assetCode,
             assetEntityId,
             nextPhase: String(message.nextPhase || 'ppm_next'),
-            closeStrategy: 'trailing-hash-parent-rule',
+            closeStrategy: keepParent.hasTrailingHash ? 'trailing-hash-parent-rule' : 'registered-or-embedded-parent',
             parentTabId: keepParent.tab.id,
             parentUrl: keepParent.rawUrl,
-            hashParentFound: true
+            hashParentFound: Boolean(keepParent.hasTrailingHash)
           });
         } catch (_) {}
       }
 
       sendResponseSafe(sendResponse, {
-        ok: closeErrors.length === 0 && Boolean(keepParent),
+        ok: closeErrors.length === 0 && (Boolean(keepParent) || closedTabIds.length > 0),
         assetCode,
         assetEntityId,
         hashParentFound: Boolean(keepParent),

@@ -15,7 +15,7 @@
   function initMessageListeners() {
     chrome.runtime.onMessage.addListener((message) => {
       if (!message || typeof message !== 'object') return;
-      const { state, addEvent, storageGet, persistSession, render, scheduleAuto, isHashPpmParentPage, isAssetPage, assetEntityUrl, entityIdFromUrl, isSavedAssetPage } = C();
+      const { state, addEvent, storageGet, persistSession, render, scheduleAuto, isPpmRegisterParentPage, isAssetPage, assetEntityUrl, entityIdFromUrl, isSavedAssetPage } = C();
 
       if (message.type === 'EE_ASSET_EDITOR_CLOSED') {
         addEvent('asset-parent-editor-close-message', {
@@ -52,7 +52,7 @@
         return;
       }
 
-      if (message.type === 'EE_PPM_CURRENT_EDITOR_CLOSED' && isHashPpmParentPage()) {
+      if (message.type === 'EE_PPM_CURRENT_EDITOR_CLOSED' && isPpmRegisterParentPage()) {
         addEvent('ppm-parent-current-editor-close-message', {
           closedTabId: message.closedTabId ?? null,
           closedTabIds: Array.isArray(message.closedTabIds) ? message.closedTabIds : [],
@@ -66,11 +66,12 @@
         storageGet([STORAGE.session]).then(async (stored) => {
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
           const currentAuto = state.session.auto || {};
-          const nextPhase = String(message.nextPhase || 'ppm_next');
+          const afterRefreshPhase = String(message.nextPhase || 'ppm_next');
           state.session.auto = {
             ...currentAuto,
-            phase: nextPhase,
-            ppmAfterRefreshPhase: '',
+            active: true,
+            phase: 'ppm_parent_refresh',
+            ppmAfterRefreshPhase: afterRefreshPhase,
             ppmParentRefreshStartedAt: 0,
             ppmParentRefreshClickedAt: 0,
             ppmParentRefreshPageInstance: '',
@@ -88,7 +89,7 @@
         return;
       }
 
-      if (message.type === 'EE_PPM_CHILD_DONE' && isHashPpmParentPage()) {
+      if (message.type === 'EE_PPM_CHILD_DONE' && isPpmRegisterParentPage()) {
         addEvent('ppm-parent-child-done-message', {
           childTabId: message.childTabId ?? null,
           childClosed: Boolean(message.childClosed),
@@ -99,11 +100,12 @@
         storageGet([STORAGE.session]).then(async (stored) => {
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
           const currentAuto = state.session.auto || {};
-          const nextPhase = String(message.afterRefreshPhase || currentAuto.ppmAfterRefreshPhase || 'ppm_next');
+          const afterRefreshPhase = String(message.afterRefreshPhase || currentAuto.ppmAfterRefreshPhase || 'ppm_next');
           state.session.auto = {
             ...currentAuto,
-            phase: nextPhase,
-            ppmAfterRefreshPhase: '',
+            active: true,
+            phase: 'ppm_parent_refresh',
+            ppmAfterRefreshPhase: afterRefreshPhase,
             ppmParentRefreshStartedAt: 0,
             ppmParentRefreshClickedAt: 0,
             ppmParentRefreshPageInstance: '',

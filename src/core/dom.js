@@ -311,11 +311,51 @@ function findSaveButton() {
       if (!visible(element) || isAssistantElement(element)) return false;
       const text = norm(element.textContent);
       const clue = norm(`${element.getAttribute('title') || ''} ${element.getAttribute('aria-label') || ''}`);
+      if (/save and close|saveandclose/.test(text) || /save and close/i.test(clue)) return false;
       return (text === 'save' || clue === 'save' || /\bsave\b/.test(clue)) && clean(element.textContent).length < 35;
     })
     .sort((a, b) => a.getBoundingClientRect().width - b.getBoundingClientRect().width);
   const raw = candidates[0];
   return raw?.closest('button,a,[role="button"]') || raw || null;
+}
+
+function findSaveAndCloseButton() {
+  const exact = document.querySelector('a[onclick*="Toolbar.SaveAndClose"], a[title*="Save and Close" i]');
+  if (exact && visible(exact) && !isAssistantElement(exact)) return exact;
+  const candidates = [...document.querySelectorAll('a,button,[role="button"]')]
+    .filter((element) => {
+      if (!visible(element) || isAssistantElement(element)) return false;
+      const text = norm(element.textContent);
+      const onclick = norm(element.getAttribute('onclick') || '');
+      const title = norm(element.getAttribute('title') || '');
+      return /save and close/.test(text) || onclick.includes('toolbar.saveandclose') || /save and close/.test(title);
+    });
+  return candidates[0]?.closest?.('a,button,[role="button"]') || candidates[0] || null;
+}
+
+function clickSaveAndClose() {
+  try {
+    if (typeof Toolbar !== 'undefined' && typeof Toolbar.SaveAndClose === 'function') {
+      Toolbar.SaveAndClose();
+      return { ok: true, method: 'Toolbar.SaveAndClose' };
+    }
+  } catch (_) {}
+  const direct = findSaveAndCloseButton();
+  if (direct && visible(direct)) {
+    dispatchClick(direct, false);
+    return { ok: true, method: 'menu-link' };
+  }
+  const saveTriggers = [...document.querySelectorAll('a[onclick*="Toolbar.Save"], button[onclick*="Toolbar.Save"]')]
+    .filter((element) => visible(element) && !isAssistantElement(element));
+  for (const trigger of saveTriggers) {
+    dispatchClick(trigger, false);
+    const menuItem = findSaveAndCloseButton();
+    if (menuItem && visible(menuItem)) {
+      dispatchClick(menuItem, false);
+      return { ok: true, method: 'dropdown-menu-link' };
+    }
+  }
+  return { ok: false, method: '' };
 }
 
 function validationMessage() {
@@ -337,6 +377,6 @@ function validationMessage() {
     wait, visible, isAssistantElement, elementValue, dispatchClick,
     configureForm, waitForDom, labelElements, allVisibleControls, nearestControl,
     setNativeValue, tabContextReady, clickTab, fillByLabel, nearestCheckbox,
-    setCheckboxByLabel, setSelectByLabel, findSaveButton, validationMessage
+    setCheckboxByLabel, setSelectByLabel, findSaveButton, findSaveAndCloseButton, clickSaveAndClose, validationMessage
   });
 })();

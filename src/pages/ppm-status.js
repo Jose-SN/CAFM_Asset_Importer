@@ -139,12 +139,15 @@
       afterRefreshPhase,
       activationSkipped: !PPM_ACTIVATION_ENABLED
     });
+    const closeButton = root.core.toolbar.findToolbarCloseButton();
+    if (closeButton) root.core.dom.dispatchClick(closeButton, false);
     b.addEvent('ppm-current-editor-close-request', {
       assetCode: record.assetCode,
       ppmKey: savedPpm?.ppmKey || '',
       nextPhase,
       currentUrl: location.href,
-      strategy: 'close-after-save-no-activation'
+      strategy: 'close-after-save-no-activation',
+      closeButtonFound: Boolean(closeButton)
     });
     await b.persistSession();
     chrome.runtime.sendMessage({

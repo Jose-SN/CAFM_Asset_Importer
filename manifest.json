@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.15",
-  "version": "8.0.15",
-  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.15: fix panel init on New Entity; workbook upload on asset list and form pages.",
+  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.16",
+  "version": "8.0.16",
+  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.16: embedded asset PPM tab close, refresh, and multi-PPM loop.",
   "permissions": [
     "storage",
     "unlimitedStorage",

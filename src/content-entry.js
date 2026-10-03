@@ -42,6 +42,7 @@
     isAssetPage,
     entityIdFromUrl,
     isHashPpmParentPage,
+    isPpmRegisterParentPage,
     isAssetListPage,
     isPanelPage,
     isWorkflowPage
@@ -142,6 +143,7 @@
     nearbyHiddenValues,
     hiddenCommitted,
     findSaveButton: CI.core.dom.findSaveButton,
+    clickSaveAndClose: CI.core.dom.clickSaveAndClose,
     validationMessage: CI.core.dom.validationMessage,
     ppmSourceIssues,
     linkedPpms,
@@ -187,7 +189,7 @@
     });
     configureEvents({ state, workflowRecord, currentRecord, persistSession, showToast });
     configureMessages({
-      state, addEvent, storageGet, persistSession, render, scheduleAuto, isHashPpmParentPage,
+      state, addEvent, storageGet, persistSession, render, scheduleAuto, isPpmRegisterParentPage,
       isAssetPage,
       assetEntityUrl: CI.core.pages.assetEntityUrl,
       entityIdFromUrl: CI.core.pages.entityIdFromUrl,

@@ -160,7 +160,13 @@
       } else {
         b.state.session.auto = { ...auto, phase: 'ppm_open_list' };
         await b.persistSession();
-        location.href = ppmListUrl(auto.assetEntityId);
+        const ppmNav = b.findAssetPpmNavLink?.();
+        if (ppmNav) {
+          dispatchClick(ppmNav, false);
+          b.scheduleAuto(900);
+        } else {
+          location.href = ppmListUrl(auto.assetEntityId);
+        }
       }
       return;
     }
@@ -185,11 +191,15 @@
         for (const problem of errors) await b.recordValidationWarning(record, { scope: 'ppm', field: 'Pre-save audit', expected: 'Excel-backed value committed', actual: '', reason: problem, ppmKey: ppm.ppmKey });
         b.addEvent('ppm-pre-save-warning-summary', { ppmKey: ppm.ppmKey, warningCount: errors.length, warnings: errors });
       }
-      const save = b.findSaveButton();
-      if (!save) throw new Error(`CAFM PPM Save button was not detected for ${ppm.ppmKey}.`);
+      const saveClose = b.clickSaveAndClose?.() || { ok: false };
+      if (!saveClose.ok) {
+        const save = b.findSaveButton();
+        if (!save) throw new Error(`CAFM PPM Save button was not detected for ${ppm.ppmKey}.`);
+        dispatchClick(save, false);
+      }
+      b.addEvent('ppm-save-click', { ppmKey: ppm.ppmKey, method: saveClose.ok ? saveClose.method : 'save-only' });
       b.state.session.auto = { ...b.state.session.auto, phase: 'ppm_await_save', ppmSaveStartedAt: Date.now() };
       await b.persistSession();
-      dispatchClick(save, false);
       b.scheduleAuto(0);
       return;
     }

@@ -1,4 +1,11 @@
-# v8.0.15
+# v8.0.16
+- Support embedded PPM tab on saved asset pages (`ViewFASSETItem.aspx` + `fsiGridPPMs`), not only the separate `ViewFASSETItemPPMs.aspx#` register.
+- After PPM save: close the editor child tab, focus the parent asset PPM tab, click Refresh, then Create New for the next linked PPM row.
+- Background parent resolution falls back to registered parent tab and embedded asset editor when no hash register exists.
+- PPM save prefers Save and Close (`Toolbar.SaveAndClose`) when available.
+- When all PPMs are done on an embedded asset, navigate to the General tab before finishing the asset cycle.
+
+## v8.0.15
 - Fix panel not appearing on New Entity (`ViewFASSETItem.aspx?id=-1`): `restoreState()` ran before `configureWorkbook()` and threw; the error was swallowed so `injectPanel()` never ran.
 - Show the importer panel on the Asset list page (`ViewFASSETItems.aspx`) so workbooks can be loaded before clicking + New.
 - Log init failures to the console and show an in-panel error toast instead of failing silently.

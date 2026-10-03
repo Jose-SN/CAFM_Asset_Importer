@@ -3,8 +3,8 @@
 
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
-  const { visible, isAssistantElement } = root.core.dom;
-  const { isPpmListPage, isHashPpmParentPage, entityIdFromUrl } = root.core.pages;
+  const { visible, isAssistantElement, dispatchClick } = root.core.dom;
+  const { isPpmListPage, isPpmRegisterParentPage, isEmbeddedAssetPpmPage, entityIdFromUrl } = root.core.pages;
   const $ = () => root.runtime.b;
 
   function findLearnedPpmNewButton() {
@@ -168,12 +168,32 @@
     return '';
   }
 
+  async function completePpmCycleOnParent(record, ppmResults = []) {
+    const b = $();
+    if (isEmbeddedAssetPpmPage()) {
+      const general = root.core.toolbar.findAssetGeneralNavLink();
+      if (general && !general.classList.contains('fsiNavSelectedItem')) {
+        b.addEvent('ppm-cycle-general-nav', { assetCode: record?.assetCode || '', url: location.href });
+        b.state.session.auto = {
+          ...(b.state.session.auto || {}),
+          phase: 'ppm_cycle_general_wait',
+          ppmResults
+        };
+        await b.persistSession();
+        dispatchClick(general, false);
+        b.scheduleAuto(450);
+        return;
+      }
+    }
+    await b.finishPostSave(record, ppmResults);
+  }
+
   async function processPpmListPage(record) {
     const b = $();
     let auto = b.state.session.auto || {};
 
-    if (!isHashPpmParentPage()) {
-      b.addEvent('ppm-register-passive-no-hash', { url: location.href, assetCode: record?.assetCode || '' });
+    if (!isPpmRegisterParentPage()) {
+      b.addEvent('ppm-register-passive-not-parent', { url: location.href, assetCode: record?.assetCode || '' });
       await b.persistSession();
       return;
     }
@@ -242,9 +262,19 @@
       await b.persistSession();
       auto = b.state.session.auto || {};
       if (nextPhase === 'ppm_cycle_complete_parent') {
-        await b.finishPostSave(record, auto.ppmResults || []);
+        await completePpmCycleOnParent(record, auto.ppmResults || []);
         return;
       }
+    }
+
+    if (auto.phase === 'ppm_cycle_complete_parent') {
+      await completePpmCycleOnParent(record, auto.ppmResults || []);
+      return;
+    }
+
+    if (auto.phase === 'ppm_cycle_general_wait') {
+      await b.finishPostSave(record, auto.ppmResults || []);
+      return;
     }
 
     const ppm = b.currentPpm(record);
@@ -337,7 +367,7 @@
       b.scheduleAuto(450);
       return;
     }
-    await b.runtimeMessage({ type: 'REGISTER_PPM_PARENT', assetCode: record.assetCode });
+    await b.runtimeMessage({ type: 'REGISTER_PPM_PARENT', assetCode: record.assetCode, assetEntityId: String(auto.assetEntityId || entityIdFromUrl() || '') });
     const info = ppmToolbarButtonState(newButton, 'a[title="Create New"][onclick*="Toolbar.New"]');
     b.addEvent('ppm-create-new-ready', { ...info, ppmIndex, ppmKey: ppm.ppmKey });
     await b.persistSession();

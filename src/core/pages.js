@@ -41,12 +41,25 @@
     return Boolean(id && id !== '-1');
   }
 
+  function hasEmbeddedPpmGrid() {
+    return Boolean(document.querySelector('[id*="fsiGridPPMs"]'));
+  }
+
+  function isEmbeddedAssetPpmPage() {
+    return isSavedAssetPage() && hasEmbeddedPpmGrid();
+  }
+
   function isPpmListPage() {
-    return ppmListPagePattern.test(location.pathname);
+    return ppmListPagePattern.test(location.pathname) || isEmbeddedAssetPpmPage();
   }
 
   function isHashPpmParentPage() {
-    return isPpmListPage() && String(location.href || '').endsWith('#');
+    return ppmListPagePattern.test(location.pathname) && String(location.href || '').endsWith('#');
+  }
+
+  /** Parent surface for PPM Create New / Refresh — dedicated register or embedded asset PPM tab. */
+  function isPpmRegisterParentPage() {
+    return isHashPpmParentPage() || isEmbeddedAssetPpmPage();
   }
 
   function isPpmItemPage() {
@@ -109,7 +122,10 @@
     isNewEntityPage,
     isSavedAssetPage,
     isPpmListPage,
+    hasEmbeddedPpmGrid,
+    isEmbeddedAssetPpmPage,
     isHashPpmParentPage,
+    isPpmRegisterParentPage,
     isPpmItemPage,
     isPpmNewEntityPage,
     isAssetListPage,
