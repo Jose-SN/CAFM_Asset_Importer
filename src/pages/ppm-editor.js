@@ -182,10 +182,32 @@
   async function processPpmItemPage(record) {
     const b = $();
     const auto = b.state.session.auto || {};
-    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait', 'ppm_cycle_complete_parent'].includes(auto.phase)) {
+    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait', 'ppm_cycle_complete_parent', 'ppm_cycle_general_wait'].includes(auto.phase)) {
       return;
     }
+
     const ppm = b.currentPpm(record);
+    if (!ppm && auto.phase !== 'ppm_child_closing') {
+      throw new Error(`No linked PPM row is available for ${record.assetCode}.`);
+    }
+
+    if (auto.phase === 'ppm_child_closing') {
+      const currentId = entityIdFromUrl();
+      if (currentId && currentId !== '-1') {
+        b.scheduleAuto(300);
+        return;
+      }
+      if (isPpmNewEntityPage() && ppm) {
+        b.addEvent('ppm-child-closing-resume-save', { ppmKey: ppm.ppmKey, url: location.href });
+        b.state.session.auto = { ...auto, phase: 'ppm_fill', ppmSaveStartedAt: 0, ppmSaveMethod: '' };
+        await b.persistSession();
+        b.scheduleAuto(150);
+        return;
+      }
+      b.scheduleAuto(300);
+      return;
+    }
+
     if (!ppm) throw new Error(`No linked PPM row is available for ${record.assetCode}.`);
 
     const ppmEntityId = entityIdFromUrl();
@@ -278,11 +300,6 @@
       const saveTimeoutMs = document.hidden
         ? Math.max(Number(b.state.settings.backgroundSaveTimeoutMs) || 0, Number(b.state.settings.saveTimeoutMs) * 3)
         : Number(b.state.settings.saveTimeoutMs);
-      const usedSaveAndClose = /saveandclose|save and close|dropdown-menu-link|menu-link/i.test(String(auto.ppmSaveMethod || ''));
-      if (usedSaveAndClose && elapsed >= 1800) {
-        await b.recordPpmResult(record, ppm, 'saved', 'Save and Close completed; child close handled by background registry', '');
-        return;
-      }
       if (elapsed > saveTimeoutMs) throw new Error(`PPM save confirmation timed out for ${ppm.ppmKey}.`);
       b.scheduleAuto(0);
       return;

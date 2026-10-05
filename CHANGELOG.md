@@ -1,3 +1,9 @@
+# v8.0.23
+- PPM parent refresh dedup: coalesce duplicate `EE_PPM_CURRENT_EDITOR_CLOSED` / `EE_PPM_CHILD_DONE` notifications, skip refresh when already in-flight, and debounce background self-close notifications.
+- Last PPM save-before-close: remove the 1800ms Save-and-Close assumption without a saved entity ID; resume fill/save when a child closes before save is confirmed.
+- After all PPMs: navigate to the saved asset General tab before `finishPostSave` / Save and New; engine routes `ppm_cycle_general_wait` on the asset page instead of redirecting back to the PPM register.
+- Waiting phases extended for refresh/close/general-wait so the orchestrator does not double-click Refresh.
+
 # v8.0.20
 - Background workflow orchestrator: `alarms` permission + periodic `RUN_AUTO_STEP` to parent/child workflow tabs so automatic import continues when the CAFM tab is unfocused or in another window.
 - PPM save URL detection: background `tabs.onUpdated` detects `ViewFPPMItem.aspx?id≠-1` and notifies the child editor to record save without waiting on throttled content-script timers.

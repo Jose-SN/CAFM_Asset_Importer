@@ -12,6 +12,34 @@
     return cfg;
   }
 
+  function schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase) {
+    const phase = String(currentAuto.phase || '');
+    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait'].includes(phase)) {
+      return null;
+    }
+    const lastNotify = Number(currentAuto.ppmParentCloseNotifyAt || 0);
+    if (lastNotify && Date.now() - lastNotify < 2500) {
+      return null;
+    }
+    const resolvedAfter = String(afterRefreshPhase || currentAuto.ppmAfterRefreshPhase || 'ppm_next');
+    return {
+      ...currentAuto,
+      active: true,
+      phase: 'ppm_parent_refresh',
+      ppmAfterRefreshPhase: resolvedAfter,
+      ppmParentRefreshStartedAt: 0,
+      ppmParentRefreshClickedAt: 0,
+      ppmParentRefreshPageInstance: '',
+      ppmParentRefreshSawDisabled: false,
+      ppmParentCloseNotifyAt: Date.now(),
+      ppmNewClickedForIndex: -1,
+      ppmListReadyStartedAt: 0,
+      ppmOpenStartedAt: 0,
+      ppmNewClickAttempts: 0,
+      ppmNewLastClickAt: 0
+    };
+  }
+
   function initMessageListeners() {
     chrome.runtime.onMessage.addListener((message) => {
       if (!message || typeof message !== 'object') return;
@@ -106,21 +134,12 @@
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
           const currentAuto = state.session.auto || {};
           const afterRefreshPhase = String(message.nextPhase || 'ppm_next');
-          state.session.auto = {
-            ...currentAuto,
-            active: true,
-            phase: 'ppm_parent_refresh',
-            ppmAfterRefreshPhase: afterRefreshPhase,
-            ppmParentRefreshStartedAt: 0,
-            ppmParentRefreshClickedAt: 0,
-            ppmParentRefreshPageInstance: '',
-            ppmParentRefreshSawDisabled: false,
-            ppmNewClickedForIndex: -1,
-            ppmListReadyStartedAt: 0,
-            ppmOpenStartedAt: 0,
-            ppmNewClickAttempts: 0,
-            ppmNewLastClickAt: 0
-          };
+          const nextAuto = schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase);
+          if (!nextAuto) {
+            addEvent('ppm-parent-refresh-coalesced', { afterRefreshPhase, priorPhase: currentAuto.phase || '' });
+            return;
+          }
+          state.session.auto = nextAuto;
           await persistSession();
           render();
           scheduleAuto(100);
@@ -140,21 +159,12 @@
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
           const currentAuto = state.session.auto || {};
           const afterRefreshPhase = String(message.afterRefreshPhase || currentAuto.ppmAfterRefreshPhase || 'ppm_next');
-          state.session.auto = {
-            ...currentAuto,
-            active: true,
-            phase: 'ppm_parent_refresh',
-            ppmAfterRefreshPhase: afterRefreshPhase,
-            ppmParentRefreshStartedAt: 0,
-            ppmParentRefreshClickedAt: 0,
-            ppmParentRefreshPageInstance: '',
-            ppmParentRefreshSawDisabled: false,
-            ppmNewClickedForIndex: -1,
-            ppmListReadyStartedAt: 0,
-            ppmOpenStartedAt: 0,
-            ppmNewClickAttempts: 0,
-            ppmNewLastClickAt: 0
-          };
+          const nextAuto = schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase);
+          if (!nextAuto) {
+            addEvent('ppm-parent-refresh-coalesced', { afterRefreshPhase, priorPhase: currentAuto.phase || '', source: 'child-done' });
+            return;
+          }
+          state.session.auto = nextAuto;
           await persistSession();
           render();
           scheduleAuto(50);

@@ -175,6 +175,20 @@
       }
 
       if (String(auto.phase || '').startsWith('ppm_')) {
+        if (auto.phase === 'ppm_cycle_general_wait' || auto.phase === 'ppm_cycle_complete_parent') {
+          if (isSavedAssetPage()) {
+            if (auto.phase === 'ppm_cycle_general_wait') {
+              await root.pages.ppmRegister.processPpmCycleGeneralWaitPage(record);
+            } else {
+              await root.pages.ppmRegister.processPpmListPage(record);
+            }
+            return;
+          }
+          if (auto.assetEntityId) {
+            location.href = assetEntityUrl(auto.assetEntityId);
+            return;
+          }
+        }
         if (isPpmListPage()) { await root.pages.ppmRegister.processPpmListPage(record); return; }
         if (isPpmItemPage()) { await root.pages.ppmEditor.processPpmItemPage(record); return; }
         if (auto.assetEntityId) {

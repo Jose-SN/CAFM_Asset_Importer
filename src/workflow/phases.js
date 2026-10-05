@@ -32,7 +32,10 @@
     'ppm_status_wait',
     'ppm_status_wait_user',
     'ppm_child_closing',
+    'ppm_parent_refresh',
     'ppm_parent_refresh_wait',
+    'ppm_cycle_complete_parent',
+    'ppm_cycle_general_wait',
     'ppm_next'
   ]);
 
@@ -44,6 +47,10 @@
     'ppm_wait_new',
     'ppm_wait_user_new',
     'ppm_await_save',
+    'ppm_child_closing',
+    'ppm_parent_refresh',
+    'ppm_parent_refresh_wait',
+    'ppm_cycle_general_wait',
     'ppm_status_wait',
     'ppm_status_wait_user'
   ]);

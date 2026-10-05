@@ -4,7 +4,7 @@
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
   const { visible, isAssistantElement, dispatchClick } = root.core.dom;
-  const { isPpmListPage, isPpmRegisterParentPage, isEmbeddedAssetPpmPage, entityIdFromUrl } = root.core.pages;
+  const { isPpmListPage, isPpmRegisterParentPage, isEmbeddedAssetPpmPage, isSavedAssetPage, entityIdFromUrl, assetEntityUrl } = root.core.pages;
   const $ = () => root.runtime.b;
 
   function findLearnedPpmNewButton() {
@@ -180,6 +180,16 @@
 
   async function beginPpmParentRefresh(auto, afterRefreshPhase) {
     const b = $();
+    const phase = String(auto.phase || '');
+    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait'].includes(phase)) {
+      const mergedAfter = afterRefreshPhase || auto.ppmAfterRefreshPhase || 'ppm_next';
+      if (mergedAfter !== auto.ppmAfterRefreshPhase) {
+        b.state.session.auto = { ...auto, ppmAfterRefreshPhase: mergedAfter };
+        await b.persistSession();
+      }
+      b.scheduleAuto(200);
+      return;
+    }
     b.state.session.auto = {
       ...auto,
       phase: 'ppm_parent_refresh',
@@ -187,7 +197,8 @@
       ppmParentRefreshStartedAt: 0,
       ppmParentRefreshClickedAt: 0,
       ppmParentRefreshPageInstance: '',
-      ppmParentRefreshSawDisabled: false
+      ppmParentRefreshSawDisabled: false,
+      ppmParentRefreshCycleId: `${Date.now()}-${Number(auto.ppmIndex || 0)}`
     };
     await b.persistSession();
     b.scheduleAuto(100);
@@ -274,30 +285,76 @@
     return false;
   }
 
+  async function beginPpmCycleGeneralWait(record, ppmResults = []) {
+    const b = $();
+    const auto = b.state.session.auto || {};
+    const entityId = String(auto.assetEntityId || entityIdFromUrl() || '');
+    b.addEvent('ppm-cycle-general-nav', { assetCode: record?.assetCode || '', url: location.href, entityId });
+    b.state.session.auto = {
+      ...auto,
+      phase: 'ppm_cycle_general_wait',
+      ppmResults,
+      ppmCycleGeneralStartedAt: Date.now()
+    };
+    await b.persistSession();
+    if (!isSavedAssetPage() && entityId) {
+      location.href = assetEntityUrl(entityId);
+      return;
+    }
+    const general = root.core.toolbar.findAssetGeneralNavLink();
+    if (general && !general.classList.contains('fsiNavSelectedItem')) {
+      dispatchClick(general, false);
+      b.scheduleAuto(450);
+      return;
+    }
+    b.scheduleAuto(150);
+  }
+
   async function completePpmCycleOnParent(record, ppmResults = []) {
     const b = $();
-    if (isEmbeddedAssetPpmPage()) {
-      const general = root.core.toolbar.findAssetGeneralNavLink();
-      if (general && !general.classList.contains('fsiNavSelectedItem')) {
-        b.addEvent('ppm-cycle-general-nav', { assetCode: record?.assetCode || '', url: location.href });
-        b.state.session.auto = {
-          ...(b.state.session.auto || {}),
-          phase: 'ppm_cycle_general_wait',
-          ppmResults
-        };
-        await b.persistSession();
-        dispatchClick(general, false);
-        b.scheduleAuto(450);
-        return;
-      }
-    }
     await sweepPpmChildren(record, { context: 'ppm-cycle-complete' });
+    const useSaveAndNew = b.state.settings.useSaveAndNew !== false;
+    if (useSaveAndNew) {
+      await beginPpmCycleGeneralWait(record, ppmResults);
+      return;
+    }
     await b.finishPostSave(record, ppmResults);
+  }
+
+  async function processPpmCycleGeneralWaitPage(record) {
+    const b = $();
+    const autoNow = b.state.session.auto || {};
+    const entityId = String(autoNow.assetEntityId || entityIdFromUrl() || '');
+    if (!isSavedAssetPage() && entityId) {
+      location.href = assetEntityUrl(entityId);
+      return;
+    }
+    const general = root.core.toolbar.findAssetGeneralNavLink();
+    if (general && !general.classList.contains('fsiNavSelectedItem')) {
+      const started = Number(autoNow.ppmCycleGeneralStartedAt || Date.now());
+      if (Date.now() - started > b.state.settings.lookupTimeoutMs) {
+        throw new Error('General tab did not become available after the PPM cycle completed.');
+      }
+      dispatchClick(general, false);
+      b.scheduleAuto(450);
+      return;
+    }
+    await b.finishPostSave(record, autoNow.ppmResults || []);
   }
 
   async function processPpmListPage(record) {
     const b = $();
     let auto = b.state.session.auto || {};
+
+    if (auto.phase === 'ppm_cycle_general_wait') {
+      await processPpmCycleGeneralWaitPage(record);
+      return;
+    }
+
+    if (auto.phase === 'ppm_cycle_complete_parent') {
+      await completePpmCycleOnParent(record, auto.ppmResults || []);
+      return;
+    }
 
     if (!isPpmRegisterParentPage()) {
       b.addEvent('ppm-register-passive-not-parent', { url: location.href, assetCode: record?.assetCode || '' });
@@ -306,6 +363,13 @@
     }
 
     if (auto.phase === 'ppm_parent_refresh') {
+      const inFlightClick = Number(auto.ppmParentRefreshClickedAt || 0);
+      if (inFlightClick && Date.now() - inFlightClick < 8000) {
+        b.state.session.auto = { ...auto, phase: 'ppm_parent_refresh_wait' };
+        await b.persistSession();
+        b.scheduleAuto(250);
+        return;
+      }
       const selector = 'a[title="Refresh the page"][onclick*="Toolbar.Refresh"]';
       const button = exactPpmRefreshButton();
       const info = ppmToolbarButtonState(button, selector);
@@ -382,16 +446,6 @@
         await completePpmCycleOnParent(record, auto.ppmResults || []);
         return;
       }
-    }
-
-    if (auto.phase === 'ppm_cycle_complete_parent') {
-      await completePpmCycleOnParent(record, auto.ppmResults || []);
-      return;
-    }
-
-    if (auto.phase === 'ppm_cycle_general_wait') {
-      await b.finishPostSave(record, auto.ppmResults || []);
-      return;
     }
 
     assertPpmAssetContext(record, auto);
@@ -594,6 +648,7 @@
     analyzePpmChildUrl,
     sweepPpmChildren,
     beginPpmParentRefresh,
+    processPpmCycleGeneralWaitPage,
     processPpmListPage,
     startPpmForCurrentPage
   });
