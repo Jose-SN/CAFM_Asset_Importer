@@ -120,23 +120,6 @@
       return;
     }
 
-    if (completedIterations >= Math.max(1, Number(auto.maxIterations || 1))) {
-      b.state.session.auto = {
-        ...auto,
-        active: false,
-        phase: 'complete',
-        completedAt: Date.now(),
-        processedThisRun: completedIterations,
-        maxIterations: Math.max(1, Number(auto.maxIterations || 1)),
-        ppmResults
-      };
-      b.state.session.currentLookupEvidence = [];
-      await b.persistSession();
-      b.render();
-      b.showToast(`Iteration limit reached: ${completedIterations} asset cycle(s) completed.`, 'success', 10000);
-      return;
-    }
-
     if (next < 0) {
       b.state.session.auto = { active: false, mode: auto.mode || 'automatic', phase: 'complete', completedAt: Date.now() };
       await b.persistSession();
@@ -228,23 +211,6 @@
     }
 
     const next = b.nextPendingIndex(b.state.session.index + 1);
-    if (completedIterations >= Math.max(1, Number(auto.maxIterations || 1))) {
-      b.state.session.auto = {
-        ...auto,
-        active: false,
-        phase: 'complete',
-        completedAt: Date.now(),
-        processedThisRun: completedIterations,
-        maxIterations: Math.max(1, Number(auto.maxIterations || 1)),
-        ppmResults
-      };
-      b.state.session.currentLookupEvidence = [];
-      await b.persistSession();
-      b.render();
-      b.showToast(`Iteration limit reached: ${completedIterations} asset cycle(s) completed.`, 'success', 10000);
-      return false;
-    }
-
     if (next < 0) {
       b.state.session.auto = { active: false, mode: auto.mode || 'automatic', phase: 'complete', completedAt: Date.now() };
       await b.persistSession();

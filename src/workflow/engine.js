@@ -368,9 +368,12 @@
           await b.persistSession();
           autoNow = b.state.session.auto || autoNow;
         }
-        const saveAndNew = autoNow.afterPpmHandoff
+        let saveAndNew = autoNow.afterPpmHandoff
           ? (root.core.dom.clickAssetToolbarSaveAndNew?.() || { ok: false })
           : (b.clickSaveAndNew?.() || { ok: false });
+        if (!saveAndNew.ok && !saveAndNew.pending) {
+          saveAndNew = b.clickSaveAndNew?.() || saveAndNew;
+        }
         b.addEvent('asset-save-and-new-click', {
           ok: saveAndNew.ok,
           method: saveAndNew.method || '',
@@ -421,6 +424,20 @@
           };
           await b.persistSession();
         } else if (isAssetListPage()) {
+          const processed = Number(auto.processedThisRun || 0);
+          const maxIter = Math.max(1, Number(auto.maxIterations || 1));
+          if (processed >= maxIter) {
+            b.state.session.auto = {
+              ...auto,
+              active: false,
+              phase: 'complete',
+              completedAt: Date.now()
+            };
+            await b.persistSession();
+            b.render();
+            b.showToast(`Iteration limit reached: ${processed} asset cycle(s) completed.`, 'success', 10000);
+            return;
+          }
           const createNew = root.core.toolbar.clickAssetListCreateNew?.() || { ok: false };
           b.addEvent('asset-list-create-new-click', {
             ok: createNew.ok,

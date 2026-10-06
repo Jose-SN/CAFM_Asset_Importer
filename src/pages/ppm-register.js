@@ -770,6 +770,11 @@
   async function processPpmCycleGeneralWaitPage(record) {
     const b = $();
     const autoNow = b.state.session.auto || {};
+    if (autoNow.phase === 'asset_save_and_new') {
+      b.scheduleAuto(100);
+      return;
+    }
+    if (autoNow.phase !== 'ppm_cycle_general_wait') return;
     const entityId = String(autoNow.assetEntityId || entityIdFromUrl() || '');
     if (!isSavedAssetPage() && entityId) {
       location.href = assetEntityUrl(entityId);
@@ -785,9 +790,11 @@
       b.scheduleAuto(450);
       return;
     }
-    b.showActivity?.('Running', 'General tab ready', 'Save and New next', { wait: true, meta: record?.assetCode || '', tick: true });
     const handoff = await root.workflow.postSave.beginPostPpmHandoff(record, autoNow.ppmResults || []);
-    if (handoff) b.scheduleAuto(150);
+    if (handoff) {
+      b.addEvent('ppm-cycle-general-handoff', { assetCode: record?.assetCode || '', nextAssetCode: b.state.session.auto?.assetCode || '' });
+      b.scheduleAuto(80);
+    }
   }
 
   async function processPpmListPage(record) {

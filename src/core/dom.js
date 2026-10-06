@@ -354,11 +354,27 @@ function findSaveAndCloseButton() {
   return candidates[0]?.closest?.('a,button,[role="button"]') || candidates[0] || null;
 }
 
+function sameOriginDocuments(rootDoc = document, output = [], depth = 0) {
+  if (!rootDoc || output.includes(rootDoc) || depth > 6) return output;
+  output.push(rootDoc);
+  for (const frame of rootDoc.querySelectorAll?.('iframe,frame') || []) {
+    try {
+      const child = frame.contentDocument;
+      if (child?.documentElement) sameOriginDocuments(child, output, depth + 1);
+    } catch (_) {}
+  }
+  return output;
+}
+
 function findSaveSplitButton() {
-  for (const split of document.querySelectorAll('.x-split-button')) {
-    if (isAssistantElement(split)) continue;
-    const saveLink = split.querySelector('a[onclick*="Toolbar.Save"]');
-    if (saveLink) return split;
+  for (const doc of sameOriginDocuments()) {
+    try {
+      for (const split of doc.querySelectorAll('.x-split-button')) {
+        if (isAssistantElement(split)) continue;
+        const saveLink = split.querySelector('a[onclick*="Toolbar.Save"]');
+        if (saveLink) return split;
+      }
+    } catch (_) {}
   }
   return null;
 }
@@ -370,12 +386,18 @@ function findSaveSplitDropdownTrigger(split = null) {
 }
 
 function findSaveAndCloseDropdownLink() {
-  for (const menu of document.querySelectorAll('ul.x-button-drop-menu')) {
-    if (isAssistantElement(menu)) continue;
-    const link = menu.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndClose"]');
-    if (link) return link;
+  for (const doc of sameOriginDocuments()) {
+    try {
+      for (const menu of doc.querySelectorAll('ul.x-button-drop-menu')) {
+        if (isAssistantElement(menu)) continue;
+        const link = menu.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndClose"]');
+        if (link) return link;
+      }
+      const direct = doc.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndClose"]');
+      if (direct) return direct;
+    } catch (_) {}
   }
-  return document.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndClose"]') || null;
+  return null;
 }
 
 function isSaveSplitMenuOpen(split = null) {
@@ -401,12 +423,18 @@ function saveAndCloseMenuLinkCallable(link) {
 }
 
 function findSaveAndNewDropdownLink() {
-  for (const menu of document.querySelectorAll('ul.x-button-drop-menu')) {
-    if (isAssistantElement(menu)) continue;
-    const link = menu.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndNew"]');
-    if (link) return link;
+  for (const doc of sameOriginDocuments()) {
+    try {
+      for (const menu of doc.querySelectorAll('ul.x-button-drop-menu')) {
+        if (isAssistantElement(menu)) continue;
+        const link = menu.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndNew"]');
+        if (link) return link;
+      }
+      const direct = doc.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndNew"]');
+      if (direct) return direct;
+    } catch (_) {}
   }
-  return document.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndNew"]') || null;
+  return null;
 }
 
 function saveAndNewMenuLinkReady(link) {
@@ -465,6 +493,13 @@ function clickAssetToolbarSaveAndClose() {
     return { ok: false, pending: true, reason: 'opening-save-dropdown', state };
   }
 
+  try {
+    if (typeof Toolbar !== 'undefined' && typeof Toolbar.SaveAndClose === 'function') {
+      Toolbar.SaveAndClose();
+      return { ok: true, method: 'Toolbar.SaveAndClose-direct', pending: false, state };
+    }
+  } catch (_) {}
+
   return { ok: false, pending: true, reason: 'save-split-button-not-found', state };
 }
 
@@ -513,10 +548,29 @@ function clickAssetToolbarSaveAndNew() {
     return { ok: false, pending: true, reason: 'opening-save-dropdown', state };
   }
 
+  try {
+    if (typeof Toolbar !== 'undefined' && typeof Toolbar.SaveAndNew === 'function') {
+      Toolbar.SaveAndNew();
+      return { ok: true, method: 'Toolbar.SaveAndNew-direct', pending: false, state };
+    }
+  } catch (_) {}
+
+  const direct = findSaveAndNewButton();
+  if (direct && visible(direct)) {
+    dispatchClick(direct, false, 'Save and New');
+    return { ok: true, method: 'save-and-new-direct-link', pending: false, state };
+  }
+
   return { ok: false, pending: true, reason: 'save-split-button-not-found', state };
 }
 
 function findSaveAndNewButton() {
+  for (const doc of sameOriginDocuments()) {
+    try {
+      const exact = doc.querySelector('a[onclick*="Toolbar.SaveAndNew"], a[title*="Save and New" i]');
+      if (exact && visible(exact) && !isAssistantElement(exact)) return exact;
+    } catch (_) {}
+  }
   const exact = document.querySelector('a[onclick*="Toolbar.SaveAndNew"], a[title*="Save and New" i]');
   if (exact && visible(exact) && !isAssistantElement(exact)) return exact;
   const candidates = [...document.querySelectorAll('a,button,[role="button"]')]
