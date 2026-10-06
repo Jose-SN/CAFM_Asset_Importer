@@ -167,7 +167,6 @@
     processPpmStatusPage: CI.pages.ppmStatus.processPpmStatusPage,
     ppmActivationTarget: CI.pages.ppmStatus.ppmActivationTarget,
     recordPpmResult: CI.pages.ppmStatus.recordPpmResult,
-    commitPpmSaveHandoff: CI.pages.ppmStatus.commitPpmSaveHandoff,
     ppmIsActive: CI.core.toolbar.ppmIsActive,
     currentPpmStatusText: CI.core.toolbar.currentPpmStatusText,
     findChangePpmStatusButton: CI.core.toolbar.findChangePpmStatusButton,

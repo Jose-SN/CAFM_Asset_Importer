@@ -154,7 +154,9 @@
     }
 
     const previousEntityId = entityId;
-    const useSaveAndNew = b.state.settings.useSaveAndNew === true;
+    const useSaveAndNew = auto.afterPpmAssetSaveAndClose
+      ? false
+      : b.state.settings.useSaveAndNew !== false;
     b.state.session.index = next;
     b.state.session.currentLookupEvidence = [];
     b.state.session.auto = {
@@ -165,6 +167,7 @@
       assetCode: b.state.assets[next].assetCode,
       previousAssetCode: record.assetCode,
       previousAssetEntityId: previousEntityId,
+      afterPpmAssetSaveAndClose: false,
       saveAndNewStartedAt: 0,
       saveAndCloseStartedAt: 0,
       startedAt: auto.startedAt || Date.now(),

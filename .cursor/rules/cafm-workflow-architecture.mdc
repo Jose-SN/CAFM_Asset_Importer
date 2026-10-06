@@ -1,0 +1,147 @@
+---
+description: Reuse the established CAFM importer workflow — do not invent parallel patterns
+alwaysApply: true
+---
+
+# CAFM Asset Importer — reuse the working flow
+
+This is a **Manifest V3 Chrome extension** (plain JS, no bundler). Before writing code, read the relevant existing module and extend it.
+
+## Architecture (do not replace)
+
+- **Namespace**: all modules attach to `globalThis.CAFMImporter` via IIFEs (`src/bootstrap.js` → `src/content-entry.js`).
+- **Load order**: `manifest.json` `content_scripts.js` array — new modules must be inserted in the correct dependency position.
+- **Orchestration**: `src/workflow/engine.js` (`runAutomatic`, `scheduleAuto`) is the only automation loop. Page files handle one step, then set `session.auto.phase` and call `scheduleAuto()`.
+- **Phases**: defined in `src/workflow/phases.js`. New phases must be added there, in `src/pages/registry.js`, and in `tools/verify-architecture.js`.
+- **Page routing**: `src/pages/registry.js` maps CAFM page type → handler. Extend an existing handler; do not add a second router.
+- **Post-save handoff**: `src/workflow/post-save.js` + `src/pages/asset-saved.js` (close editor → activate → PPM).
+- **Background tabs**: `background.js` message types (`ASSET_CLOSE_EDITOR_TAB`, `EE_ASSET_EDITOR_CLOSED`, PPM parent/child close). Pair every new message with handlers in `background.js` and `src/runtime/messages.js`.
+
+## Working flow (end-to-end — extend this, do not replace)
+
+Reference: `ISSUE_TRACKING.md` state diagram. Each step = one handler call from `engine.js` → page module → `persistSession` → `scheduleAuto`.
+
+### 1. Asset creation (New Entity page)
+
+| Phase | Page | Handler | What happens |
+|-------|------|---------|--------------|
+| `navigate` | `ViewFASSETItem.aspx?id=-1` | `asset-new.js` | Confirm new-entity page; start fill |
+| `fill` / `filling` | same | `asset-new.js` `fillCurrentRecord` | Fill tabs/lookups from workbook row |
+| `saving` | same | `post-save.js` `clickSaveTracked` | Pre-save audit, click Save |
+| `await_save` | same → saved URL | `engine.js` | Poll until `isSavedAssetPage()` or validation error |
+
+On save confirmed → `post-save.js` `beginPostSave` sets phase `asset_close_child`.
+
+### 2. Close editor + activate (Saved Asset page)
+
+| Phase | Handler | What happens |
+|-------|---------|--------------|
+| `asset_close_child` | `asset-saved.js` `processAssetCloseAfterSave` | Find Close button (`toolbar.js`), click, send `ASSET_CLOSE_EDITOR_TAB` |
+| `asset_close_wait` | same | Poll until tab closes; background sends `EE_ASSET_EDITOR_CLOSED` → `activate_open` |
+| `activate_open` | `asset-saved.js` `processActivationPage` | Click `Change Asset Status` (`Toolbar.AssetStatus`) |
+| `activate_select` | same | Select ACTIVE in popup |
+| `activate_confirm` / `activate_wait` | same | Confirm; wait until `assetIsActive()` |
+| *(done)* | `post-save.js` `afterActivation` | If linked PPMs → `ppm_open_list`; else `finishPostSave` |
+
+**Tab handoff**: `background.js` closes child editor tab, focuses parent, `messages.js` receives `EE_ASSET_EDITOR_CLOSED` and sets `phase: 'activate_open'`.
+
+### 3. PPM loop (per linked workbook row for this Asset Code)
+
+| Phase | Page | Handler | What happens |
+|-------|------|---------|--------------|
+| `ppm_open_list` | PPM register (parent) | `ppm-register.js` | Click asset PPM nav or `ppmListUrl(entityId)` |
+| `ppm_wait_new` | register parent | `ppm-register.js` | Wait for register ready; click Create New |
+| `ppm_fill` | `ViewFPPMItem.aspx` (child) | `ppm-editor.js` | Fill PPM fields from workbook |
+| `ppm_await_save` | PPM editor | `ppm-editor.js` | Wait for saved PPM URL / entity ID |
+| `ppm_status_*` | saved PPM (optional) | `ppm-status.js` | Activate PPM if enabled |
+| `ppm_child_closing` | saved PPM | `ppm-status.js` | Close PPM editor child tab |
+| `ppm_parent_refresh` / `ppm_parent_refresh_wait` | register parent | `ppm-register.js` | Refresh register; background closes stray children |
+| `ppm_next` | register parent | `ppm-register.js` | Increment `ppmIndex`; loop or finish asset |
+
+**Create New (working pattern)** — `ppm-register.js`:
+1. Prefer `a[title="Create New"][onclick*="Toolbar.New"]`
+2. If button exists but not `visible()` (dropdown menu anchor `.x-button-drop-menu-link`) → call `Toolbar.New()` directly
+3. Background detects new child tab → PPM editor opens → phase `ppm_fill`
+
+**PPM parent/child tabs**: background messages `EE_PPM_CURRENT_EDITOR_CLOSED`, `EE_PPM_CHILD_DONE` → parent sets `ppm_parent_refresh_wait` → `ppm_next`.
+
+### 4. Finish asset + next row
+
+`post-save.js` `finishPostSave`:
+- No more PPMs → mark asset `saved`, increment `processedThisRun`
+- If iteration limit reached or no pending rows → `phase: complete`
+- Else if `useSaveAndNew` → `asset_save_and_new` on current saved asset, else `navigate` to new entity URL
+
+### Phase → file quick map
+
+```
+engine.js          → routes by phase prefix + page type (isSavedAssetPage, isPpmListPage, etc.)
+asset-new.js       → navigate, fill, filling, saving
+asset-saved.js     → asset_close_*, activate_*
+ppm-register.js    → ppm_open_list, ppm_wait_new, ppm_parent_refresh*, ppm_next
+ppm-editor.js      → ppm_fill, ppm_await_save
+ppm-status.js      → ppm_status_*, ppm_child_closing
+post-save.js       → beginPostSave, afterActivation, finishPostSave, clickSaveTracked
+messages.js        → EE_ASSET_EDITOR_CLOSED, EE_PPM_* (resume after background tab ops)
+background.js      → ASSET_CLOSE_EDITOR_TAB, PPM child close sweeps, tab focus
+```
+
+### Diagnose by failed phase (from diagnostic JSON)
+
+| Failed phase | Likely cause | Check module |
+|--------------|--------------|--------------|
+| `fill` / `filling` | Field/lookup/tab | `asset-new.js`, `lookup.js`, mappings |
+| `await_save` | CAFM validation / save timeout | validation overlay, `saveTimeoutMs` |
+| `asset_close_wait` | Editor did not close | `asset-saved.js`, child tab detection in `background.js` |
+| `activate_*` | Status popup / ACTIVE selection | `asset-saved.js` |
+| `ppm_wait_new` | Create New not found/visible | `ppm-register.js`, `Toolbar.New()` fallback |
+| `ppm_fill` / `ppm_await_save` | PPM fields or save | `ppm-editor.js` |
+| `ppm_parent_refresh*` | Parent register not refreshed | `ppm-register.js`, background close sweep |
+
+## Patterns to copy (not reinvent)
+
+```javascript
+// Page module shape
+(() => {
+  'use strict';
+  const root = globalThis.CAFMImporter;
+  const $ = () => root.runtime.b;
+  async function processSomething(record) {
+    const rt = $();
+    // 1. guard current phase + page URL
+    // 2. interact via root.core.dom (dispatchClick, visible, waitForDom)
+    // 3. rt.addEvent('event-type', { ... });
+    // 4. rt.state.session.auto = { ...auto, phase: 'next_phase' };
+    // 5. await rt.persistSession(); rt.scheduleAuto(delay);
+  }
+  root.pages.something = Object.freeze({ processSomething });
+})();
+```
+
+- **DOM clicks**: `root.core.dom.dispatchClick` — not raw `.click()` unless matching existing code.
+- **Toolbar buttons**: `src/core/toolbar.js` for Close/Save; PPM Create New in `src/pages/ppm-register.js` (`a[title="Create New"][onclick*="Toolbar.New"]`, fallback `Toolbar.New()` for `.x-button-drop-menu-link` menu anchors).
+- **Logging**: `rt.addEvent(type, payload)` — every state transition and click should be traceable in diagnostic JSON.
+- **Timeouts**: `settings.lookupTimeoutMs` / `saveTimeoutMs` are **safety timeouts**, not pacing delays.
+
+## Before adding code — check these first
+
+| Need | Use existing file |
+|------|-------------------|
+| Page detection / URLs | `src/core/pages.js` |
+| Lookup dropdowns | `src/core/lookup.js`, `src/core/lookup-spec.js` |
+| Field mappings | `src/data/field-registry.js`, `src/pages/asset-mappings.js` |
+| PPM row data | `src/data/ppm.js`, workbook-linked by Asset Code |
+| Session / status | `src/data/workbook.js` |
+| UI toasts / phase labels | `src/ui/progress-toast.js`, `src/ui/panel.js` |
+
+## Do NOT
+
+- Create parallel orchestrators, polling loops, or duplicate phase state machines.
+- Add npm/bundler/TypeScript unless explicitly requested.
+- Embed hardcoded asset/PPM templates — data comes from the Excel workbook.
+- Fix a `ppm_*` failure by changing `asset_close_*` (or vice versa) without checking the failed phase.
+- Skip `await rt.persistSession()` after phase transitions (resume depends on it).
+
+## After workflow changes
+
+Run `node tools/verify-architecture.js` and bump `manifest.json` version if shipping.

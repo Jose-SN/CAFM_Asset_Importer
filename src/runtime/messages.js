@@ -14,16 +14,14 @@
 
   function schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase) {
     const phase = String(currentAuto.phase || '');
-    const resolvedAfter = String(afterRefreshPhase || currentAuto.ppmAfterRefreshPhase || 'ppm_next');
-    const mustAdvance = ['ppm_child_closing', 'ppm_await_save'].includes(phase)
-      && ['ppm_next', 'ppm_cycle_complete_parent'].includes(resolvedAfter);
-    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait'].includes(phase) && !mustAdvance) {
+    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait'].includes(phase)) {
       return null;
     }
     const lastNotify = Number(currentAuto.ppmParentCloseNotifyAt || 0);
-    if (lastNotify && Date.now() - lastNotify < 2500 && !mustAdvance) {
+    if (lastNotify && Date.now() - lastNotify < 2500) {
       return null;
     }
+    const resolvedAfter = String(afterRefreshPhase || currentAuto.ppmAfterRefreshPhase || 'ppm_next');
     return {
       ...currentAuto,
       active: true,

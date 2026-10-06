@@ -118,58 +118,6 @@
     location.href = ppmEntityUrl(remaining[0].ppmEntityId);
   }
 
-  /** Persist queue advance before Save and Close — the child window often closes before ppm_await_save can confirm. */
-  async function commitPpmSaveHandoff(record, ppm, note = 'PPM Save and Close handoff') {
-    const b = $();
-    const auto = b.state.session.auto || {};
-    const prior = (auto.ppmResults || []).find((item) => clean(item.ppmKey) === clean(ppm.ppmKey));
-    if (prior && ['saved', 'existing'].includes(clean(prior.status))) {
-      return { results: auto.ppmResults || [], hasNext: false, nextIndex: Number(auto.ppmIndex) || 0, afterPhase: auto.ppmAfterRefreshPhase || 'ppm_next' };
-    }
-    const results = [...(auto.ppmResults || []), {
-      ppmKey: ppm.ppmKey,
-      instruction: ppm.instruction,
-      status: 'saved',
-      note,
-      ppmEntityId: '',
-      activateAfterSave: false,
-      active: false,
-      savedAt: new Date().toISOString()
-    }];
-    const linked = b.linkedPpms(record);
-    const nextIndex = (Number(auto.ppmIndex) || 0) + 1;
-    const hasNext = nextIndex < linked.length;
-    const afterPhase = hasNext ? 'ppm_next' : 'ppm_cycle_complete_parent';
-    b.state.session.auto = {
-      ...auto,
-      phase: 'ppm_child_closing',
-      ppmIndex: hasNext ? nextIndex : Number(auto.ppmIndex || 0),
-      ppmResults: results,
-      ppmAfterRefreshPhase: afterPhase,
-      ppmResumeAfterActivation: false,
-      ppmResumeIndex: null,
-      ppmNewClickedForIndex: -1,
-      ppmListReadyStartedAt: 0,
-      ppmParentRefreshStartedAt: 0
-    };
-    await b.persistSession();
-    b.addEvent('ppm-save-handoff', {
-      ppmKey: ppm.ppmKey,
-      hasNext,
-      nextPpmIndex: hasNext ? nextIndex : null,
-      afterPhase,
-      note
-    });
-    const nextPpm = hasNext ? linked[nextIndex] : null;
-    b.showActivity?.(
-      'Saved',
-      ppm.instruction || ppm.ppmKey,
-      hasNext ? `Next: ${nextPpm?.instruction || `PPM ${nextIndex + 1}`}` : 'All PPMs saved for this asset',
-      { wait: false, type: 'success', meta: `${record.assetCode} · PPM ${(Number(auto.ppmIndex) || 0) + 1}/${linked.length}`, duration: 3500, tick: false }
-    );
-    return { results, hasNext, nextIndex: hasNext ? nextIndex : Number(auto.ppmIndex) || 0, afterPhase };
-  }
-
   async function continuePpmAfterSave(record, results, savedPpm) {
     const b = $();
     const auto = b.state.session.auto || {};
@@ -349,13 +297,6 @@
     const prior = (auto.ppmResults || []).find((item) => clean(item.ppmKey) === clean(ppm.ppmKey));
     if (prior && ['saved', 'existing'].includes(clean(prior.status))) {
       b.addEvent('ppm-save-result-ignored', { ppmKey: ppm.ppmKey, priorStatus: prior.status });
-      if (
-        ['ppm_child_closing', 'ppm_await_save'].includes(String(auto.phase || ''))
-        && !PPM_ACTIVATION_ENABLED
-        && root.core.pages.isPpmRegisterParentPage()
-      ) {
-        await root.pages.ppmRegister.beginPpmParentRefresh(auto, auto.ppmAfterRefreshPhase || 'ppm_next');
-      }
       return;
     }
     b.addEvent('ppm-save-result', { ppmKey: ppm.ppmKey, instruction: ppm.instruction, status, ppmEntityId });
@@ -400,7 +341,7 @@
     if (nextIndex >= linked.length) {
       b.state.session.auto = { ...auto, ppmResults: results, ppmResumeAfterActivation: false, ppmResumeIndex: null };
       await b.persistSession();
-      await root.pages.ppmRegister.beginPpmCycleGeneralWait(record, results);
+      await finishPostSave(record, results);
       return;
     }
 
@@ -424,7 +365,6 @@
     ppmActivationTarget,
     processPpmStatusPage,
     recordPpmResult,
-    continuePpmAfterSave,
-    commitPpmSaveHandoff
+    continuePpmAfterSave
   });
 })();

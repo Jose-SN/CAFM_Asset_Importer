@@ -519,14 +519,11 @@
       b.scheduleAuto(450);
       return;
     }
-    if (b.state.settings.useSaveAndNew === true) {
-      await b.finishPostSave(record, autoNow.ppmResults || []);
-      return;
-    }
-    b.showActivity?.('Running', 'Open General tab', 'Save and Close next', { wait: true, meta: record?.assetCode || '', tick: true });
+    b.showActivity?.('Running', 'General tab ready', 'Save and Close next', { wait: true, meta: record?.assetCode || '', tick: true });
     b.state.session.auto = {
       ...autoNow,
       phase: 'asset_save_and_close',
+      afterPpmAssetSaveAndClose: true,
       ppmResults: autoNow.ppmResults || []
     };
     await b.persistSession();
@@ -544,27 +541,6 @@
 
     if (auto.phase === 'ppm_cycle_complete_parent') {
       await completePpmCycleOnParent(record, auto.ppmResults || []);
-      return;
-    }
-
-    if (auto.phase === 'ppm_child_closing') {
-      const linked = b.linkedPpms(record);
-      const idx = Number(auto.ppmIndex) || 0;
-      const nextPpm = b.currentPpm(record);
-      const child = await b.runtimeMessage({ type: 'PPM_CHILD_STATE', assetCode: record.assetCode });
-      const elapsed = Date.now() - Number(auto.ppmSaveStartedAt || auto.ppmParentCloseNotifyAt || Date.now());
-      if (!child?.found || elapsed > 2500) {
-        b.showActivity?.(
-          'Waiting',
-          'PPM register refresh',
-          nextPpm ? `Then Create New · PPM ${idx + 1}/${linked.length}` : 'Preparing next step',
-          { wait: true, meta: nextPpm?.instruction || record.assetCode, tick: true }
-        );
-        await beginPpmParentRefresh(auto, auto.ppmAfterRefreshPhase || 'ppm_next');
-        return;
-      }
-      b.showActivity?.('Waiting', 'PPM editor closing', nextPpm?.instruction || '', { wait: true, meta: `${record.assetCode} · PPM ${idx + 1}/${linked.length}`, tick: true });
-      b.scheduleAuto(300);
       return;
     }
 
@@ -665,7 +641,7 @@
 
     const ppm = b.currentPpm(record);
     if (!ppm) {
-      await beginPpmCycleGeneralWait(record, auto.ppmResults || []);
+      await b.finishPostSave(record, auto.ppmResults || []);
       return;
     }
 
@@ -689,46 +665,16 @@
     }
 
     if (preCreatePhases.includes(auto.phase)) {
-      const linked = b.linkedPpms(record);
-      b.showActivity?.(
-        'Running',
-        auto.phase === 'ppm_next' ? 'Next linked PPM' : 'Open PPM register',
-        ppm.instruction || ppm.ppmKey,
-        { wait: false, meta: `${record.assetCode} · PPM ${ppmIndex + 1}/${linked.length}`, duration: 2800, tick: false }
-      );
       if (await trySkipExistingPpm(record, ppm, auto)) return;
     }
 
     if (auto.phase === 'ppm_wait_new') {
-      const linked = b.linkedPpms(record);
-      const idx = Number(auto.ppmIndex) || 0;
-      const elapsed = Date.now() - Number(auto.ppmOpenStartedAt || Date.now());
-      const childTimeoutMs = Math.min(
-        Number(b.state.settings.ppmChildTimeoutMs) || 10000,
-        Number(b.state.settings.lookupTimeoutMs) || 20000
-      );
-      const attempts = Number(auto.ppmNewClickAttempts || 0);
       const child = await b.runtimeMessage({ type: 'PPM_CHILD_STATE', assetCode: record.assetCode });
-      const button = exactPpmNewButton() || findNewButton();
-      const info = ppmToolbarButtonState(button, 'a[title="Create New"][onclick*="Toolbar.New"]');
-      const diagnosis = diagnosePpmCreateNewWait(record, auto, ppm, { child, button, info, elapsed, attempts });
-
-      b.addEvent('ppm-child-check', {
-        found: Boolean(child?.found),
-        childTabId: child?.tabId ?? null,
-        childUrl: child?.url || '',
-        childStatus: child?.status || '',
-        diagnosisCode: diagnosis.code,
-        diagnosisReason: diagnosis.reason,
-        elapsedMs: elapsed,
-        attempts
-      });
+      b.addEvent('ppm-child-check', { found: Boolean(child?.found), childTabId: child?.tabId ?? null, childUrl: child?.url || '', childStatus: child?.status || '' });
       await b.persistSession();
-
       if (child?.found) {
-        showPpmCreateNewWaitActivity(diagnosis, { meta: `${record.assetCode} · PPM ${idx + 1}/${linked.length}` });
         const analysis = analyzePpmChildUrl(child.url);
-        const openElapsed = elapsed;
+        const openElapsed = Date.now() - Number(auto.ppmOpenStartedAt || Date.now());
         const duplicateReady = analysis.kind === 'parent-register'
           || (analysis.kind === 'saved-ppm' && openElapsed >= 800);
         if (duplicateReady) {
@@ -737,52 +683,39 @@
             childUrl: child.url || '',
             kind: analysis.kind,
             ppmEntityId: analysis.ppmEntityId || '',
-            elapsedMs: openElapsed,
-            diagnosisCode: diagnosis.code
+            elapsedMs: openElapsed
           });
           await sweepPpmChildren(record, { context: 'duplicate-child-detected' });
           await beginPpmParentRefresh(auto, 'ppm_next');
           return;
         }
-        if (analysis.kind === 'new-ppm') {
-          b.scheduleAuto(150);
-          return;
-        }
+        b.scheduleAuto(150);
+        return;
       }
 
-      if (shouldFailPpmCreateNewWait(diagnosis, elapsed, childTimeoutMs)) {
-        showPpmCreateNewWaitActivity(diagnosis, { wait: false, type: 'error', meta: record.assetCode, duration: 12000 });
-        b.addEvent('ppm-create-new-failed', {
-          ppmKey: ppm.ppmKey,
-          diagnosisCode: diagnosis.code,
-          diagnosisReason: diagnosis.reason,
-          diagnosisDetail: diagnosis.detail,
-          elapsedMs: elapsed,
-          attempts,
-          childFound: Boolean(child?.found),
-          buttonFound: Boolean(button),
-          buttonDisabled: Boolean(button && (button.hasAttribute('disabled') || String(button.getAttribute('aria-disabled') || '').toLowerCase() === 'true'))
-        });
-        await b.persistSession();
-        throw new Error(formatPpmCreateNewFailure(diagnosis, ppm, record));
+      const elapsed = Date.now() - Number(auto.ppmOpenStartedAt || Date.now());
+      const childTimeoutMs = Number(b.state.settings.ppmChildTimeoutMs) || Number(b.state.settings.lookupTimeoutMs) || 15000;
+      if (elapsed > childTimeoutMs) {
+        throw new Error(`Create New was clicked/retried, but the PPM child window did not open for ${ppm.ppmKey}.`);
       }
 
-      showPpmCreateNewWaitActivity(diagnosis, { meta: `${ppm.instruction || ppm.ppmKey} · PPM ${idx + 1}/${linked.length}` });
-
+      const button = exactPpmNewButton() || findNewButton();
+      const info = ppmToolbarButtonState(button, 'a[title="Create New"][onclick*="Toolbar.New"]');
+      const attempts = Number(auto.ppmNewClickAttempts || 0);
       const lastClick = Number(auto.ppmNewLastClickAt || 0);
-      b.addEvent('ppm-create-new-retry-check', { ...info, attempt: attempts + 1, elapsedMs: elapsed, diagnosisCode: diagnosis.code });
+      b.addEvent('ppm-create-new-retry-check', { ...info, attempt: attempts + 1, elapsedMs: elapsed });
       await b.persistSession();
-
-      const canClick = canInvokePpmCreateNew(button);
-
-      if (canClick && (!lastClick || Date.now() - lastClick >= 700)) {
+      if (!canInvokePpmCreateNew(button)) {
+        b.scheduleAuto(500);
+        return;
+      }
+      if (!lastClick || Date.now() - lastClick >= 700) {
         await expectPpmChildWindow(record.assetCode);
-        b.showActivity?.('Clicking', 'Create New PPM', `→ ${ppm.instruction || ppm.ppmKey}`, { wait: false, meta: `${record.assetCode} · PPM ${idx + 1}/${linked.length}`, duration: 2200, tick: false });
         const clickResult = clickPpmCreateNew(button, 'ppm-wait-new-retry');
         const now = Date.now();
         b.state.session.auto = { ...auto, ppmNewClickAttempts: attempts + 1, ppmNewLastClickAt: now };
         await b.persistSession();
-        b.addEvent('ppm-create-new-retry-click', { ...info, ...clickResult, attempt: attempts + 1, clickCalled: true, diagnosisCode: diagnosis.code });
+        b.addEvent('ppm-create-new-retry-click', { ...info, ...clickResult, attempt: attempts + 1, clickCalled: true });
         await b.persistSession();
       }
       b.scheduleAuto(200);
@@ -802,20 +735,20 @@
       return;
     }
 
-    const newButton = exactPpmNewButton() || findNewButton();
+    const newButton = findNewButton();
     if (!newButton && !ppmCreateNewCallable()) {
       const started = Number(auto.ppmListReadyStartedAt || Date.now());
       if (!auto.ppmListReadyStartedAt) {
         b.state.session.auto = { ...auto, ppmListReadyStartedAt: started };
         await b.persistSession();
       }
-      const waitElapsed = Date.now() - started;
-      const listDiagnosis = diagnosePpmCreateNewWait(record, auto, ppm, { elapsed: waitElapsed, attempts: 0 });
-      showPpmCreateNewWaitActivity(listDiagnosis, { meta: record.assetCode });
-      const listFailMs = Math.min(6000, Number(b.state.settings.ppmChildTimeoutMs) || 10000);
-      if (waitElapsed > listFailMs) {
-        showPpmCreateNewWaitActivity(listDiagnosis, { wait: false, type: 'error', meta: record.assetCode, duration: 12000 });
-        throw new Error(formatPpmCreateNewFailure(listDiagnosis, ppm, record));
+      if (Date.now() - started > b.state.settings.lookupTimeoutMs) {
+        b.state.session.auto = { ...b.state.session.auto, phase: 'ppm_wait_user_new', ppmOpenStartedAt: Date.now() };
+        await b.persistSession();
+        b.render();
+        b.showToast('Click the real CAFM + New button ONCE to add the next PPM. Automatic filling will continue in the new window.', 'warn', 16000);
+        b.scheduleAuto(900);
+        return;
       }
       b.scheduleAuto(450);
       return;
@@ -829,10 +762,11 @@
 
     await b.runtimeMessage({ type: 'REGISTER_PPM_PARENT', assetCode: record.assetCode, assetEntityId: String(auto.assetEntityId || entityIdFromUrl() || '') });
     await expectPpmChildWindow(record.assetCode);
-    const info = ppmToolbarButtonState(newButton, 'a[title="Create New"][onclick*="Toolbar.New"]');
+    const clickTarget = newButton || exactPpmNewButton();
+    const info = ppmToolbarButtonState(clickTarget, 'a[title="Create New"][onclick*="Toolbar.New"]');
     b.addEvent('ppm-create-new-ready', { ...info, ppmIndex, ppmKey: ppm.ppmKey });
     await b.persistSession();
-    if (newButton.hasAttribute('disabled') || String(newButton.getAttribute('aria-disabled') || '').toLowerCase() === 'true') {
+    if (clickTarget && (clickTarget.hasAttribute('disabled') || String(clickTarget.getAttribute('aria-disabled') || '').toLowerCase() === 'true') && !ppmCreateNewCallable(clickTarget)) {
       b.state.session.auto = { ...auto, phase: 'ppm_wait_new', ppmOpenStartedAt: Date.now(), ppmListReadyStartedAt: 0, ppmNewClickedForIndex: ppmIndex, ppmNewClickAttempts: 0, ppmNewLastClickAt: 0 };
       await b.persistSession();
       b.scheduleAuto(400);
@@ -849,7 +783,7 @@
     };
     await b.persistSession();
     b.showActivity?.('Clicking', 'Create New PPM', ppm.ppmKey, { wait: true, meta: record.assetCode, tick: true });
-    const clickResult = clickPpmCreateNew(newButton, 'ppm-open-list');
+    const clickResult = clickPpmCreateNew(clickTarget, 'ppm-open-list');
     b.addEvent('ppm-create-new-click', { ...info, ...clickResult, ppmIndex, ppmKey: ppm.ppmKey, attempt: 1, clickCalled: true });
     await b.persistSession();
     b.scheduleAuto(200);
