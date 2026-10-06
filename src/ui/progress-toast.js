@@ -49,6 +49,31 @@
     return PHASE_LABELS[key] || key.replace(/_/g, ' ') || 'Working';
   }
 
+  function formatFieldValue(value, maxLength = 140) {
+    if (value === true) return 'YES';
+    if (value === false) return 'NO';
+    const text = clean(value);
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, Math.max(0, maxLength - 1))}…`;
+  }
+
+  function showFieldFill(field, value, options = {}) {
+    const display = formatFieldValue(value, options.maxLength || 140);
+    showActivity(
+      clean(options.verb || 'Filling'),
+      clean(field || 'Field'),
+      display ? `→ ${display}` : '',
+      {
+        wait: options.wait !== false,
+        type: options.type || 'info',
+        meta: clean(options.meta || ''),
+        tick: options.tick !== false,
+        duration: Number(options.duration) || 0
+      }
+    );
+  }
+
   function configureToastElements(elements) {
     els = elements ? Object.freeze({ ...elements }) : null;
   }
@@ -156,8 +181,10 @@
     configureToastElements,
     showToast,
     showActivity,
+    showFieldFill,
     showPhase,
     phaseLabel,
+    formatFieldValue,
     stopTick
   });
 })();

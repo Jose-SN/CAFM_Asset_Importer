@@ -242,10 +242,23 @@ async function clickTab(name) {
   return tabContextReady(name);
 }
 
+function reportFieldFill(label, value, options = {}) {
+  try {
+    formCfg().state?.showFieldFill?.(label, value, {
+      verb: options.verb || 'Filling',
+      meta: options.meta || options.tab || '',
+      wait: false,
+      tick: false,
+      duration: 2800
+    });
+  } catch (_) {}
+}
+
 function fillByLabel(labelNames, value, options = {}) {
   if (value === '' || value == null) return { status: 'blank', label: Array.isArray(labelNames) ? labelNames[0] : labelNames };
   const found = nearestControl(labelNames, options.root || document);
   const label = Array.isArray(labelNames) ? labelNames[0] : labelNames;
+  reportFieldFill(label, value, options);
   if (!found) return { status: 'missing', label };
   if (found.control.readOnly && !options.allowReadOnly) return { status: 'readonly', label, control: found.control };
   const ok = setNativeValue(found.control, value);
@@ -277,9 +290,10 @@ function nearestCheckbox(labelNames, root = document) {
   return best;
 }
 
-function setCheckboxByLabel(labelNames, desired) {
-  const found = nearestCheckbox(labelNames);
+function setCheckboxByLabel(labelNames, desired, options = {}) {
+  const found = nearestCheckbox(labelNames, options.root || document);
   const label = Array.isArray(labelNames) ? labelNames[0] : labelNames;
+  reportFieldFill(label, Boolean(desired), { verb: 'Filling checkbox', ...options });
   if (!found) return { status: 'missing', label };
   const target = Boolean(desired);
   if (found.control.checked !== target) {
@@ -290,10 +304,11 @@ function setCheckboxByLabel(labelNames, desired) {
   return { status: found.control.checked === target ? 'filled' : 'failed', label, control: found.control };
 }
 
-function setSelectByLabel(labelNames, value) {
+function setSelectByLabel(labelNames, value, fillOptions = {}) {
   if (value === '' || value == null) return { status: 'blank', label: Array.isArray(labelNames) ? labelNames[0] : labelNames };
-  const found = nearestControl(labelNames);
+  const found = nearestControl(labelNames, fillOptions.root || document);
   const label = Array.isArray(labelNames) ? labelNames[0] : labelNames;
+  reportFieldFill(label, value, { verb: 'Filling dropdown', ...fillOptions });
   if (!found) return { status: 'missing', label };
   let select = found.control instanceof HTMLSelectElement ? found.control : null;
   if (!select) {
@@ -302,9 +317,9 @@ function setSelectByLabel(labelNames, value) {
   }
   if (!select) return { status: 'missing-select', label };
   const target = norm(value);
-  const options = [...select.options];
-  const exact = options.find((o) => norm(o.textContent) === target || norm(o.value) === target);
-  const partial = exact || options.find((o) => norm(o.textContent).includes(target) || target.includes(norm(o.textContent)));
+  const selectOptions = [...select.options];
+  const exact = selectOptions.find((o) => norm(o.textContent) === target || norm(o.value) === target);
+  const partial = exact || selectOptions.find((o) => norm(o.textContent).includes(target) || target.includes(norm(o.textContent)));
   if (!partial) return { status: 'option-missing', label };
   select.value = partial.value;
   for (const eventName of ['input', 'change', 'blur']) select.dispatchEvent(new Event(eventName, { bubbles: true }));

@@ -1,3 +1,6 @@
+# v8.0.30
+- **Field-level progress**: snackbar shows each field being filled or selected with the actual Excel/workbook value (e.g. `Filling: Building` → `004 - Maternity Unit`). Covers asset tabs, PPM fields, checkboxes, dropdowns, notes, and lookup selections.
+
 # v8.0.29
 - **Live progress snackbar**: wider bottom toast for every workflow step — Selecting, Clicking, Waiting (with elapsed seconds), phase changes, and asset/PPM context. One snackbar stays visible during waits for easier debugging.
 

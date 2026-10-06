@@ -14,10 +14,12 @@
   } = root.core.pages;
   const $ = () => root.runtime.b;
 
-  function fillEstimatedTime(ppm) {
+  function fillEstimatedTime(ppm, meta = '') {
     const hours = clean(ppm?.estTimeHours);
     const minutes = clean(ppm?.estTimeMinutes);
     if (!hours && !minutes) return { status: 'blank', label: 'Est. Time' };
+    const b = $();
+    b.showFieldFill?.('Est. Time', `${hours || '0'}h ${minutes || '0'}m`, { meta, wait: false, duration: 2800, tick: false });
     const labels = labelElements(['Est. Time', 'Est Time', 'Estimated Time']);
     if (!labels.length) return { status: 'missing', label: 'Est. Time' };
     const label = labels[0];
@@ -39,16 +41,17 @@
   async function fillPpmFields(ppm) {
     const b = $();
     const results = [];
+    const fillMeta = `PPM · ${ppm.ppmKey || b.currentRecord()?.assetCode || ''}`;
     await b.clickTab('General');
     for (const item of ppmDirectMapping(ppm)) {
       if (item.kind === 'checkbox' && item.value == null) continue;
       if (item.kind !== 'checkbox' && !clean(item.value)) continue;
       const fieldStart = performance.now();
-      b.showActivity?.('Filling', item.label[0], ppm.ppmKey || '', { wait: true, meta: 'PPM field', tick: true });
+      const fillOpts = { meta: fillMeta };
       let result;
-      if (item.kind === 'checkbox') result = b.setCheckboxByLabel(item.label, Boolean(item.value));
-      else if (item.kind === 'select') result = b.setSelectByLabel(item.label, item.value);
-      else result = b.fillByLabel(item.label, item.value);
+      if (item.kind === 'checkbox') result = b.setCheckboxByLabel(item.label, Boolean(item.value), fillOpts);
+      else if (item.kind === 'select') result = b.setSelectByLabel(item.label, item.value, fillOpts);
+      else result = b.fillByLabel(item.label, item.value, fillOpts);
       results.push({ ...result, field: item.label[0], kind: item.kind });
       b.addEvent('ppm-field-fill', {
         ppmKey: ppm.ppmKey,
@@ -62,17 +65,17 @@
         await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: 'General', field: item.label[0], expected: item.value, actual: '', reason: `Fill result: ${result.status}`, ppmKey: ppm.ppmKey });
       }
     }
-    const timeResult = b.fillEstimatedTime(ppm);
+    const timeResult = b.fillEstimatedTime(ppm, fillMeta);
     if (!['blank', 'filled'].includes(timeResult.status)) await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: 'General', field: 'Estimated Time', expected: `${ppm.estTimeHours || ''}:${ppm.estTimeMinutes || ''}`, actual: '', reason: `Fill result: ${timeResult.status}`, ppmKey: ppm.ppmKey });
     for (const [month, enabled] of Object.entries(ppm.months || {})) {
       if (enabled == null) continue;
-      const result = b.setCheckboxByLabel([month], Boolean(enabled));
+      const result = b.setCheckboxByLabel([month], Boolean(enabled), { meta: fillMeta });
       if (result.status === 'missing') continue;
       if (result.status !== 'filled') await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: 'General', field: month, expected: String(Boolean(enabled)), actual: '', reason: `Checkbox result: ${result.status}`, ppmKey: ppm.ppmKey });
     }
     if (clean(ppm.notes)) {
       if (await b.clickTab('Notes')) {
-        let result = b.fillByLabel(['Notes'], ppm.notes);
+        let result = b.fillByLabel(['Notes'], ppm.notes, { meta: `${fillMeta} · Notes tab` });
         if (result.status === 'missing') {
           const area = [...document.querySelectorAll('textarea')].find((el) => visible(el) && !isAssistantElement(el));
           if (!area || !b.setNativeValue(area, ppm.notes)) await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: 'Notes', field: 'Notes', expected: ppm.notes, actual: area ? elementValue(area) : '', reason: 'Notes could not be filled', ppmKey: ppm.ppmKey });
@@ -137,7 +140,7 @@
     });
     await b.selectLookup(instructionSpec);
     await wait(0);
-    const last = b.fillByLabel(['Last Service'], ppm.lastService);
+    const last = b.fillByLabel(['Last Service'], ppm.lastService, { meta: `PPM · ${ppm.ppmKey || ''}` });
     if (!last || ['missing', 'failed', 'readonly'].includes(last.status)) {
       throw new Error(`Fire-door PPM Last Service could not be entered (${last?.status || 'missing'}).`);
     }

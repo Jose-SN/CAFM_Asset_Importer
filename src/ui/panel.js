@@ -45,6 +45,10 @@ function showActivity(verb, target, detail = '', options = {}) {
   root.ui.progressToast.showActivity(verb, target, detail, options);
 }
 
+function showFieldFill(field, value, options = {}) {
+  root.ui.progressToast.showFieldFill(field, value, options);
+}
+
 function render() {
   if (!C().state.shadow) return;
   const c = C().counts();
@@ -562,6 +566,7 @@ function injectPanel() {
     injectPanel,
     render,
     showToast,
-    showActivity
+    showActivity,
+    showFieldFill
   });
 })();

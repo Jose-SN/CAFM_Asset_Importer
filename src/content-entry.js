@@ -71,7 +71,7 @@
   const fillExistingSavedAsset = (...args) => CI.pages.assetManual.fillExistingSavedAsset(...args);
   const saveExistingAssetChanges = (...args) => CI.pages.assetManual.saveExistingAssetChanges(...args);
   const startPpmForCurrentPage = (...args) => CI.pages.ppmRegister.startPpmForCurrentPage(...args);
-  const { configure: configurePanel, injectPanel, render, showToast, showActivity } = CI.ui.panel;
+  const { configure: configurePanel, injectPanel, render, showToast, showActivity, showFieldFill } = CI.ui.panel;
   const { configure: configureToolbar } = CI.core.toolbar;
   const { configure: configureTeach, initTeachCapture } = CI.core.teach;
   const { configure: configureMessages, initMessageListeners } = CI.runtime.messages;
@@ -90,6 +90,7 @@
   const TOP = window.top === window.self;
   const state = CI.core.state.createInitialState();
   state.showActivity = (...args) => CI.ui.panel.showActivity(...args);
+  state.showFieldFill = (...args) => CI.ui.panel.showFieldFill(...args);
 
   const isConceptHost = location.hostname.toLowerCase() === 'concept'
     || location.pathname.toLowerCase().includes('/evolution/');
@@ -178,6 +179,7 @@
     render: CI.ui.panel.render,
     showToast: CI.ui.panel.showToast,
     showActivity: CI.ui.panel.showActivity,
+    showFieldFill: CI.ui.panel.showFieldFill,
     downloadAssetTimeline: CI.data.workbook.downloadAssetTimeline,
     sweepPpmChildren: CI.pages.ppmRegister.sweepPpmChildren
   });
