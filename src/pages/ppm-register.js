@@ -123,6 +123,18 @@
     } catch (_) { return null; }
   }
 
+  function ppmCreateNewCallable(button) {
+    try {
+      if (typeof Toolbar !== 'undefined' && typeof Toolbar.New === 'function') return true;
+    } catch (_) {}
+    return Boolean(button && /Toolbar\.New\s*\(/.test(button.getAttribute('onclick') || ''));
+  }
+
+  function canInvokePpmCreateNew(button) {
+    if (button && (button.hasAttribute('disabled') || String(button.getAttribute('aria-disabled') || '').toLowerCase() === 'true')) return false;
+    return ppmCreateNewCallable(button) || Boolean(button && visible(button));
+  }
+
   async function expectPpmChildWindow(assetCode) {
     try {
       await $().runtimeMessage({ type: 'PPM_EXPECT_CHILD', assetCode, expectMs: 90000 });
@@ -214,6 +226,15 @@
       };
     }
     if (!visible(button)) {
+      if (ppmCreateNewCallable(button)) {
+        return {
+          code: 'pending-click',
+          title: 'Prepare Create New',
+          reason: 'Create New is in the toolbar menu — invoking Toolbar.New',
+          detail: `${ppm.instruction || ppm.ppmKey} · PPM ${slot}`,
+          failAfterMs: null
+        };
+      }
       return {
         code: 'button-hidden',
         title: 'Create New not visible',
@@ -347,18 +368,39 @@
     b.scheduleAuto(100);
   }
 
-  function clickPpmNewToolbar(guardKey = 'ppm-new') {
+  function clickPpmCreateNew(button, guardKey = 'ppm-new') {
     const b = $();
     const selector = 'a[title="Create New"][onclick*="Toolbar.New"]';
-    const button = exactPpmNewButton() || findNewButton();
-    const stateInfo = ppmToolbarButtonState(button, selector);
-    b.addEvent('ppm-create-new-check', { guardKey, ...stateInfo });
-    if (!button) throw new Error('The Create New control was not detected on the PPM register toolbar.');
-    if (button.hasAttribute('disabled') || String(button.getAttribute('aria-disabled') || '').toLowerCase() === 'true') {
+    const target = button || exactPpmNewButton() || findNewButton();
+    const stateInfo = ppmToolbarButtonState(target, selector);
+    if (target && (target.hasAttribute('disabled') || String(target.getAttribute('aria-disabled') || '').toLowerCase() === 'true')) {
       throw new Error('The Create New control is currently disabled.');
     }
-    button.click();
-    b.addEvent('ppm-create-new-click', { guardKey, ...stateInfo, clickCalled: true });
+    if (!target && !ppmCreateNewCallable()) {
+      throw new Error('The Create New control was not detected on the PPM register toolbar.');
+    }
+    b.addEvent('ppm-create-new-check', { guardKey, ...stateInfo, callable: ppmCreateNewCallable(target) });
+    try {
+      if (typeof Toolbar !== 'undefined' && typeof Toolbar.New === 'function') {
+        Toolbar.New();
+        b.addEvent('ppm-create-new-click', { guardKey, ...stateInfo, clickCalled: true, method: 'Toolbar.New' });
+        return { ...stateInfo, clickCalled: true, method: 'Toolbar.New' };
+      }
+    } catch (_) {}
+    if (!target) throw new Error('The Create New control was not detected on the PPM register toolbar.');
+    try { target.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); } catch (_) {}
+    if (visible(target)) {
+      dispatchClick(target, false, 'Create New');
+      b.addEvent('ppm-create-new-click', { guardKey, ...stateInfo, clickCalled: true, method: 'visible-click' });
+      return { ...stateInfo, clickCalled: true, method: 'visible-click' };
+    }
+    target.click();
+    b.addEvent('ppm-create-new-click', { guardKey, ...stateInfo, clickCalled: true, method: 'hidden-menu-link' });
+    return { ...stateInfo, clickCalled: true, method: 'hidden-menu-link' };
+  }
+
+  function clickPpmNewToolbar(guardKey = 'ppm-new') {
+    clickPpmCreateNew(exactPpmNewButton() || findNewButton(), guardKey);
     return true;
   }
 
@@ -731,19 +773,16 @@
       b.addEvent('ppm-create-new-retry-check', { ...info, attempt: attempts + 1, elapsedMs: elapsed, diagnosisCode: diagnosis.code });
       await b.persistSession();
 
-      const canClick = button
-        && visible(button)
-        && !button.hasAttribute('disabled')
-        && String(button.getAttribute('aria-disabled') || '').toLowerCase() !== 'true';
+      const canClick = canInvokePpmCreateNew(button);
 
       if (canClick && (!lastClick || Date.now() - lastClick >= 700)) {
         await expectPpmChildWindow(record.assetCode);
         b.showActivity?.('Clicking', 'Create New PPM', `→ ${ppm.instruction || ppm.ppmKey}`, { wait: false, meta: `${record.assetCode} · PPM ${idx + 1}/${linked.length}`, duration: 2200, tick: false });
-        button.click();
+        const clickResult = clickPpmCreateNew(button, 'ppm-wait-new-retry');
         const now = Date.now();
         b.state.session.auto = { ...auto, ppmNewClickAttempts: attempts + 1, ppmNewLastClickAt: now };
         await b.persistSession();
-        b.addEvent('ppm-create-new-retry-click', { ...info, attempt: attempts + 1, clickCalled: true, diagnosisCode: diagnosis.code });
+        b.addEvent('ppm-create-new-retry-click', { ...info, ...clickResult, attempt: attempts + 1, clickCalled: true, diagnosisCode: diagnosis.code });
         await b.persistSession();
       }
       b.scheduleAuto(200);
@@ -763,8 +802,8 @@
       return;
     }
 
-    const newButton = findNewButton();
-    if (!newButton) {
+    const newButton = exactPpmNewButton() || findNewButton();
+    if (!newButton && !ppmCreateNewCallable()) {
       const started = Number(auto.ppmListReadyStartedAt || Date.now());
       if (!auto.ppmListReadyStartedAt) {
         b.state.session.auto = { ...auto, ppmListReadyStartedAt: started };
@@ -810,8 +849,8 @@
     };
     await b.persistSession();
     b.showActivity?.('Clicking', 'Create New PPM', ppm.ppmKey, { wait: true, meta: record.assetCode, tick: true });
-    newButton.click();
-    b.addEvent('ppm-create-new-click', { ...info, ppmIndex, ppmKey: ppm.ppmKey, attempt: 1, clickCalled: true });
+    const clickResult = clickPpmCreateNew(newButton, 'ppm-open-list');
+    b.addEvent('ppm-create-new-click', { ...info, ...clickResult, ppmIndex, ppmKey: ppm.ppmKey, attempt: 1, clickCalled: true });
     await b.persistSession();
     b.scheduleAuto(200);
   }
@@ -859,6 +898,7 @@
     ppmToolbarButtonState,
     exactPpmNewButton,
     exactPpmRefreshButton,
+    clickPpmCreateNew,
     clickPpmNewToolbar,
     ppmInstructionCanon,
     ppmListContainsCurrent,
