@@ -275,19 +275,45 @@
           scheduleAuto(450);
           return;
         }
-        const saveClose = b.clickSaveAndClose?.() || { ok: false };
+        const menuStarted = Number(auto.assetSaveAndCloseMenuStartedAt || Date.now());
+        if (!auto.assetSaveAndCloseMenuStartedAt) {
+          b.state.session.auto = { ...auto, assetSaveAndCloseMenuStartedAt: menuStarted };
+          await b.persistSession();
+          auto = b.state.session.auto || {};
+        }
+        const saveClose = auto.afterPpmAssetSaveAndClose
+          ? (root.core.dom.clickAssetToolbarSaveAndClose?.() || { ok: false })
+          : (b.clickSaveAndClose?.() || { ok: false });
         b.addEvent('asset-save-and-close-click', {
           ok: saveClose.ok,
           method: saveClose.method || '',
+          reason: saveClose.reason || '',
+          pending: Boolean(saveClose.pending),
+          state: saveClose.state || {},
           assetCode: record.assetCode,
           entityId
         });
-        if (!saveClose.ok) throw new Error(`Save and Close was not detected on the General tab for ${record.assetCode}.`);
+        if (!saveClose.ok) {
+          if (saveClose.pending && Date.now() - menuStarted < b.state.settings.lookupTimeoutMs) {
+            b.showActivity?.(
+              'Waiting',
+              'Save and Close menu',
+              saveClose.reason === 'save-and-close-menu-link-disabled'
+                ? 'Waiting for Save and Close to become enabled'
+                : 'Opening Save dropdown menu',
+              { wait: true, meta: record?.assetCode || '', tick: true }
+            );
+            scheduleAuto(350);
+            return;
+          }
+          throw new Error(`Save and Close was not detected on the General tab for ${record.assetCode}${saveClose.reason ? ` (${saveClose.reason})` : ''}.`);
+        }
         b.showActivity?.('Waiting', 'Save and Close', 'Closing asset editor', { wait: true, meta: record?.assetCode || '', tick: true });
         b.state.session.auto = {
           ...auto,
           phase: 'asset_save_and_close_wait',
-          saveAndCloseStartedAt: Date.now()
+          saveAndCloseStartedAt: Date.now(),
+          assetSaveAndCloseMenuStartedAt: 0
         };
         await b.persistSession();
         scheduleAuto(500);

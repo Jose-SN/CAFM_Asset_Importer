@@ -354,6 +354,100 @@ function findSaveAndCloseButton() {
   return candidates[0]?.closest?.('a,button,[role="button"]') || candidates[0] || null;
 }
 
+function findSaveSplitButton() {
+  for (const split of document.querySelectorAll('.x-split-button')) {
+    if (isAssistantElement(split)) continue;
+    const saveLink = split.querySelector('a[onclick*="Toolbar.Save"]');
+    if (saveLink) return split;
+  }
+  return null;
+}
+
+function findSaveSplitDropdownTrigger(split = null) {
+  const rootSplit = split || findSaveSplitButton();
+  if (!rootSplit) return null;
+  return rootSplit.querySelector('.x-button-drop') || null;
+}
+
+function findSaveAndCloseDropdownLink() {
+  for (const menu of document.querySelectorAll('ul.x-button-drop-menu')) {
+    if (isAssistantElement(menu)) continue;
+    const link = menu.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndClose"]');
+    if (link) return link;
+  }
+  return document.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndClose"]') || null;
+}
+
+function isSaveSplitMenuOpen(split = null) {
+  const rootSplit = split || findSaveSplitButton();
+  if (!rootSplit) return false;
+  if (rootSplit.classList.contains('open')) return true;
+  const menu = rootSplit.querySelector('ul.x-button-drop-menu');
+  return Boolean(menu && visible(menu));
+}
+
+function saveAndCloseMenuLinkReady(link) {
+  if (!link) return false;
+  if (link.hasAttribute('disabled')) return false;
+  if (String(link.getAttribute('aria-disabled') || '').toLowerCase() === 'true') return false;
+  return true;
+}
+
+function saveAndCloseMenuLinkCallable(link) {
+  try {
+    if (typeof Toolbar !== 'undefined' && typeof Toolbar.SaveAndClose === 'function') return true;
+  } catch (_) {}
+  return Boolean(link && /Toolbar\.SaveAndClose\s*\(/.test(link.getAttribute('onclick') || ''));
+}
+
+/** Asset General tab: open Save split dropdown, wait for enabled Save and Close, then click. */
+function clickAssetToolbarSaveAndClose() {
+  const split = findSaveSplitButton();
+  const drop = findSaveSplitDropdownTrigger(split);
+  const menuOpen = isSaveSplitMenuOpen(split);
+  const menu = split?.querySelector('ul.x-button-drop-menu') || document.querySelector('ul.x-button-drop-menu');
+  const menuLink = findSaveAndCloseDropdownLink();
+  const state = {
+    splitFound: Boolean(split),
+    dropFound: Boolean(drop),
+    menuOpen,
+    menuVisible: Boolean(menu && visible(menu)),
+    linkFound: Boolean(menuLink),
+    linkVisible: Boolean(menuLink && visible(menuLink)),
+    linkReady: saveAndCloseMenuLinkReady(menuLink)
+  };
+
+  if (menuOpen) {
+    if (!menu || !visible(menu)) {
+      return { ok: false, pending: true, reason: 'waiting-for-save-dropdown-menu', state };
+    }
+    if (!menuLink) {
+      return { ok: false, pending: true, reason: 'save-and-close-menu-link-missing', state };
+    }
+    if (!saveAndCloseMenuLinkReady(menuLink)) {
+      return { ok: false, pending: true, reason: 'save-and-close-menu-link-disabled', state };
+    }
+    if (visible(menuLink)) {
+      dispatchClick(menuLink, false, 'Save and Close');
+      return { ok: true, method: 'split-dropdown-menu-link', pending: false, state };
+    }
+    if (saveAndCloseMenuLinkCallable(menuLink)) {
+      try {
+        Toolbar.SaveAndClose();
+        return { ok: true, method: 'Toolbar.SaveAndClose-menu-open', pending: false, state };
+      } catch (_) {}
+    }
+    return { ok: false, pending: true, reason: 'save-and-close-not-clickable', state };
+  }
+
+  if (drop) {
+    dispatchClick(drop, false, 'Save dropdown');
+    return { ok: false, pending: true, reason: 'opening-save-dropdown', state };
+  }
+
+  return { ok: false, pending: true, reason: 'save-split-button-not-found', state };
+}
+
 function findSaveAndNewButton() {
   const exact = document.querySelector('a[onclick*="Toolbar.SaveAndNew"], a[title*="Save and New" i]');
   if (exact && visible(exact) && !isAssistantElement(exact)) return exact;
@@ -437,6 +531,7 @@ function validationMessage() {
     wait, visible, isAssistantElement, elementValue, dispatchClick,
     configureForm, waitForDom, labelElements, allVisibleControls, nearestControl,
     setNativeValue, tabContextReady, clickTab, fillByLabel, nearestCheckbox,
-    setCheckboxByLabel, setSelectByLabel, findSaveButton, findSaveAndCloseButton, findSaveAndNewButton, clickSaveAndClose, clickSaveAndNew, validationMessage
+    setCheckboxByLabel, setSelectByLabel, findSaveButton, findSaveAndCloseButton, findSaveAndNewButton,
+    clickSaveAndClose, clickAssetToolbarSaveAndClose, clickSaveAndNew, validationMessage
   });
 })();
