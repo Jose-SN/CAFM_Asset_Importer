@@ -1,3 +1,7 @@
+# v8.0.33
+- **PPM Create New diagnostics**: snackbar shows why the New PPM window has not opened (button missing/disabled, wrong popup, popup blocked, wrong page) with actionable detail.
+- **Faster failure**: default wait capped at 10s; specific blockers fail in 2.5–8s instead of hanging 15–20s. Errors stay visible in the red snackbar.
+
 # v8.0.32
 - **Multi-PPM handoff fix**: advance `ppmIndex` and record the save *before* Save and Close closes the PPM popup — prevents re-creating PPM 1 when opening PPM 2/3.
 - **Parent fallback**: if the child closes before confirmation, parent refreshes the register and clicks Create New for the correct next row.

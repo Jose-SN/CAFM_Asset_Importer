@@ -71,6 +71,12 @@
     }
     await b.persistSession();
     b.render();
+    b.showActivity?.(
+      'Failed',
+      root.ui.progressToast.phaseLabel(b.state.session.auto?.failedPhase || 'workflow'),
+      message,
+      { wait: false, type: 'error', meta: record?.assetCode || '', duration: 0, tick: false }
+    );
     b.showToast(message, 'error', 12000);
     root.ui.progressToast.stopTick();
     syncAutoOrchestrator();
