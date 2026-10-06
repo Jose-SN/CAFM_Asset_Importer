@@ -14,7 +14,16 @@
 
   function schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase) {
     const phase = String(currentAuto.phase || '');
-    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait'].includes(phase)) {
+    if ([
+      'ppm_parent_refresh',
+      'ppm_parent_refresh_wait',
+      'ppm_open_list',
+      'ppm_wait_new',
+      'ppm_wait_user_new'
+    ].includes(phase)) {
+      return null;
+    }
+    if (currentAuto.ppmRefreshJustCompleted) {
       return null;
     }
     const lastNotify = Number(currentAuto.ppmParentCloseNotifyAt || 0);

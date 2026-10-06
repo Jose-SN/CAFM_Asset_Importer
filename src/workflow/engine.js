@@ -175,7 +175,8 @@
     if (!auto?.active) return;
     b.state.busy = true;
     try {
-      if (b.showActivity) {
+      const waitingPhase = WAITING_PHASES.has(clean(auto.phase || ''));
+      if (b.showActivity && !(b.showWorkflowStatus && waitingPhase)) {
         const recordPreview = b.workflowRecord(auto);
         const ppmPreview = b.currentPpm(recordPreview);
         b.showActivity(

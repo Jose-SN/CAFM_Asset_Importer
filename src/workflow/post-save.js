@@ -316,7 +316,8 @@
       assetEntityId: entityId,
       ppmIndex: 0,
       ppmResults: auto.ppmResults || [],
-      ppmGridRefreshedForIndex: -1
+      ppmGridRefreshedForIndex: 0,
+      ppmParentRefreshCounts: {}
     };
     await b.persistSession();
     b.render();
