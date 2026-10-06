@@ -14,14 +14,16 @@
 
   function schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase) {
     const phase = String(currentAuto.phase || '');
-    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait'].includes(phase)) {
+    const resolvedAfter = String(afterRefreshPhase || currentAuto.ppmAfterRefreshPhase || 'ppm_next');
+    const mustAdvance = ['ppm_child_closing', 'ppm_await_save'].includes(phase)
+      && ['ppm_next', 'ppm_cycle_complete_parent'].includes(resolvedAfter);
+    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait'].includes(phase) && !mustAdvance) {
       return null;
     }
     const lastNotify = Number(currentAuto.ppmParentCloseNotifyAt || 0);
-    if (lastNotify && Date.now() - lastNotify < 2500) {
+    if (lastNotify && Date.now() - lastNotify < 2500 && !mustAdvance) {
       return null;
     }
-    const resolvedAfter = String(afterRefreshPhase || currentAuto.ppmAfterRefreshPhase || 'ppm_next');
     return {
       ...currentAuto,
       active: true,
@@ -46,7 +48,7 @@
       const {
         state, addEvent, storageGet, persistSession, render, scheduleAuto, runAutomatic,
         isPpmRegisterParentPage, isPpmItemPage, isAssetPage, assetEntityUrl, entityIdFromUrl,
-        isSavedAssetPage, workflowRecord, currentPpm, recordPpmResult
+        isSavedAssetPage, workflowRecord, currentPpm, recordPpmResult, showActivity
       } = C();
 
       if (message.type === 'RUN_AUTO_STEP') {
@@ -142,6 +144,15 @@
           state.session.auto = nextAuto;
           await persistSession();
           render();
+          const handoffRecord = workflowRecord(nextAuto);
+          const nextPpm = currentPpm(handoffRecord);
+          const ppmSlot = (Number(nextAuto.ppmIndex) || 0) + 1;
+          showActivity?.(
+            'Waiting',
+            'PPM editor closed',
+            resolvedAfter === 'ppm_cycle_complete_parent' ? 'Refreshing register · finishing PPMs' : `Refreshing register · then Create New (PPM ${ppmSlot})`,
+            { wait: true, meta: nextPpm?.instruction || handoffRecord?.assetCode || '', tick: true }
+          );
           scheduleAuto(100);
         }).catch(() => scheduleAuto(200));
         return;
@@ -167,6 +178,14 @@
           state.session.auto = nextAuto;
           await persistSession();
           render();
+          const handoffRecord = workflowRecord(nextAuto);
+          const nextPpm = currentPpm(handoffRecord);
+          showActivity?.(
+            'Waiting',
+            'PPM child closed',
+            `Refreshing register · PPM ${(Number(nextAuto.ppmIndex) || 0) + 1}`,
+            { wait: true, meta: nextPpm?.instruction || handoffRecord?.assetCode || '', tick: true }
+          );
           scheduleAuto(50);
         }).catch(() => scheduleAuto(150));
       }

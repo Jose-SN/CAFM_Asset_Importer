@@ -362,6 +362,27 @@
       return;
     }
 
+    if (auto.phase === 'ppm_child_closing') {
+      const linked = b.linkedPpms(record);
+      const idx = Number(auto.ppmIndex) || 0;
+      const nextPpm = b.currentPpm(record);
+      const child = await b.runtimeMessage({ type: 'PPM_CHILD_STATE', assetCode: record.assetCode });
+      const elapsed = Date.now() - Number(auto.ppmSaveStartedAt || auto.ppmParentCloseNotifyAt || Date.now());
+      if (!child?.found || elapsed > 2500) {
+        b.showActivity?.(
+          'Waiting',
+          'PPM register refresh',
+          nextPpm ? `Then Create New · PPM ${idx + 1}/${linked.length}` : 'Preparing next step',
+          { wait: true, meta: nextPpm?.instruction || record.assetCode, tick: true }
+        );
+        await beginPpmParentRefresh(auto, auto.ppmAfterRefreshPhase || 'ppm_next');
+        return;
+      }
+      b.showActivity?.('Waiting', 'PPM editor closing', nextPpm?.instruction || '', { wait: true, meta: `${record.assetCode} · PPM ${idx + 1}/${linked.length}`, tick: true });
+      b.scheduleAuto(300);
+      return;
+    }
+
     if (!isPpmRegisterParentPage()) {
       b.addEvent('ppm-register-passive-not-parent', { url: location.href, assetCode: record?.assetCode || '' });
       await b.persistSession();
@@ -483,14 +504,24 @@
     }
 
     if (preCreatePhases.includes(auto.phase)) {
+      const linked = b.linkedPpms(record);
+      b.showActivity?.(
+        'Running',
+        auto.phase === 'ppm_next' ? 'Next linked PPM' : 'Open PPM register',
+        ppm.instruction || ppm.ppmKey,
+        { wait: false, meta: `${record.assetCode} · PPM ${ppmIndex + 1}/${linked.length}`, duration: 2800, tick: false }
+      );
       if (await trySkipExistingPpm(record, ppm, auto)) return;
     }
 
     if (auto.phase === 'ppm_wait_new') {
+      const linked = b.linkedPpms(record);
+      const idx = Number(auto.ppmIndex) || 0;
       const child = await b.runtimeMessage({ type: 'PPM_CHILD_STATE', assetCode: record.assetCode });
       b.addEvent('ppm-child-check', { found: Boolean(child?.found), childTabId: child?.tabId ?? null, childUrl: child?.url || '', childStatus: child?.status || '' });
       await b.persistSession();
       if (child?.found) {
+        b.showActivity?.('Waiting', 'PPM child window open', clean(child.url || '').slice(-60), { wait: true, meta: `${record.assetCode} · PPM ${idx + 1}/${linked.length}`, tick: true });
         const analysis = analyzePpmChildUrl(child.url);
         const openElapsed = Date.now() - Number(auto.ppmOpenStartedAt || Date.now());
         const duplicateReady = analysis.kind === 'parent-register'
@@ -517,6 +548,13 @@
         throw new Error(`Create New was clicked/retried, but the PPM child window did not open for ${ppm.ppmKey}.`);
       }
 
+      b.showActivity?.(
+        'Waiting',
+        'PPM Create New window',
+        `Waiting for popup · attempt ${Number(auto.ppmNewClickAttempts || 0) + 1}`,
+        { wait: true, meta: `${ppm.instruction || ppm.ppmKey} · ${idx + 1}/${linked.length}`, tick: true }
+      );
+
       const button = exactPpmNewButton() || findNewButton();
       const info = ppmToolbarButtonState(button, 'a[title="Create New"][onclick*="Toolbar.New"]');
       const attempts = Number(auto.ppmNewClickAttempts || 0);
@@ -529,6 +567,7 @@
       }
       if (!lastClick || Date.now() - lastClick >= 700) {
         await expectPpmChildWindow(record.assetCode);
+        b.showActivity?.('Clicking', 'Create New PPM', ppm.instruction || ppm.ppmKey, { wait: false, meta: `${record.assetCode} · PPM ${idx + 1}/${linked.length}`, duration: 2500, tick: false });
         button.click();
         const now = Date.now();
         b.state.session.auto = { ...auto, ppmNewClickAttempts: attempts + 1, ppmNewLastClickAt: now };

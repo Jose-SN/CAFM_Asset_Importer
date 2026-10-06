@@ -167,6 +167,7 @@
     processPpmStatusPage: CI.pages.ppmStatus.processPpmStatusPage,
     ppmActivationTarget: CI.pages.ppmStatus.ppmActivationTarget,
     recordPpmResult: CI.pages.ppmStatus.recordPpmResult,
+    commitPpmSaveHandoff: CI.pages.ppmStatus.commitPpmSaveHandoff,
     ppmIsActive: CI.core.toolbar.ppmIsActive,
     currentPpmStatusText: CI.core.toolbar.currentPpmStatusText,
     findChangePpmStatusButton: CI.core.toolbar.findChangePpmStatusButton,
@@ -205,7 +206,8 @@
       isSavedAssetPage: CI.core.pages.isSavedAssetPage,
       workflowRecord: CI.data.records.workflowRecord,
       currentPpm,
-      recordPpmResult: CI.pages.ppmStatus.recordPpmResult
+      recordPpmResult: CI.pages.ppmStatus.recordPpmResult,
+      showActivity: CI.ui.panel.showActivity
     });
     initMessageListeners();
     document.addEventListener('visibilitychange', () => {

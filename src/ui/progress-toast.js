@@ -38,7 +38,7 @@
     ppm_next: 'Prepare next linked PPM',
     ppm_cycle_complete_parent: 'Finish PPM cycle on asset',
     ppm_cycle_general_wait: 'Open General tab after PPMs',
-    ppm_child_closing: 'Close PPM editor window',
+    ppm_child_closing: 'PPM saved — closing editor',
     ppm_status_open: 'Open PPM status change',
     ppm_status_select: 'Select PPM Active status',
     ppm_status_confirm: 'Confirm PPM status',

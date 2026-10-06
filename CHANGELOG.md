@@ -1,3 +1,8 @@
+# v8.0.32
+- **Multi-PPM handoff fix**: advance `ppmIndex` and record the save *before* Save and Close closes the PPM popup — prevents re-creating PPM 1 when opening PPM 2/3.
+- **Parent fallback**: if the child closes before confirmation, parent refreshes the register and clicks Create New for the correct next row.
+- **Snackbar**: shows Save and Close click, editor closing, register refresh, Create New click, and waiting for the popup (with PPM n/N and instruction).
+
 # v8.0.31
 - **Post-PPM handoff**: after the last PPM is saved, workflow opens the asset **General** tab, clicks **Save and Close**, then opens the next asset New Entity form.
 - General nav link detection includes `FASSET.Common.New` IDs used on some Concept Evolution builds.

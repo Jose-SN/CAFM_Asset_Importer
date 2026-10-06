@@ -261,6 +261,38 @@
       const linked = b.linkedPpms(record);
       const nextIndex = (Number(auto.ppmIndex) || 0) + 1;
       const tentativeNextPhase = nextIndex < linked.length ? 'ppm_next' : 'ppm_cycle_complete_parent';
+      const canSaveAndClose = Boolean(
+        (typeof Toolbar !== 'undefined' && typeof Toolbar.SaveAndClose === 'function')
+        || document.querySelector('a[onclick*="Toolbar.SaveAndClose"], a[title*="Save and Close" i]')
+      );
+
+      if (canSaveAndClose) {
+        b.showActivity?.('Clicking', 'PPM Save and Close', ppm.instruction, { wait: false, meta: `${record.assetCode} · PPM ${(Number(auto.ppmIndex) || 0) + 1}/${linked.length}`, duration: 2800, tick: false });
+        const handoff = await b.commitPpmSaveHandoff?.(record, ppm, 'PPM Save and Close clicked');
+        try {
+          await b.runtimeMessage({
+            type: 'PPM_PREPARE_CLOSE',
+            assetCode: record.assetCode,
+            assetEntityId: String(auto.assetEntityId || ''),
+            nextPhase: handoff?.afterPhase || tentativeNextPhase,
+            afterRefreshPhase: handoff?.afterPhase || tentativeNextPhase
+          });
+        } catch (_) {}
+        const saveClose = b.clickSaveAndClose?.() || { ok: false };
+        const saveMethod = saveClose.ok ? saveClose.method : 'save-only';
+        if (!saveClose.ok) throw new Error(`CAFM PPM Save and Close was not detected for ${ppm.ppmKey}.`);
+        b.addEvent('ppm-save-click', { ppmKey: ppm.ppmKey, method: saveMethod, handoff: true });
+        b.state.session.auto = {
+          ...b.state.session.auto,
+          phase: 'ppm_await_save',
+          ppmSaveStartedAt: Date.now(),
+          ppmSaveMethod: saveMethod
+        };
+        await b.persistSession();
+        b.scheduleAuto(0);
+        return;
+      }
+
       try {
         await b.runtimeMessage({
           type: 'PPM_PREPARE_CLOSE',
@@ -271,13 +303,10 @@
         });
       } catch (_) {}
 
-      const saveClose = b.clickSaveAndClose?.() || { ok: false };
-      const saveMethod = saveClose.ok ? saveClose.method : 'save-only';
-      if (!saveClose.ok) {
-        const save = b.findSaveButton();
-        if (!save) throw new Error(`CAFM PPM Save button was not detected for ${ppm.ppmKey}.`);
-        dispatchClick(save, false);
-      }
+      const save = b.findSaveButton();
+      if (!save) throw new Error(`CAFM PPM Save button was not detected for ${ppm.ppmKey}.`);
+      b.showActivity?.('Clicking', 'PPM Save', ppm.instruction, { wait: true, meta: record.assetCode, tick: true });
+      dispatchClick(save, false);
       b.addEvent('ppm-save-click', { ppmKey: ppm.ppmKey, method: saveMethod });
       b.state.session.auto = {
         ...b.state.session.auto,
