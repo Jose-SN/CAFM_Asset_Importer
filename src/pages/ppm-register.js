@@ -398,6 +398,7 @@
       await b.persistSession();
       b.addEvent('ppm-parent-refresh-click', { ...info, clickCalled: true, parentUrl: location.href });
       await b.persistSession();
+      b.showActivity?.('Clicking', 'PPM register Refresh', 'Waiting for grid to reload', { wait: true, meta: record?.assetCode || '', tick: true });
       button.click();
       b.scheduleAuto(250);
       return;
@@ -592,6 +593,7 @@
       ppmNewLastClickAt: Date.now()
     };
     await b.persistSession();
+    b.showActivity?.('Clicking', 'Create New PPM', ppm.ppmKey, { wait: true, meta: record.assetCode, tick: true });
     newButton.click();
     b.addEvent('ppm-create-new-click', { ...info, ppmIndex, ppmKey: ppm.ppmKey, attempt: 1, clickCalled: true });
     await b.persistSession();

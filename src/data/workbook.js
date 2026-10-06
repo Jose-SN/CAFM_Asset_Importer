@@ -40,6 +40,21 @@ async function persistSession() {
       ppmIndex: C().state.session.auto?.ppmIndex ?? null,
       ppmKey: C().currentPpm(C().workflowRecord(C().state.session.auto) || C().currentRecord())?.ppmKey || ''
     });
+    if (C().state.session.auto?.active && C().showActivity) {
+      const record = C().workflowRecord(C().state.session.auto) || C().currentRecord();
+      const ppm = C().currentPpm(record);
+      C().showActivity(
+        'Phase',
+        root.ui.progressToast.phaseLabel(phase),
+        ppm?.instruction || '',
+        {
+          wait: true,
+          type: 'info',
+          meta: record?.assetCode ? `Asset ${record.assetCode}` : '',
+          tick: true
+        }
+      );
+    }
   }
   await storageSet({ [STORAGE.session]: C().state.session, [STORAGE.settings]: C().state.settings });
   try {

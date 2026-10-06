@@ -34,8 +34,14 @@
     return clean(element.textContent || '');
   }
 
-  function dispatchClick(target, doubleClick = false) {
+  function dispatchClick(target, doubleClick = false, hint = '') {
     if (!target) return;
+    try {
+      const label = clean(hint || target.getAttribute?.('title') || target.textContent || '').slice(0, 80);
+      if (label && formCfg().state?.showActivity) {
+        formCfg().state.showActivity('Clicking', label, doubleClick ? 'Double-click' : 'Single click', { wait: false, type: 'info', duration: 1800, tick: false });
+      }
+    } catch (_) {}
     try { target.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); } catch (_) {}
     for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) {
       try {

@@ -44,7 +44,7 @@
       if (item.kind === 'checkbox' && item.value == null) continue;
       if (item.kind !== 'checkbox' && !clean(item.value)) continue;
       const fieldStart = performance.now();
-      b.showToast(`PPM: filling ${item.label[0]}...`, 'info', 3500);
+      b.showActivity?.('Filling', item.label[0], ppm.ppmKey || '', { wait: true, meta: 'PPM field', tick: true });
       let result;
       if (item.kind === 'checkbox') result = b.setCheckboxByLabel(item.label, Boolean(item.value));
       else if (item.kind === 'select') result = b.setSelectByLabel(item.label, item.value);
@@ -88,7 +88,6 @@
     const evidence = [];
     for (const spec of ppmLookupMapping(ppm)) {
       const stepStart = performance.now();
-      b.showToast(`PPM: selecting ${spec.field}...`, 'info', 5000);
       try {
         const result = await b.selectLookup(spec);
         evidence.push(result);
@@ -242,9 +241,9 @@
     if (auto.phase === 'ppm_fill') {
       root.core.events.markRunStart();
       const fillStart = performance.now();
-      b.showToast(`Creating PPM for ${record.assetCode}: ${ppm.instruction}`, 'info', 7000);
+      b.showActivity?.('Creating PPM', record.assetCode, ppm.instruction, { wait: true, meta: ppm.ppmKey, tick: true });
       await fillPpmLookups(ppm);
-      b.showToast(`PPM: filling remaining fields...`, 'info', 4000);
+      b.showActivity?.('Filling PPM', 'Remaining fields', ppm.instruction, { wait: true, meta: record.assetCode, tick: true });
       await fillPpmFields(ppm);
       b.addEvent('ppm-fill-complete', {
         ppmKey: ppm.ppmKey,

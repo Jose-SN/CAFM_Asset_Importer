@@ -1,3 +1,6 @@
+# v8.0.29
+- **Live progress snackbar**: wider bottom toast for every workflow step — Selecting, Clicking, Waiting (with elapsed seconds), phase changes, and asset/PPM context. One snackbar stays visible during waits for easier debugging.
+
 # v8.0.23
 - PPM parent refresh dedup: coalesce duplicate `EE_PPM_CURRENT_EDITOR_CLOSED` / `EE_PPM_CHILD_DONE` notifications, skip refresh when already in-flight, and debounce background self-close notifications.
 - Last PPM save-before-close: remove the 1800ms Save-and-Close assumption without a saved entity ID; resume fill/save when a child closes before save is confirmed.

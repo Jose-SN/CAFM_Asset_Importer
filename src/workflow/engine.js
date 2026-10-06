@@ -27,13 +27,27 @@
     } catch (_) {}
   }
 
-  function scheduleAuto(_delay = 0) {
+  function scheduleAuto(delay = 0) {
     const b = $();
     clearTimeout(b.state.autoTimer);
-    const phase = clean(b.state.session.auto?.phase || '');
-    const watchdogMs = WAITING_PHASES.has(phase) ? 750 : 0;
+    const auto = b.state.session.auto || {};
+    const phase = clean(auto.phase || '');
+    const waitMs = Math.max(0, Number(delay) || 0);
+    const watchdogMs = WAITING_PHASES.has(phase) ? Math.max(waitMs, 750) : waitMs;
+    if (auto.active && b.showActivity) {
+      const record = b.workflowRecord(auto);
+      const ppm = b.currentPpm(record);
+      const meta = record?.assetCode ? `Asset ${record.assetCode}` : '';
+      const ppmNote = ppm?.ppmKey ? ` · PPM ${(Number(auto.ppmIndex) || 0) + 1}` : '';
+      b.showActivity(
+        WAITING_PHASES.has(phase) ? 'Waiting' : 'Next step',
+        root.ui.progressToast.phaseLabel(phase),
+        watchdogMs > 0 ? `Checking again in ${Math.max(1, Math.round(watchdogMs / 1000))}s` : 'Running next workflow step',
+        { wait: true, type: 'info', meta: `${meta}${ppmNote}`.trim(), tick: true }
+      );
+    }
     b.state.autoTimer = setTimeout(() => runAutomatic().catch((error) => stopAutomaticWithError(error)), watchdogMs);
-    if (b.state.session.auto?.active) syncAutoOrchestrator();
+    if (auto.active) syncAutoOrchestrator();
   }
 
   async function stopAutomaticWithError(error) {
@@ -58,6 +72,7 @@
     await b.persistSession();
     b.render();
     b.showToast(message, 'error', 12000);
+    root.ui.progressToast.stopTick();
     syncAutoOrchestrator();
   }
 
@@ -122,6 +137,7 @@
     await b.persistSession();
     b.render();
     b.showToast('Automatic import paused.', 'info');
+    root.ui.progressToast.stopTick();
     syncAutoOrchestrator();
   }
 
@@ -132,6 +148,22 @@
     if (!auto?.active) return;
     b.state.busy = true;
     try {
+      if (b.showActivity) {
+        const recordPreview = b.workflowRecord(auto);
+        const ppmPreview = b.currentPpm(recordPreview);
+        b.showActivity(
+          'Running',
+          root.ui.progressToast.phaseLabel(auto.phase),
+          ppmPreview?.instruction || recordPreview?.assetCode || '',
+          {
+            wait: false,
+            type: 'info',
+            meta: recordPreview?.assetCode ? `Asset ${recordPreview.assetCode}` : '',
+            tick: false,
+            duration: 0
+          }
+        );
+      }
       const index = Math.max(0, Number(auto.index ?? b.state.session.index) || 0);
       if (auto.mode !== 'ppm-current-page' && b.state.assets[index]) b.state.session.index = index;
       const record = b.workflowRecord(auto);

@@ -38,11 +38,11 @@ function statusClass(status) {
 }
 
 function showToast(message, type = 'info', duration = 4500) {
-  if (!C().state.els.toast) return;
-  C().state.els.toast.textContent = clean(message);
-  C().state.els.toast.className = `toast show ${type}`;
-  clearTimeout(C().state.els.toast._timer);
-  C().state.els.toast._timer = setTimeout(() => { C().state.els.toast.className = 'toast'; }, duration);
+  root.ui.progressToast.showToast(message, type, duration);
+}
+
+function showActivity(verb, target, detail = '', options = {}) {
+  root.ui.progressToast.showActivity(verb, target, detail, options);
 }
 
 function render() {
@@ -322,11 +322,16 @@ function injectPanel() {
       .option { display:flex; align-items:center; gap:7px; color:#cbd4dc; margin-top:6px; font-size:11px; }
       .option input[type=number] { width:80px; background:#0f161d; border:1px solid #3b4956; color:#fff; border-radius:4px; padding:4px; }
       #autoState { color:#b8c5cf; font-size:11px; margin-top:6px; }
-      .toast { position:fixed; right:18px; bottom:18px; z-index:2147483647; max-width:520px; padding:11px 14px; border-radius:8px; color:#fff; background:#26333e; box-shadow:0 8px 28px rgba(0,0,0,.32); display:none; font:13px/1.35 Arial,sans-serif; }
+      .toast { position:fixed; right:18px; bottom:18px; z-index:2147483647; min-width:420px; max-width:780px; width:max-content; padding:12px 16px; border-radius:9px; color:#fff; background:#26333e; box-shadow:0 10px 32px rgba(0,0,0,.36); display:none; font:13px/1.4 Arial,sans-serif; }
       .toast.show { display:block; }
       .toast.success { background:#1c5134; }
       .toast.warn { background:#6a5319; }
       .toast.error { background:#702b31; }
+      .toast.info { background:#1a4a6e; }
+      .toast.progress { border-left:4px solid #3d8bfd; }
+      .toast-title { font-weight:700; font-size:13px; line-height:1.35; }
+      .toast-meta { font-size:10px; opacity:.88; margin-top:3px; letter-spacing:.02em; text-transform:uppercase; }
+      .toast-detail { font-size:12px; margin-top:5px; opacity:.96; line-height:1.45; white-space:pre-wrap; word-break:break-word; }
       .footer { color:#80909c; text-align:center; font-size:10px; margin:3px 0 1px; }
     </style>
     <div id="panel">
@@ -411,11 +416,21 @@ function injectPanel() {
         <div class="footer">Move this panel by dragging the header. Site and calculated/read-only fields are not overwritten.</div>
       </div>
     </div>
-    <div id="toast" class="toast"></div>
+    <div id="toast" class="toast">
+      <div id="toastTitle" class="toast-title"></div>
+      <div id="toastMeta" class="toast-meta" hidden></div>
+      <div id="toastDetail" class="toast-detail" hidden></div>
+    </div>
   `;
 
-  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast'];
+  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
   for (const id of ids) C().state.els[id] = shadow.getElementById(id);
+  root.ui.progressToast.configureToastElements({
+    toast: C().state.els.toast,
+    toastTitle: C().state.els.toastTitle,
+    toastMeta: C().state.els.toastMeta,
+    toastDetail: C().state.els.toastDetail
+  });
   C().state.els.dragHandle = C().state.els.head;
   if (!isAssetPage()) C().state.els.panel.classList.add('ppm-workflow');
 
@@ -546,6 +561,7 @@ function injectPanel() {
     configure,
     injectPanel,
     render,
-    showToast
+    showToast,
+    showActivity
   });
 })();

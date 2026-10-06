@@ -130,7 +130,7 @@
 
     b.state.session.currentLookupEvidence = [];
     await b.persistSession();
-    b.showToast(`Filling ${record.assetCode}...`, 'info', 5000);
+    b.showActivity?.('Filling', record.assetCode, 'Reading workbook fields into CAFM tabs', { wait: true, meta: `Row ${record.workbookRow}`, tick: true });
     const filled = await fillAssetFieldsByTab(record);
     await wait(0);
     await verifyBeforeSave(record);

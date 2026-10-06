@@ -71,7 +71,7 @@
   const fillExistingSavedAsset = (...args) => CI.pages.assetManual.fillExistingSavedAsset(...args);
   const saveExistingAssetChanges = (...args) => CI.pages.assetManual.saveExistingAssetChanges(...args);
   const startPpmForCurrentPage = (...args) => CI.pages.ppmRegister.startPpmForCurrentPage(...args);
-  const { configure: configurePanel, injectPanel, render, showToast } = CI.ui.panel;
+  const { configure: configurePanel, injectPanel, render, showToast, showActivity } = CI.ui.panel;
   const { configure: configureToolbar } = CI.core.toolbar;
   const { configure: configureTeach, initTeachCapture } = CI.core.teach;
   const { configure: configureMessages, initMessageListeners } = CI.runtime.messages;
@@ -89,6 +89,7 @@
   const PAGE_INSTANCE = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const TOP = window.top === window.self;
   const state = CI.core.state.createInitialState();
+  state.showActivity = (...args) => CI.ui.panel.showActivity(...args);
 
   const isConceptHost = location.hostname.toLowerCase() === 'concept'
     || location.pathname.toLowerCase().includes('/evolution/');
@@ -176,6 +177,7 @@
     dispatchLegacySingleClick: CI.core.toolbar.dispatchLegacySingleClick,
     render: CI.ui.panel.render,
     showToast: CI.ui.panel.showToast,
+    showActivity: CI.ui.panel.showActivity,
     downloadAssetTimeline: CI.data.workbook.downloadAssetTimeline,
     sweepPpmChildren: CI.pages.ppmRegister.sweepPpmChildren
   });
@@ -189,7 +191,7 @@
   async function initTop() {
     configureRecords({ state, nearestControl });
     configureWorkbook({
-      state, render, showToast, validateRecord, currentRecord, linkedPpms, workflowRecord,
+      state, render, showToast, showActivity, validateRecord, currentRecord, linkedPpms, workflowRecord,
       currentPpm, currentAssetStatusText, currentPpmStatusText, validationMessage, addEvent
     });
     configureEvents({ state, workflowRecord, currentRecord, persistSession, showToast });
