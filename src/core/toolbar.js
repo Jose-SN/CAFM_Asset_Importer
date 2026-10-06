@@ -533,7 +533,11 @@ async function selectActiveFromStatusDropdown(control, dialogRoot, label = 'Stat
 }
 
 function findAssetGeneralNavLink() {
-  const exact = document.querySelector('a.fsiNavItem[title="General"], a#Fsi\\.Concept\\.Asset\\.Entities\\.FASSET\\.Common\\.Edit');
+  const exact = document.querySelector([
+    'a.fsiNavItem[title="General"]',
+    'a#Fsi\\.Concept\\.Asset\\.Entities\\.FASSET\\.Common\\.Edit',
+    'a#Fsi\\.Concept\\.Asset\\.Entities\\.FASSET\\.Common\\.New'
+  ].join(', '));
   if (exact && visible(exact) && !isAssistantElement(exact)) return exact;
   const candidates = [...document.querySelectorAll('a.fsiNavItem, a[title="General"]')]
     .filter((element) => {

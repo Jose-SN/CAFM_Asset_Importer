@@ -313,12 +313,7 @@
   async function completePpmCycleOnParent(record, ppmResults = []) {
     const b = $();
     await sweepPpmChildren(record, { context: 'ppm-cycle-complete' });
-    const useSaveAndNew = b.state.settings.useSaveAndNew !== false;
-    if (useSaveAndNew) {
-      await beginPpmCycleGeneralWait(record, ppmResults);
-      return;
-    }
-    await b.finishPostSave(record, ppmResults);
+    await beginPpmCycleGeneralWait(record, ppmResults);
   }
 
   async function processPpmCycleGeneralWaitPage(record) {
@@ -339,7 +334,18 @@
       b.scheduleAuto(450);
       return;
     }
-    await b.finishPostSave(record, autoNow.ppmResults || []);
+    if (b.state.settings.useSaveAndNew === true) {
+      await b.finishPostSave(record, autoNow.ppmResults || []);
+      return;
+    }
+    b.showActivity?.('Running', 'Open General tab', 'Save and Close next', { wait: true, meta: record?.assetCode || '', tick: true });
+    b.state.session.auto = {
+      ...autoNow,
+      phase: 'asset_save_and_close',
+      ppmResults: autoNow.ppmResults || []
+    };
+    await b.persistSession();
+    b.scheduleAuto(150);
   }
 
   async function processPpmListPage(record) {
@@ -453,7 +459,7 @@
 
     const ppm = b.currentPpm(record);
     if (!ppm) {
-      await b.finishPostSave(record, auto.ppmResults || []);
+      await beginPpmCycleGeneralWait(record, auto.ppmResults || []);
       return;
     }
 
@@ -650,6 +656,7 @@
     analyzePpmChildUrl,
     sweepPpmChildren,
     beginPpmParentRefresh,
+    beginPpmCycleGeneralWait,
     processPpmCycleGeneralWaitPage,
     processPpmListPage,
     startPpmForCurrentPage

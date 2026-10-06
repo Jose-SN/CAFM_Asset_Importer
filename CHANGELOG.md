@@ -1,3 +1,7 @@
+# v8.0.31
+- **Post-PPM handoff**: after the last PPM is saved, workflow opens the asset **General** tab, clicks **Save and Close**, then opens the next asset New Entity form.
+- General nav link detection includes `FASSET.Common.New` IDs used on some Concept Evolution builds.
+
 # v8.0.30
 - **Field-level progress**: snackbar shows each field being filled or selected with the actual Excel/workbook value (e.g. `Filling: Building` → `004 - Maternity Unit`). Covers asset tabs, PPM fields, checkboxes, dropdowns, notes, and lookup selections.
 

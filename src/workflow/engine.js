@@ -242,6 +242,52 @@
         return;
       }
 
+      if (auto.phase === 'asset_save_and_close' || auto.phase === 'asset_save_and_close_wait') {
+        const entityId = String(auto.assetEntityId || auto.previousAssetEntityId || '');
+        if (auto.phase === 'asset_save_and_close_wait') {
+          const elapsed = Date.now() - Number(auto.saveAndCloseStartedAt || Date.now());
+          const leftSavedPage = !isSavedAssetPage() || (entityId && entityIdFromUrl() !== entityId);
+          if (leftSavedPage || elapsed > b.state.settings.saveTimeoutMs) {
+            await b.finishPostSave(record, auto.ppmResults || []);
+            return;
+          }
+          scheduleAuto(350);
+          return;
+        }
+        if (!entityId) {
+          await b.finishPostSave(record, auto.ppmResults || []);
+          return;
+        }
+        if (!isSavedAssetPage() || entityIdFromUrl() !== entityId) {
+          location.href = assetEntityUrl(entityId);
+          return;
+        }
+        const general = root.core.toolbar.findAssetGeneralNavLink();
+        if (general && !general.classList.contains('fsiNavSelectedItem')) {
+          b.showActivity?.('Clicking', 'General tab', 'Before Save and Close', { wait: false, meta: record?.assetCode || '', duration: 2200, tick: false });
+          dispatchClick(general, false);
+          scheduleAuto(450);
+          return;
+        }
+        const saveClose = b.clickSaveAndClose?.() || { ok: false };
+        b.addEvent('asset-save-and-close-click', {
+          ok: saveClose.ok,
+          method: saveClose.method || '',
+          assetCode: record.assetCode,
+          entityId
+        });
+        if (!saveClose.ok) throw new Error(`Save and Close was not detected on the General tab for ${record.assetCode}.`);
+        b.showActivity?.('Waiting', 'Save and Close', 'Closing asset editor', { wait: true, meta: record?.assetCode || '', tick: true });
+        b.state.session.auto = {
+          ...auto,
+          phase: 'asset_save_and_close_wait',
+          saveAndCloseStartedAt: Date.now()
+        };
+        await b.persistSession();
+        scheduleAuto(500);
+        return;
+      }
+
       if (auto.phase === 'asset_save_and_new') {
         const prevEntityId = String(auto.previousAssetEntityId || auto.assetEntityId || '');
         if (!prevEntityId) {

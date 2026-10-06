@@ -154,7 +154,7 @@
     }
 
     const previousEntityId = entityId;
-    const useSaveAndNew = b.state.settings.useSaveAndNew !== false;
+    const useSaveAndNew = b.state.settings.useSaveAndNew === true;
     b.state.session.index = next;
     b.state.session.currentLookupEvidence = [];
     b.state.session.auto = {
@@ -166,6 +166,7 @@
       previousAssetCode: record.assetCode,
       previousAssetEntityId: previousEntityId,
       saveAndNewStartedAt: 0,
+      saveAndCloseStartedAt: 0,
       startedAt: auto.startedAt || Date.now(),
       processedThisRun: completedIterations,
       maxIterations: Math.max(1, Number(auto.maxIterations || 1)),

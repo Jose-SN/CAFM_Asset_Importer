@@ -25,6 +25,8 @@
     activate_wait: 'Wait for activation to complete',
     activate_wait_user: 'Waiting for you to set Active status',
     asset_save_and_new: 'Save and New for next asset',
+    asset_save_and_close: 'Save and Close on General tab',
+    asset_save_and_close_wait: 'Wait for Save and Close to finish',
     run_complete_finalize: 'Finish run and return to asset list',
     ppm_open_list: 'Open PPM register',
     ppm_wait_new: 'Wait for PPM Create New window',
