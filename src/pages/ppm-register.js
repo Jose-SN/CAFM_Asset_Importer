@@ -111,9 +111,13 @@
 
   function exactPpmNewButton() {
     if (!isPpmListPage()) return null;
-    try {
-      return document.querySelector('a[title="Create New"][onclick*="Toolbar.New"]');
-    } catch (_) { return null; }
+    for (const doc of $().sameOriginDocuments()) {
+      try {
+        const exact = doc.querySelector('a[title="Create New"][onclick*="Toolbar.New"]');
+        if (exact && !isAssistantElement(exact)) return exact;
+      } catch (_) {}
+    }
+    return null;
   }
 
   function exactPpmRefreshButton() {
@@ -199,7 +203,8 @@
       b.scheduleAuto(400);
       return true;
     }
-    const duplicateReady = analysis.kind === 'parent-register'
+    const clickAttempts = Number(auto.ppmNewClickAttempts || 0);
+    const duplicateReady = (analysis.kind === 'parent-register' && clickAttempts > 0)
       || (analysis.kind === 'saved-ppm' && openElapsed >= 800);
     if (duplicateReady) {
       b.addEvent('ppm-duplicate-child-detected', {
@@ -207,11 +212,21 @@
         childUrl: child.url || '',
         kind: analysis.kind,
         ppmEntityId: analysis.ppmEntityId || '',
-        elapsedMs: openElapsed
+        elapsedMs: openElapsed,
+        clickAttempts
       });
       await sweepPpmChildren(record, { context: 'duplicate-child-detected' });
       await beginPpmParentRefresh(auto, auto.ppmAfterRefreshPhase || 'ppm_next');
       return true;
+    }
+    if (analysis.kind === 'parent-register' && clickAttempts === 0) {
+      b.addEvent('ppm-stray-register-child', {
+        childTabId: child.tabId ?? null,
+        childUrl: child.url || '',
+        elapsedMs: openElapsed
+      });
+      await sweepPpmChildren(record, { context: 'stray-register-before-click' });
+      return false;
     }
     b.scheduleAuto(150);
     return true;
@@ -438,23 +453,25 @@
     if (target && (target.hasAttribute('disabled') || String(target.getAttribute('aria-disabled') || '').toLowerCase() === 'true')) {
       throw new Error('The Create New control is currently disabled.');
     }
-    if (!target && !ppmCreateNewCallable()) {
+    if (!target && !ppmCreateNewCallable(target)) {
       throw new Error('The Create New control was not detected on the PPM register toolbar.');
     }
     b.addEvent('ppm-create-new-check', { guardKey, ...stateInfo, callable: ppmCreateNewCallable(target) });
-    try {
-      if (typeof Toolbar !== 'undefined' && typeof Toolbar.New === 'function') {
-        Toolbar.New();
-        b.addEvent('ppm-create-new-click', { guardKey, ...stateInfo, clickCalled: true, method: 'Toolbar.New' });
-        return { ...stateInfo, clickCalled: true, method: 'Toolbar.New' };
-      }
-    } catch (_) {}
     if (!target) throw new Error('The Create New control was not detected on the PPM register toolbar.');
     try { target.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); } catch (_) {}
     if (visible(target)) {
       dispatchClick(target, false, 'Create New');
       b.addEvent('ppm-create-new-click', { guardKey, ...stateInfo, clickCalled: true, method: 'visible-click' });
       return { ...stateInfo, clickCalled: true, method: 'visible-click' };
+    }
+    if (target.classList?.contains('x-button-drop-menu-link') || ppmCreateNewCallable(target)) {
+      try {
+        if (typeof Toolbar !== 'undefined' && typeof Toolbar.New === 'function') {
+          Toolbar.New();
+          b.addEvent('ppm-create-new-click', { guardKey, ...stateInfo, clickCalled: true, method: 'Toolbar.New-menu-fallback' });
+          return { ...stateInfo, clickCalled: true, method: 'Toolbar.New-menu-fallback' };
+        }
+      } catch (_) {}
     }
     target.click();
     b.addEvent('ppm-create-new-click', { guardKey, ...stateInfo, clickCalled: true, method: 'hidden-menu-link' });
@@ -514,6 +531,7 @@
   }
 
   function needsPpmGridRefresh(auto, ppmIndex) {
+    if (auto.ppmRefreshJustCompleted) return false;
     return Number(auto.ppmGridRefreshedForIndex ?? -1) !== Number(ppmIndex);
   }
 
@@ -680,7 +698,8 @@
         auto = b.state.session.auto || {};
       }
       const toolbarReadyAgain = Boolean(refreshButton) && !disabledNow && document.readyState === 'complete' && elapsed >= 500;
-      if (!pageReloaded && !toolbarReadyAgain) {
+      const refreshSettled = elapsed >= 1800 && document.readyState === 'complete';
+      if (!pageReloaded && !toolbarReadyAgain && !refreshSettled) {
         if (elapsed > b.state.settings.lookupTimeoutMs) throw new Error('Parent PPM page refresh did not complete before timeout.');
         b.scheduleAuto(250);
         return;
@@ -703,7 +722,8 @@
         ppmParentRefreshPageInstance: '',
         ppmParentRefreshSawDisabled: false,
         ppmAfterRefreshPhase: '',
-        ppmGridRefreshedForIndex: Number(auto.ppmIndex ?? 0)
+        ppmGridRefreshedForIndex: Number(auto.ppmIndex ?? 0),
+        ppmRefreshJustCompleted: true
       };
       await b.persistSession();
       auto = b.state.session.auto || {};
@@ -711,6 +731,8 @@
         await completePpmCycleOnParent(record, auto.ppmResults || []);
         return;
       }
+      b.scheduleAuto(100);
+      return;
     }
 
     assertPpmAssetContext(record, auto);
@@ -891,7 +913,8 @@
       ppmListReadyStartedAt: 0,
       ppmNewClickedForIndex: ppmIndex,
       ppmNewClickAttempts: 1,
-      ppmNewLastClickAt: Date.now()
+      ppmNewLastClickAt: Date.now(),
+      ppmRefreshJustCompleted: false
     };
     await b.persistSession();
     b.showActivity?.('Clicking', 'Create New PPM', ppm.ppmKey, { wait: true, meta: record.assetCode, tick: true });

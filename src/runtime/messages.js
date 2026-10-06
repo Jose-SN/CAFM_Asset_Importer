@@ -148,7 +148,7 @@
           showActivity?.(
             'Waiting',
             'PPM editor closed',
-            resolvedAfter === 'ppm_cycle_complete_parent' ? 'Refreshing register · finishing PPMs' : `Refreshing register · then Create New (PPM ${ppmSlot})`,
+            afterRefreshPhase === 'ppm_cycle_complete_parent' ? 'Refreshing register · finishing PPMs' : `Refreshing register · then Create New (PPM ${ppmSlot})`,
             { wait: true, meta: nextPpm?.instruction || handoffRecord?.assetCode || '', tick: true }
           );
           scheduleAuto(100);
