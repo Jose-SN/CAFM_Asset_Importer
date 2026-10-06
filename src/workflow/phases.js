@@ -53,6 +53,7 @@
     'ppm_parent_refresh',
     'ppm_parent_refresh_wait',
     'ppm_cycle_general_wait',
+    'navigate',
     'asset_save_and_close_wait',
     'ppm_status_wait',
     'ppm_status_wait_user'

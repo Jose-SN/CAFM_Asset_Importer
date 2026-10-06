@@ -235,6 +235,11 @@
     if (issues.length) throw new Error(`PPM ${ppm.ppmKey} cannot be imported: ${issues.join('; ')}`);
 
     if (['ppm_wait_new', 'ppm_wait_user_new', 'ppm_open_list', 'ppm_next'].includes(auto.phase)) {
+      if (root.data.ppm.alreadyProcessed(record, ppm, auto, b.state.session.statuses || {})) {
+        b.addEvent('ppm-fill-skipped-already-processed', { ppmKey: ppm.ppmKey, phase: auto.phase });
+        await b.recordPpmResult(record, ppm, 'existing', 'PPM already saved in this session; resuming without duplicate fill');
+        return;
+      }
       b.state.session.auto = { ...auto, phase: 'ppm_fill' };
       await b.persistSession();
       b.scheduleAuto(100);
@@ -242,6 +247,11 @@
     }
 
     if (auto.phase === 'ppm_fill') {
+      if (root.data.ppm.alreadyProcessed(record, ppm, auto, b.state.session.statuses || {})) {
+        b.addEvent('ppm-fill-skipped-already-processed', { ppmKey: ppm.ppmKey, phase: auto.phase });
+        await b.recordPpmResult(record, ppm, 'existing', 'PPM already saved in this session; duplicate fill skipped');
+        return;
+      }
       root.core.events.markRunStart();
       const fillStart = performance.now();
       b.showActivity?.('Creating PPM', record.assetCode, ppm.instruction, { wait: true, meta: ppm.ppmKey, tick: true });

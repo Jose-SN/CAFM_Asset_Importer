@@ -76,7 +76,7 @@
   }
 
   function isWorkflowPage() {
-    return isAssetPage() || isPpmListPage() || isPpmItemPage();
+    return isAssetPage() || isAssetListPage() || isPpmListPage() || isPpmItemPage();
   }
 
   /** Pages where the floating importer panel (workbook upload) should appear. */
@@ -108,6 +108,9 @@
   function deriveNewEntityUrl() {
     try {
       const url = new URL(location.href);
+      if (assetListPagePattern.test(url.pathname)) {
+        return `${url.origin}/Evolution/!System/Asset/FASSET/ViewFASSETItem.aspx?id=-1`;
+      }
       if (!assetPagePattern.test(url.pathname)) return '';
       url.searchParams.set('id', '-1');
       return url.toString();

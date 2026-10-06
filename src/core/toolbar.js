@@ -533,20 +533,67 @@ async function selectActiveFromStatusDropdown(control, dialogRoot, label = 'Stat
 }
 
 function findAssetGeneralNavLink() {
-  const exact = document.querySelector([
-    'a.fsiNavItem[title="General"]',
-    'a#Fsi\\.Concept\\.Asset\\.Entities\\.FASSET\\.Common\\.Edit',
-    'a#Fsi\\.Concept\\.Asset\\.Entities\\.FASSET\\.Common\\.New'
-  ].join(', '));
-  if (exact && visible(exact) && !isAssistantElement(exact)) return exact;
-  const candidates = [...document.querySelectorAll('a.fsiNavItem, a[title="General"]')]
-    .filter((element) => {
-      if (!visible(element) || isAssistantElement(element)) return false;
-      const title = norm(element.getAttribute('title') || '');
-      const text = norm(element.querySelector('.fsiNavItemText')?.textContent || element.textContent || '');
-      return title === 'general' || text === 'general';
-    });
-  return candidates[0] || null;
+  const docs = [document, ...sameOriginDocuments().filter((doc) => doc !== document)];
+  for (const doc of docs) {
+    try {
+      const exact = doc.querySelector([
+        'a.fsiNavItem[title="General"]',
+        'a#Fsi\\.Concept\\.Asset\\.Entities\\.FASSET\\.Common\\.Edit',
+        'a#Fsi\\.Concept\\.Asset\\.Entities\\.FASSET\\.Common\\.New'
+      ].join(', '));
+      if (exact && visible(exact) && !isAssistantElement(exact)) return exact;
+      const candidates = [...doc.querySelectorAll('a.fsiNavItem, a[title="General"]')]
+        .filter((element) => {
+          if (!visible(element) || isAssistantElement(element)) return false;
+          const title = norm(element.getAttribute('title') || '');
+          const text = norm(element.querySelector('.fsiNavItemText')?.textContent || element.textContent || '');
+          return title === 'general' || text === 'general';
+        });
+      if (candidates[0]) return candidates[0];
+    } catch (_) {}
+  }
+  return null;
+}
+
+function findAssetListCreateNewButton() {
+  const docs = [document, ...sameOriginDocuments().filter((doc) => doc !== document)];
+  for (const doc of docs) {
+    try {
+      const exact = doc.querySelector('a[title="Create New"][onclick*="Toolbar.New"]');
+      if (exact && visible(exact) && !isAssistantElement(exact)) return exact;
+      const menuAnchor = doc.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.New"]');
+      if (menuAnchor && visible(menuAnchor) && !isAssistantElement(menuAnchor)) return menuAnchor;
+    } catch (_) {}
+  }
+  return null;
+}
+
+function clickAssetListCreateNew() {
+  const target = findAssetListCreateNewButton();
+  if (target) {
+    if (target.hasAttribute('disabled') || String(target.getAttribute('aria-disabled') || '').toLowerCase() === 'true') {
+      return { ok: false, reason: 'create-new-disabled' };
+    }
+    if (target.classList.contains('x-button-drop-menu-link')) {
+      try {
+        if (typeof Toolbar !== 'undefined' && typeof Toolbar.New === 'function') {
+          Toolbar.New();
+          return { ok: true, method: 'Toolbar.New-menu-link' };
+        }
+      } catch (_) {}
+    }
+    if (visible(target)) {
+      dispatchClick(target, false, 'Create New Asset');
+      return { ok: true, method: 'create-new-link' };
+    }
+  }
+  try {
+    if (typeof Toolbar !== 'undefined' && typeof Toolbar.New === 'function') {
+      Toolbar.New();
+      return { ok: true, method: 'Toolbar.New-direct' };
+    }
+  } catch (_) {}
+  return { ok: false, reason: 'create-new-not-found' };
 }
 
 function findAssetPpmNavLink() {
@@ -587,6 +634,8 @@ function findAssetPpmNavLink() {
     findConfirmButton,
     selectActiveFromStatusDropdown,
     findAssetGeneralNavLink,
+    findAssetListCreateNewButton,
+    clickAssetListCreateNew,
     findAssetPpmNavLink,
     currentPpmStatusText,
     ppmIsActive

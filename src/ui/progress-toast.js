@@ -24,7 +24,8 @@
     activate_confirm: 'Confirm Active status',
     activate_wait: 'Wait for activation to complete',
     activate_wait_user: 'Waiting for you to set Active status',
-    asset_save_and_new: 'Save and New for next asset',
+    asset_save_and_new: 'Save menu → Save and New for next asset',
+    navigate: 'Open next asset New Entity form',
     asset_save_and_close: 'Save and Close on General tab',
     asset_save_and_close_wait: 'Wait for Save and Close to finish',
     run_complete_finalize: 'Finish run and return to asset list',
@@ -178,6 +179,32 @@
     );
   }
 
+  function showWorkflowStatus(context = {}, options = {}) {
+    if (!root.ui?.workflowGuide?.buildGuide) {
+      showPhase(context?.auto?.phase || '', options.detail || '', options);
+      return;
+    }
+    const guide = root.ui.workflowGuide.buildGuide(context);
+    const wait = options.wait !== false;
+    const detail = root.ui.workflowGuide.formatGuideLines(guide, {
+      waiting: wait,
+      waitSec: Number(options.waitSec) || 0
+    });
+    const verb = options.verb || (wait ? 'Waiting' : 'Running');
+    showActivity(
+      verb,
+      phaseLabel(guide.phase || context?.auto?.phase || ''),
+      detail,
+      {
+        wait,
+        type: options.type || 'info',
+        meta: [guide.assetCode, guide.ppmSlot].filter(Boolean).join(''),
+        tick: options.tick !== false && wait,
+        duration: Number(options.duration) || 0
+      }
+    );
+  }
+
   root.ui = root.ui || {};
   root.ui.progressToast = Object.freeze({
     configureToastElements,
@@ -185,6 +212,7 @@
     showActivity,
     showFieldFill,
     showPhase,
+    showWorkflowStatus,
     phaseLabel,
     formatFieldValue,
     stopTick

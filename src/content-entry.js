@@ -71,7 +71,7 @@
   const fillExistingSavedAsset = (...args) => CI.pages.assetManual.fillExistingSavedAsset(...args);
   const saveExistingAssetChanges = (...args) => CI.pages.assetManual.saveExistingAssetChanges(...args);
   const startPpmForCurrentPage = (...args) => CI.pages.ppmRegister.startPpmForCurrentPage(...args);
-  const { configure: configurePanel, injectPanel, render, showToast, showActivity, showFieldFill } = CI.ui.panel;
+  const { configure: configurePanel, injectPanel, render, showToast, showActivity, showFieldFill, showWorkflowStatus } = CI.ui.panel;
   const { configure: configureToolbar } = CI.core.toolbar;
   const { configure: configureTeach, initTeachCapture } = CI.core.teach;
   const { configure: configureMessages, initMessageListeners } = CI.runtime.messages;
@@ -179,6 +179,7 @@
     render: CI.ui.panel.render,
     showToast: CI.ui.panel.showToast,
     showActivity: CI.ui.panel.showActivity,
+    showWorkflowStatus: CI.ui.panel.showWorkflowStatus,
     showFieldFill: CI.ui.panel.showFieldFill,
     downloadAssetTimeline: CI.data.workbook.downloadAssetTimeline,
     sweepPpmChildren: CI.pages.ppmRegister.sweepPpmChildren

@@ -49,6 +49,11 @@ function showFieldFill(field, value, options = {}) {
   root.ui.progressToast.showFieldFill(field, value, options);
 }
 
+function showWorkflowStatus(context = {}, options = {}) {
+  root.ui.progressToast.showWorkflowStatus(context, options);
+  render();
+}
+
 function render() {
   if (!C().state.shadow) return;
   const c = C().counts();
@@ -141,6 +146,24 @@ function render() {
     : auto?.phase === 'complete'
       ? `Automatic import complete${auto?.processedThisRun != null ? ` | ${Number(auto.processedThisRun || 0)}/${Number(auto.maxIterations || auto.processedThisRun || 1)} asset cycle(s)` : ''}`
       : auto?.phase === 'error' ? `Stopped: ${auto.error || 'error'}` : 'Automatic import stopped';
+
+  if (C().state.els.workflowGuide) {
+    const showGuide = Boolean(auto?.active) && root.ui?.workflowGuide?.buildGuide;
+    C().state.els.workflowGuide.hidden = !showGuide;
+    if (showGuide) {
+      const guide = root.ui.workflowGuide.buildGuide({
+        auto,
+        record: activeRecord,
+        currentPpm: activeRecord ? C().currentPpm(activeRecord) : null,
+        linkedPpms: activeRecord ? C().linkedPpms(activeRecord) : [],
+        statuses: C().state.session.statuses || {},
+        statusOf: (row) => C().statusOf(row)
+      });
+      if (C().state.els.guideDone) C().state.els.guideDone.textContent = guide.done;
+      if (C().state.els.guideNow) C().state.els.guideNow.textContent = guide.now;
+      if (C().state.els.guideNext) C().state.els.guideNext.textContent = guide.next;
+    }
+  }
 
   if (C().state.els.progressTrack && C().state.els.progressFill) {
     const showProgress = Boolean(auto?.active) && C().state.assets.length > 0;
@@ -326,6 +349,12 @@ function injectPanel() {
       .option { display:flex; align-items:center; gap:7px; color:#cbd4dc; margin-top:6px; font-size:11px; }
       .option input[type=number] { width:80px; background:#0f161d; border:1px solid #3b4956; color:#fff; border-radius:4px; padding:4px; }
       #autoState { color:#b8c5cf; font-size:11px; margin-top:6px; }
+      #workflowGuide { margin-top:8px; padding:8px; border-radius:7px; background:#0f161d; border:1px solid #2d3944; }
+      .guide-line { display:grid; grid-template-columns:42px 1fr; gap:8px; align-items:start; margin:4px 0; font-size:11px; line-height:1.4; }
+      .guide-key { color:#8f9ca8; font-weight:700; text-transform:uppercase; font-size:9px; letter-spacing:.04em; padding-top:2px; }
+      .guide-val { color:#e8eef3; word-break:break-word; }
+      .guide-line.guide-now .guide-val { color:#9ed4ff; font-weight:600; }
+      .guide-line.guide-next .guide-val { color:#b9efca; }
       .toast { position:fixed; right:18px; bottom:18px; z-index:2147483647; min-width:420px; max-width:780px; width:max-content; padding:12px 16px; border-radius:9px; color:#fff; background:#26333e; box-shadow:0 10px 32px rgba(0,0,0,.36); display:none; font:13px/1.4 Arial,sans-serif; }
       .toast.show { display:block; }
       .toast.success { background:#1c5134; }
@@ -393,6 +422,11 @@ function injectPanel() {
           </label>
           <div id="ppmQueuePreview" class="validation goodtext" hidden style="margin-top:8px"></div>
           <div id="autoState">Automatic import stopped</div>
+          <div id="workflowGuide" hidden>
+            <div class="guide-line"><span class="guide-key">Done</span><span id="guideDone" class="guide-val">—</span></div>
+            <div class="guide-line guide-now"><span class="guide-key">Now</span><span id="guideNow" class="guide-val">—</span></div>
+            <div class="guide-line guide-next"><span class="guide-key">Next</span><span id="guideNext" class="guide-val">—</span></div>
+          </div>
           <div id="progressTrack" hidden style="height:7px;background:#2d3944;border-radius:4px;margin-top:6px;overflow:hidden">
             <div id="progressFill" style="height:100%;width:0%;background:linear-gradient(90deg,#3d8bfd,#7ee2a8);transition:width .25s ease"></div>
           </div>
@@ -427,7 +461,7 @@ function injectPanel() {
     </div>
   `;
 
-  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
+  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
   for (const id of ids) C().state.els[id] = shadow.getElementById(id);
   root.ui.progressToast.configureToastElements({
     toast: C().state.els.toast,
@@ -567,6 +601,7 @@ function injectPanel() {
     render,
     showToast,
     showActivity,
-    showFieldFill
+    showFieldFill,
+    showWorkflowStatus
   });
 })();

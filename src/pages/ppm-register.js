@@ -155,6 +155,68 @@
     return { kind: 'unknown' };
   }
 
+  async function getPpmChildState(assetCode) {
+    try {
+      return await $().runtimeMessage({ type: 'PPM_CHILD_STATE', assetCode }) || { found: false };
+    } catch (_) {
+      return { found: false };
+    }
+  }
+
+  /** Returns true when parent should stop clicking Create New and wait for the child editor. */
+  async function handlePpmChildWindow(record, auto, ppm, child, openElapsed = 0) {
+    if (!child?.found) return false;
+    const b = $();
+    const analysis = analyzePpmChildUrl(child.url);
+    b.addEvent('ppm-child-check', {
+      found: true,
+      childTabId: child.tabId ?? null,
+      childUrl: child.url || '',
+      childStatus: child.status || '',
+      childKind: analysis.kind,
+      elapsedMs: openElapsed
+    });
+    if (analysis.kind === 'new-ppm') {
+      b.addEvent('ppm-child-handoff-resume', {
+        ppmKey: ppm.ppmKey,
+        assetCode: record.assetCode,
+        childTabId: child.tabId ?? null,
+        childUrl: child.url || '',
+        manual: auto.phase === 'ppm_wait_user_new'
+      });
+      b.state.session.auto = {
+        ...auto,
+        ppmChildHandoffAt: auto.ppmChildHandoffAt || Date.now(),
+        ppmNewClickedForIndex: Number(auto.ppmIndex) || 0
+      };
+      await b.persistSession();
+      b.showActivity?.(
+        'Waiting',
+        'PPM editor open',
+        `→ ${ppm.instruction || ppm.ppmKey}`,
+        { wait: true, meta: record.assetCode, tick: true }
+      );
+      b.scheduleAuto(400);
+      return true;
+    }
+    const duplicateReady = analysis.kind === 'parent-register'
+      || (analysis.kind === 'saved-ppm' && openElapsed >= 800);
+    if (duplicateReady) {
+      b.addEvent('ppm-duplicate-child-detected', {
+        childTabId: child.tabId ?? null,
+        childUrl: child.url || '',
+        kind: analysis.kind,
+        ppmEntityId: analysis.ppmEntityId || '',
+        elapsedMs: openElapsed
+      });
+      await sweepPpmChildren(record, { context: 'duplicate-child-detected' });
+      await beginPpmParentRefresh(auto, auto.ppmAfterRefreshPhase || 'ppm_next');
+      return true;
+    }
+    b.scheduleAuto(150);
+    return true;
+  }
+
   function diagnosePpmCreateNewWait(record, auto, ppm, options = {}) {
     const { child = null, button = null, info = {}, elapsed = 0, attempts = 0 } = options;
     const idx = Number(auto.ppmIndex) || 0;
@@ -455,6 +517,14 @@
     return Number(auto.ppmGridRefreshedForIndex ?? -1) !== Number(ppmIndex);
   }
 
+  function allLinkedPpmsDone(record, auto) {
+    const b = $();
+    const linked = b.linkedPpms(record);
+    if (!linked.length) return false;
+    const statuses = b.state.session.statuses || {};
+    return linked.every((ppm) => ppmAlreadyProcessed(record, ppm, auto, statuses));
+  }
+
   async function trySkipExistingPpm(record, ppm, auto, note = 'Equivalent PPM already exists on this asset; duplicate creation skipped') {
     const b = $();
     if (ppmAlreadyProcessed(record, ppm, auto, b.state.session.statuses || {})) {
@@ -474,7 +544,13 @@
     const b = $();
     const auto = b.state.session.auto || {};
     const entityId = String(auto.assetEntityId || entityIdFromUrl() || '');
-    b.addEvent('ppm-cycle-general-nav', { assetCode: record?.assetCode || '', url: location.href, entityId });
+    b.addEvent('ppm-cycle-general-nav', {
+      assetCode: record?.assetCode || '',
+      url: location.href,
+      entityId,
+      embeddedPpm: isEmbeddedAssetPpmPage(),
+      onPpmRegister: isPpmRegisterParentPage()
+    });
     b.state.session.auto = {
       ...auto,
       phase: 'ppm_cycle_general_wait',
@@ -488,8 +564,14 @@
     }
     const general = root.core.toolbar.findAssetGeneralNavLink();
     if (general && !general.classList.contains('fsiNavSelectedItem')) {
+      b.showActivity?.('Clicking', 'General tab', 'After all PPMs saved', { wait: false, meta: record?.assetCode || '', duration: 2200, tick: false });
       dispatchClick(general, false);
       b.scheduleAuto(450);
+      return;
+    }
+    if (!general && (isEmbeddedAssetPpmPage() || isPpmListPage()) && entityId) {
+      b.addEvent('ppm-cycle-general-reload', { entityId, reason: 'general-nav-not-found' });
+      location.href = assetEntityUrl(entityId);
       return;
     }
     b.scheduleAuto(150);
@@ -519,15 +601,9 @@
       b.scheduleAuto(450);
       return;
     }
-    b.showActivity?.('Running', 'General tab ready', 'Save and Close next', { wait: true, meta: record?.assetCode || '', tick: true });
-    b.state.session.auto = {
-      ...autoNow,
-      phase: 'asset_save_and_close',
-      afterPpmAssetSaveAndClose: true,
-      ppmResults: autoNow.ppmResults || []
-    };
-    await b.persistSession();
-    b.scheduleAuto(150);
+    b.showActivity?.('Running', 'General tab ready', 'Save and New next', { wait: true, meta: record?.assetCode || '', tick: true });
+    const handoff = await root.workflow.postSave.beginPostPpmHandoff(record, autoNow.ppmResults || []);
+    if (handoff) b.scheduleAuto(150);
   }
 
   async function processPpmListPage(record) {
@@ -639,8 +715,30 @@
 
     assertPpmAssetContext(record, auto);
 
+    if (
+      allLinkedPpmsDone(record, auto)
+      && !['ppm_cycle_general_wait', 'ppm_cycle_complete_parent', 'asset_save_and_new'].includes(auto.phase)
+    ) {
+      b.addEvent('ppm-cycle-all-linked-done', {
+        assetCode: record.assetCode,
+        phase: auto.phase || '',
+        ppmIndex: Number(auto.ppmIndex) || 0,
+        resultCount: (auto.ppmResults || []).length
+      });
+      await completePpmCycleOnParent(record, auto.ppmResults || []);
+      return;
+    }
+
     const ppm = b.currentPpm(record);
     if (!ppm) {
+      if (allLinkedPpmsDone(record, auto) || ['ppm_cycle_complete_parent', 'ppm_cycle_general_wait'].includes(auto.phase)) {
+        if (auto.phase === 'ppm_cycle_general_wait') {
+          await processPpmCycleGeneralWaitPage(record);
+          return;
+        }
+        await completePpmCycleOnParent(record, auto.ppmResults || []);
+        return;
+      }
       await b.finishPostSave(record, auto.ppmResults || []);
       return;
     }
@@ -668,40 +766,40 @@
       if (await trySkipExistingPpm(record, ppm, auto)) return;
     }
 
-    if (auto.phase === 'ppm_wait_new') {
-      const child = await b.runtimeMessage({ type: 'PPM_CHILD_STATE', assetCode: record.assetCode });
-      b.addEvent('ppm-child-check', { found: Boolean(child?.found), childTabId: child?.tabId ?? null, childUrl: child?.url || '', childStatus: child?.status || '' });
-      await b.persistSession();
-      if (child?.found) {
-        const analysis = analyzePpmChildUrl(child.url);
-        const openElapsed = Date.now() - Number(auto.ppmOpenStartedAt || Date.now());
-        const duplicateReady = analysis.kind === 'parent-register'
-          || (analysis.kind === 'saved-ppm' && openElapsed >= 800);
-        if (duplicateReady) {
-          b.addEvent('ppm-duplicate-child-detected', {
-            childTabId: child.tabId ?? null,
-            childUrl: child.url || '',
-            kind: analysis.kind,
-            ppmEntityId: analysis.ppmEntityId || '',
-            elapsedMs: openElapsed
-          });
-          await sweepPpmChildren(record, { context: 'duplicate-child-detected' });
-          await beginPpmParentRefresh(auto, 'ppm_next');
-          return;
-        }
-        b.scheduleAuto(150);
+    if (auto.phase === 'ppm_wait_new' || auto.phase === 'ppm_wait_user_new') {
+      if (await trySkipExistingPpm(record, ppm, auto)) return;
+
+      const openElapsed = Date.now() - Number(auto.ppmOpenStartedAt || Date.now());
+      const child = await getPpmChildState(record.assetCode);
+      if (await handlePpmChildWindow(record, auto, ppm, child, openElapsed)) return;
+
+      if (auto.phase === 'ppm_wait_user_new') {
+        b.scheduleAuto(900);
         return;
       }
 
-      const elapsed = Date.now() - Number(auto.ppmOpenStartedAt || Date.now());
+      const elapsed = openElapsed;
       const childTimeoutMs = Number(b.state.settings.ppmChildTimeoutMs) || Number(b.state.settings.lookupTimeoutMs) || 15000;
+      const attempts = Number(auto.ppmNewClickAttempts || 0);
       if (elapsed > childTimeoutMs) {
         throw new Error(`Create New was clicked/retried, but the PPM child window did not open for ${ppm.ppmKey}.`);
       }
 
+      if (attempts >= 1 && elapsed >= 2500) {
+        b.state.session.auto = {
+          ...auto,
+          phase: 'ppm_wait_user_new',
+          ppmOpenStartedAt: Date.now()
+        };
+        await b.persistSession();
+        b.render();
+        b.showToast('PPM window may not have opened — click Create New once if needed. Automation will resume in the new window without creating a duplicate.', 'warn', 14000);
+        b.scheduleAuto(500);
+        return;
+      }
+
       const button = exactPpmNewButton() || findNewButton();
       const info = ppmToolbarButtonState(button, 'a[title="Create New"][onclick*="Toolbar.New"]');
-      const attempts = Number(auto.ppmNewClickAttempts || 0);
       const lastClick = Number(auto.ppmNewLastClickAt || 0);
       b.addEvent('ppm-create-new-retry-check', { ...info, attempt: attempts + 1, elapsedMs: elapsed });
       await b.persistSession();
@@ -710,6 +808,11 @@
         return;
       }
       if (!lastClick || Date.now() - lastClick >= 700) {
+        const childBeforeClick = await getPpmChildState(record.assetCode);
+        if (childBeforeClick?.found && analyzePpmChildUrl(childBeforeClick.url).kind === 'new-ppm') {
+          await handlePpmChildWindow(record, auto, ppm, childBeforeClick, elapsed);
+          return;
+        }
         await expectPpmChildWindow(record.assetCode);
         const clickResult = clickPpmCreateNew(button, 'ppm-wait-new-retry');
         const now = Date.now();
@@ -719,11 +822,6 @@
         await b.persistSession();
       }
       b.scheduleAuto(200);
-      return;
-    }
-
-    if (auto.phase === 'ppm_wait_user_new') {
-      b.scheduleAuto(900);
       return;
     }
 
@@ -759,6 +857,20 @@
       return;
     }
     if (await trySkipExistingPpm(record, ppm, auto)) return;
+
+    const existingChild = await getPpmChildState(record.assetCode);
+    if (existingChild?.found && analyzePpmChildUrl(existingChild.url).kind === 'new-ppm') {
+      b.state.session.auto = {
+        ...auto,
+        phase: 'ppm_wait_new',
+        ppmOpenStartedAt: Date.now(),
+        ppmChildHandoffAt: Date.now(),
+        ppmNewClickedForIndex: ppmIndex
+      };
+      await b.persistSession();
+      await handlePpmChildWindow(record, b.state.session.auto, ppm, existingChild, 0);
+      return;
+    }
 
     await b.runtimeMessage({ type: 'REGISTER_PPM_PARENT', assetCode: record.assetCode, assetEntityId: String(auto.assetEntityId || entityIdFromUrl() || '') });
     await expectPpmChildWindow(record.assetCode);
@@ -841,6 +953,8 @@
     sweepPpmChildren,
     beginPpmParentRefresh,
     beginPpmCycleGeneralWait,
+    completePpmCycleOnParent,
+    allLinkedPpmsDone,
     processPpmCycleGeneralWaitPage,
     processPpmListPage,
     startPpmForCurrentPage

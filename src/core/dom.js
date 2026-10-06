@@ -400,6 +400,26 @@ function saveAndCloseMenuLinkCallable(link) {
   return Boolean(link && /Toolbar\.SaveAndClose\s*\(/.test(link.getAttribute('onclick') || ''));
 }
 
+function findSaveAndNewDropdownLink() {
+  for (const menu of document.querySelectorAll('ul.x-button-drop-menu')) {
+    if (isAssistantElement(menu)) continue;
+    const link = menu.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndNew"]');
+    if (link) return link;
+  }
+  return document.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndNew"]') || null;
+}
+
+function saveAndNewMenuLinkReady(link) {
+  return saveAndCloseMenuLinkReady(link);
+}
+
+function saveAndNewMenuLinkCallable(link) {
+  try {
+    if (typeof Toolbar !== 'undefined' && typeof Toolbar.SaveAndNew === 'function') return true;
+  } catch (_) {}
+  return Boolean(link && /Toolbar\.SaveAndNew\s*\(/.test(link.getAttribute('onclick') || ''));
+}
+
 /** Asset General tab: open Save split dropdown, wait for enabled Save and Close, then click. */
 function clickAssetToolbarSaveAndClose() {
   const split = findSaveSplitButton();
@@ -438,6 +458,54 @@ function clickAssetToolbarSaveAndClose() {
       } catch (_) {}
     }
     return { ok: false, pending: true, reason: 'save-and-close-not-clickable', state };
+  }
+
+  if (drop) {
+    dispatchClick(drop, false, 'Save dropdown');
+    return { ok: false, pending: true, reason: 'opening-save-dropdown', state };
+  }
+
+  return { ok: false, pending: true, reason: 'save-split-button-not-found', state };
+}
+
+/** Asset General tab: open Save split dropdown, wait for enabled Save and New, then click. */
+function clickAssetToolbarSaveAndNew() {
+  const split = findSaveSplitButton();
+  const drop = findSaveSplitDropdownTrigger(split);
+  const menuOpen = isSaveSplitMenuOpen(split);
+  const menu = split?.querySelector('ul.x-button-drop-menu') || document.querySelector('ul.x-button-drop-menu');
+  const menuLink = findSaveAndNewDropdownLink();
+  const state = {
+    splitFound: Boolean(split),
+    dropFound: Boolean(drop),
+    menuOpen,
+    menuVisible: Boolean(menu && visible(menu)),
+    linkFound: Boolean(menuLink),
+    linkVisible: Boolean(menuLink && visible(menuLink)),
+    linkReady: saveAndNewMenuLinkReady(menuLink)
+  };
+
+  if (menuOpen) {
+    if (!menu || !visible(menu)) {
+      return { ok: false, pending: true, reason: 'waiting-for-save-dropdown-menu', state };
+    }
+    if (!menuLink) {
+      return { ok: false, pending: true, reason: 'save-and-new-menu-link-missing', state };
+    }
+    if (!saveAndNewMenuLinkReady(menuLink)) {
+      return { ok: false, pending: true, reason: 'save-and-new-menu-link-disabled', state };
+    }
+    if (visible(menuLink)) {
+      dispatchClick(menuLink, false, 'Save and New');
+      return { ok: true, method: 'split-dropdown-menu-link', pending: false, state };
+    }
+    if (saveAndNewMenuLinkCallable(menuLink)) {
+      try {
+        Toolbar.SaveAndNew();
+        return { ok: true, method: 'Toolbar.SaveAndNew-menu-open', pending: false, state };
+      } catch (_) {}
+    }
+    return { ok: false, pending: true, reason: 'save-and-new-not-clickable', state };
   }
 
   if (drop) {
@@ -532,6 +600,6 @@ function validationMessage() {
     configureForm, waitForDom, labelElements, allVisibleControls, nearestControl,
     setNativeValue, tabContextReady, clickTab, fillByLabel, nearestCheckbox,
     setCheckboxByLabel, setSelectByLabel, findSaveButton, findSaveAndCloseButton, findSaveAndNewButton,
-    clickSaveAndClose, clickAssetToolbarSaveAndClose, clickSaveAndNew, validationMessage
+    clickSaveAndClose, clickAssetToolbarSaveAndClose, clickAssetToolbarSaveAndNew, clickSaveAndNew, validationMessage
   });
 })();
