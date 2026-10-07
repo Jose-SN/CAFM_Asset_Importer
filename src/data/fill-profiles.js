@@ -25,14 +25,30 @@
     return rule?.profile || DEFAULT_ASSET_PROFILE;
   }
 
+  function hasAssetSpatialData(record) {
+    const spatial = record?.spatial || {};
+    return [
+      spatial.gisReference,
+      spatial.latitude,
+      spatial.longitude,
+      spatial.elevation,
+      spatial.externalSystem,
+      spatial.externalObject,
+      spatial.externalIdentifier
+    ].some((value) => clean(value));
+  }
+
   function resolveAssetTabOrder(record, settings = {}) {
     const order = [...assetProfileForRecord(record).assetTabOrder];
-    if (settings.includeSpatial) return order;
-    return order.filter((tab) => tab !== 'Spatial');
+    const includeSpatial = settings.includeSpatial === true || hasAssetSpatialData(record);
+    if (!includeSpatial) return order.filter((tab) => tab !== 'Spatial');
+    return order;
   }
 
   function shouldFillAssetNotes(record, settings = {}) {
-    return Boolean(settings.includeNotes) && clean(record?.comments);
+    if (!clean(record?.comments)) return false;
+    if (settings.includeNotes === false) return false;
+    return true;
   }
 
   root.data = root.data || {};
@@ -40,6 +56,7 @@
     DEFAULT_ASSET_PROFILE,
     PROFILE_RULES,
     assetProfileForRecord,
+    hasAssetSpatialData,
     resolveAssetTabOrder,
     shouldFillAssetNotes
   });

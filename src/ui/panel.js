@@ -38,11 +38,20 @@ function statusClass(status) {
 }
 
 function showToast(message, type = 'info', duration = 4500) {
-  if (!C().state.els.toast) return;
-  C().state.els.toast.textContent = clean(message);
-  C().state.els.toast.className = `toast show ${type}`;
-  clearTimeout(C().state.els.toast._timer);
-  C().state.els.toast._timer = setTimeout(() => { C().state.els.toast.className = 'toast'; }, duration);
+  root.ui.progressToast.showToast(message, type, duration);
+}
+
+function showActivity(verb, target, detail = '', options = {}) {
+  root.ui.progressToast.showActivity(verb, target, detail, options);
+}
+
+function showFieldFill(field, value, options = {}) {
+  root.ui.progressToast.showFieldFill(field, value, options);
+}
+
+function showWorkflowStatus(context = {}, options = {}) {
+  root.ui.progressToast.showWorkflowStatus(context, options);
+  render();
 }
 
 function render() {
@@ -138,6 +147,24 @@ function render() {
       ? `Automatic import complete${auto?.processedThisRun != null ? ` | ${Number(auto.processedThisRun || 0)}/${Number(auto.maxIterations || auto.processedThisRun || 1)} asset cycle(s)` : ''}`
       : auto?.phase === 'error' ? `Stopped: ${auto.error || 'error'}` : 'Automatic import stopped';
 
+  if (C().state.els.workflowGuide) {
+    const showGuide = Boolean(auto?.active) && root.ui?.workflowGuide?.buildGuide;
+    C().state.els.workflowGuide.hidden = !showGuide;
+    if (showGuide) {
+      const guide = root.ui.workflowGuide.buildGuide({
+        auto,
+        record: activeRecord,
+        currentPpm: activeRecord ? C().currentPpm(activeRecord) : null,
+        linkedPpms: activeRecord ? C().linkedPpms(activeRecord) : [],
+        statuses: C().state.session.statuses || {},
+        statusOf: (row) => C().statusOf(row)
+      });
+      if (C().state.els.guideDone) C().state.els.guideDone.textContent = guide.done;
+      if (C().state.els.guideNow) C().state.els.guideNow.textContent = guide.now;
+      if (C().state.els.guideNext) C().state.els.guideNext.textContent = guide.next;
+    }
+  }
+
   if (C().state.els.progressTrack && C().state.els.progressFill) {
     const showProgress = Boolean(auto?.active) && C().state.assets.length > 0;
     C().state.els.progressTrack.hidden = !showProgress;
@@ -220,7 +247,7 @@ function render() {
   C().state.els.skipInvalid.checked = Boolean(C().state.settings.skipInvalidRows);
   if (C().state.els.autoDownloadTimeline) C().state.els.autoDownloadTimeline.checked = Boolean(C().state.settings.autoDownloadTimeline);
   if (C().state.els.autoContinueNext) C().state.els.autoContinueNext.checked = C().state.settings.autoContinueNext !== false;
-  if (C().state.els.useSaveAndNew) C().state.els.useSaveAndNew.checked = C().state.settings.useSaveAndNew !== false;
+  if (C().state.els.useSaveAndNew) C().state.els.useSaveAndNew.checked = C().state.settings.useSaveAndNew === true;
 }
 
 function makeDraggable() {
@@ -322,11 +349,22 @@ function injectPanel() {
       .option { display:flex; align-items:center; gap:7px; color:#cbd4dc; margin-top:6px; font-size:11px; }
       .option input[type=number] { width:80px; background:#0f161d; border:1px solid #3b4956; color:#fff; border-radius:4px; padding:4px; }
       #autoState { color:#b8c5cf; font-size:11px; margin-top:6px; }
-      .toast { position:fixed; right:18px; bottom:18px; z-index:2147483647; max-width:520px; padding:11px 14px; border-radius:8px; color:#fff; background:#26333e; box-shadow:0 8px 28px rgba(0,0,0,.32); display:none; font:13px/1.35 Arial,sans-serif; }
+      #workflowGuide { margin-top:8px; padding:8px; border-radius:7px; background:#0f161d; border:1px solid #2d3944; }
+      .guide-line { display:grid; grid-template-columns:42px 1fr; gap:8px; align-items:start; margin:4px 0; font-size:11px; line-height:1.4; }
+      .guide-key { color:#8f9ca8; font-weight:700; text-transform:uppercase; font-size:9px; letter-spacing:.04em; padding-top:2px; }
+      .guide-val { color:#e8eef3; word-break:break-word; }
+      .guide-line.guide-now .guide-val { color:#9ed4ff; font-weight:600; }
+      .guide-line.guide-next .guide-val { color:#b9efca; }
+      .toast { position:fixed; right:18px; bottom:18px; z-index:2147483647; min-width:420px; max-width:780px; width:max-content; padding:12px 16px; border-radius:9px; color:#fff; background:#26333e; box-shadow:0 10px 32px rgba(0,0,0,.36); display:none; font:13px/1.4 Arial,sans-serif; }
       .toast.show { display:block; }
       .toast.success { background:#1c5134; }
       .toast.warn { background:#6a5319; }
       .toast.error { background:#702b31; }
+      .toast.info { background:#1a4a6e; }
+      .toast.progress { border-left:4px solid #3d8bfd; }
+      .toast-title { font-weight:700; font-size:13px; line-height:1.35; }
+      .toast-meta { font-size:10px; opacity:.88; margin-top:3px; letter-spacing:.02em; text-transform:uppercase; }
+      .toast-detail { font-size:12px; margin-top:5px; opacity:.96; line-height:1.45; white-space:pre-wrap; word-break:break-word; }
       .footer { color:#80909c; text-align:center; font-size:10px; margin:3px 0 1px; }
     </style>
     <div id="panel">
@@ -384,6 +422,11 @@ function injectPanel() {
           </label>
           <div id="ppmQueuePreview" class="validation goodtext" hidden style="margin-top:8px"></div>
           <div id="autoState">Automatic import stopped</div>
+          <div id="workflowGuide" hidden>
+            <div class="guide-line"><span class="guide-key">Done</span><span id="guideDone" class="guide-val">—</span></div>
+            <div class="guide-line guide-now"><span class="guide-key">Now</span><span id="guideNow" class="guide-val">—</span></div>
+            <div class="guide-line guide-next"><span class="guide-key">Next</span><span id="guideNext" class="guide-val">—</span></div>
+          </div>
           <div id="progressTrack" hidden style="height:7px;background:#2d3944;border-radius:4px;margin-top:6px;overflow:hidden">
             <div id="progressFill" style="height:100%;width:0%;background:linear-gradient(90deg,#3d8bfd,#7ee2a8);transition:width .25s ease"></div>
           </div>
@@ -396,7 +439,7 @@ function injectPanel() {
           <label class="option"><input id="skipInvalid" type="checkbox"> Skip invalid workbook rows instead of stopping</label>
           <label class="option"><input id="autoDownloadTimeline" type="checkbox"> Auto-download timeline JSON when each asset cycle completes</label>
           <label class="option"><input id="autoContinueNext" type="checkbox"> Auto-continue to next asset after PPM cycle</label>
-          <label class="option"><input id="useSaveAndNew" type="checkbox"> Use Save and New on General tab between assets</label>
+          <label class="option"><input id="useSaveAndNew" type="checkbox"> Legacy: use Save and New instead of Save and Close between assets</label>
           <div class="muted">Proceeds when CAFM state is verified. Safety timeouts default to 20s (PPM child wait 15s). Reload the extension at chrome://extensions after code updates.</div>
         </div>
         <div id="sessionSection" class="section">
@@ -411,11 +454,21 @@ function injectPanel() {
         <div class="footer">Move this panel by dragging the header. Site and calculated/read-only fields are not overwritten.</div>
       </div>
     </div>
-    <div id="toast" class="toast"></div>
+    <div id="toast" class="toast">
+      <div id="toastTitle" class="toast-title"></div>
+      <div id="toastMeta" class="toast-meta" hidden></div>
+      <div id="toastDetail" class="toast-detail" hidden></div>
+    </div>
   `;
 
-  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast'];
+  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
   for (const id of ids) C().state.els[id] = shadow.getElementById(id);
+  root.ui.progressToast.configureToastElements({
+    toast: C().state.els.toast,
+    toastTitle: C().state.els.toastTitle,
+    toastMeta: C().state.els.toastMeta,
+    toastDetail: C().state.els.toastDetail
+  });
   C().state.els.dragHandle = C().state.els.head;
   if (!isAssetPage()) C().state.els.panel.classList.add('ppm-workflow');
 
@@ -546,6 +599,9 @@ function injectPanel() {
     configure,
     injectPanel,
     render,
-    showToast
+    showToast,
+    showActivity,
+    showFieldFill,
+    showWorkflowStatus
   });
 })();

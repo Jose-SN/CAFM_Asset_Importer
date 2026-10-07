@@ -14,10 +14,12 @@
   } = root.core.pages;
   const $ = () => root.runtime.b;
 
-  function fillEstimatedTime(ppm) {
+  function fillEstimatedTime(ppm, meta = '') {
     const hours = clean(ppm?.estTimeHours);
     const minutes = clean(ppm?.estTimeMinutes);
     if (!hours && !minutes) return { status: 'blank', label: 'Est. Time' };
+    const b = $();
+    b.showFieldFill?.('Est. Time', `${hours || '0'}h ${minutes || '0'}m`, { meta, wait: false, duration: 2800, tick: false });
     const labels = labelElements(['Est. Time', 'Est Time', 'Estimated Time']);
     if (!labels.length) return { status: 'missing', label: 'Est. Time' };
     const label = labels[0];
@@ -39,16 +41,17 @@
   async function fillPpmFields(ppm) {
     const b = $();
     const results = [];
+    const fillMeta = `PPM · ${ppm.ppmKey || b.currentRecord()?.assetCode || ''}`;
     await b.clickTab('General');
     for (const item of ppmDirectMapping(ppm)) {
       if (item.kind === 'checkbox' && item.value == null) continue;
       if (item.kind !== 'checkbox' && !clean(item.value)) continue;
       const fieldStart = performance.now();
-      b.showToast(`PPM: filling ${item.label[0]}...`, 'info', 3500);
+      const fillOpts = { meta: fillMeta };
       let result;
-      if (item.kind === 'checkbox') result = b.setCheckboxByLabel(item.label, Boolean(item.value));
-      else if (item.kind === 'select') result = b.setSelectByLabel(item.label, item.value);
-      else result = b.fillByLabel(item.label, item.value);
+      if (item.kind === 'checkbox') result = b.setCheckboxByLabel(item.label, Boolean(item.value), fillOpts);
+      else if (item.kind === 'select') result = b.setSelectByLabel(item.label, item.value, fillOpts);
+      else result = b.fillByLabel(item.label, item.value, fillOpts);
       results.push({ ...result, field: item.label[0], kind: item.kind });
       b.addEvent('ppm-field-fill', {
         ppmKey: ppm.ppmKey,
@@ -62,17 +65,17 @@
         await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: 'General', field: item.label[0], expected: item.value, actual: '', reason: `Fill result: ${result.status}`, ppmKey: ppm.ppmKey });
       }
     }
-    const timeResult = b.fillEstimatedTime(ppm);
+    const timeResult = b.fillEstimatedTime(ppm, fillMeta);
     if (!['blank', 'filled'].includes(timeResult.status)) await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: 'General', field: 'Estimated Time', expected: `${ppm.estTimeHours || ''}:${ppm.estTimeMinutes || ''}`, actual: '', reason: `Fill result: ${timeResult.status}`, ppmKey: ppm.ppmKey });
     for (const [month, enabled] of Object.entries(ppm.months || {})) {
       if (enabled == null) continue;
-      const result = b.setCheckboxByLabel([month], Boolean(enabled));
+      const result = b.setCheckboxByLabel([month], Boolean(enabled), { meta: fillMeta });
       if (result.status === 'missing') continue;
       if (result.status !== 'filled') await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: 'General', field: month, expected: String(Boolean(enabled)), actual: '', reason: `Checkbox result: ${result.status}`, ppmKey: ppm.ppmKey });
     }
     if (clean(ppm.notes)) {
       if (await b.clickTab('Notes')) {
-        let result = b.fillByLabel(['Notes'], ppm.notes);
+        let result = b.fillByLabel(['Notes'], ppm.notes, { meta: `${fillMeta} · Notes tab` });
         if (result.status === 'missing') {
           const area = [...document.querySelectorAll('textarea')].find((el) => visible(el) && !isAssistantElement(el));
           if (!area || !b.setNativeValue(area, ppm.notes)) await b.recordValidationWarning(b.currentRecord(), { scope: 'ppm', tab: 'Notes', field: 'Notes', expected: ppm.notes, actual: area ? elementValue(area) : '', reason: 'Notes could not be filled', ppmKey: ppm.ppmKey });
@@ -88,7 +91,6 @@
     const evidence = [];
     for (const spec of ppmLookupMapping(ppm)) {
       const stepStart = performance.now();
-      b.showToast(`PPM: selecting ${spec.field}...`, 'info', 5000);
       try {
         const result = await b.selectLookup(spec);
         evidence.push(result);
@@ -138,7 +140,7 @@
     });
     await b.selectLookup(instructionSpec);
     await wait(0);
-    const last = b.fillByLabel(['Last Service'], ppm.lastService);
+    const last = b.fillByLabel(['Last Service'], ppm.lastService, { meta: `PPM · ${ppm.ppmKey || ''}` });
     if (!last || ['missing', 'failed', 'readonly'].includes(last.status)) {
       throw new Error(`Fire-door PPM Last Service could not be entered (${last?.status || 'missing'}).`);
     }
@@ -182,10 +184,32 @@
   async function processPpmItemPage(record) {
     const b = $();
     const auto = b.state.session.auto || {};
-    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait', 'ppm_cycle_complete_parent'].includes(auto.phase)) {
+    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait', 'ppm_cycle_complete_parent', 'ppm_cycle_general_wait'].includes(auto.phase)) {
       return;
     }
+
     const ppm = b.currentPpm(record);
+    if (!ppm && auto.phase !== 'ppm_child_closing') {
+      throw new Error(`No linked PPM row is available for ${record.assetCode}.`);
+    }
+
+    if (auto.phase === 'ppm_child_closing') {
+      const currentId = entityIdFromUrl();
+      if (currentId && currentId !== '-1') {
+        b.scheduleAuto(300);
+        return;
+      }
+      if (isPpmNewEntityPage() && ppm) {
+        b.addEvent('ppm-child-closing-resume-save', { ppmKey: ppm.ppmKey, url: location.href });
+        b.state.session.auto = { ...auto, phase: 'ppm_fill', ppmSaveStartedAt: 0, ppmSaveMethod: '' };
+        await b.persistSession();
+        b.scheduleAuto(150);
+        return;
+      }
+      b.scheduleAuto(300);
+      return;
+    }
+
     if (!ppm) throw new Error(`No linked PPM row is available for ${record.assetCode}.`);
 
     const ppmEntityId = entityIdFromUrl();
@@ -211,6 +235,11 @@
     if (issues.length) throw new Error(`PPM ${ppm.ppmKey} cannot be imported: ${issues.join('; ')}`);
 
     if (['ppm_wait_new', 'ppm_wait_user_new', 'ppm_open_list', 'ppm_next'].includes(auto.phase)) {
+      if (root.data.ppm.alreadyProcessed(record, ppm, auto, b.state.session.statuses || {})) {
+        b.addEvent('ppm-fill-skipped-already-processed', { ppmKey: ppm.ppmKey, phase: auto.phase });
+        await b.recordPpmResult(record, ppm, 'existing', 'PPM already saved in this session; resuming without duplicate fill');
+        return;
+      }
       b.state.session.auto = { ...auto, phase: 'ppm_fill' };
       await b.persistSession();
       b.scheduleAuto(100);
@@ -218,11 +247,16 @@
     }
 
     if (auto.phase === 'ppm_fill') {
+      if (root.data.ppm.alreadyProcessed(record, ppm, auto, b.state.session.statuses || {})) {
+        b.addEvent('ppm-fill-skipped-already-processed', { ppmKey: ppm.ppmKey, phase: auto.phase });
+        await b.recordPpmResult(record, ppm, 'existing', 'PPM already saved in this session; duplicate fill skipped');
+        return;
+      }
       root.core.events.markRunStart();
       const fillStart = performance.now();
-      b.showToast(`Creating PPM for ${record.assetCode}: ${ppm.instruction}`, 'info', 7000);
+      b.showActivity?.('Creating PPM', record.assetCode, ppm.instruction, { wait: true, meta: ppm.ppmKey, tick: true });
       await fillPpmLookups(ppm);
-      b.showToast(`PPM: filling remaining fields...`, 'info', 4000);
+      b.showActivity?.('Filling PPM', 'Remaining fields', ppm.instruction, { wait: true, meta: record.assetCode, tick: true });
       await fillPpmFields(ppm);
       b.addEvent('ppm-fill-complete', {
         ppmKey: ppm.ppmKey,
@@ -278,11 +312,6 @@
       const saveTimeoutMs = document.hidden
         ? Math.max(Number(b.state.settings.backgroundSaveTimeoutMs) || 0, Number(b.state.settings.saveTimeoutMs) * 3)
         : Number(b.state.settings.saveTimeoutMs);
-      const usedSaveAndClose = /saveandclose|save and close|dropdown-menu-link|menu-link/i.test(String(auto.ppmSaveMethod || ''));
-      if (usedSaveAndClose && elapsed >= 1800) {
-        await b.recordPpmResult(record, ppm, 'saved', 'Save and Close completed; child close handled by background registry', '');
-        return;
-      }
       if (elapsed > saveTimeoutMs) throw new Error(`PPM save confirmation timed out for ${ppm.ppmKey}.`);
       b.scheduleAuto(0);
       return;

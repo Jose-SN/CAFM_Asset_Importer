@@ -752,6 +752,11 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
     }
 
     if (committed) {
+      if (C().showFieldFill) {
+        C().showFieldFill(spec.field || 'lookup', committed.value || best.text || '', { verb: 'Selected', meta: `${clean(spec.tab || 'General')} tab`, wait: false, type: 'success', duration: 2500, tick: false });
+      } else if (C().showActivity) {
+        C().showActivity('Selected', clean(spec.field || 'lookup'), clean(committed.value || best.text || ''), { wait: false, type: 'success', duration: 2000, tick: false });
+      }
       const afterHidden = nearbyHiddenValues(committed.control);
       return {
         field: spec.field,
@@ -786,6 +791,21 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
 }
 
 async function selectLookup(spec) {
+  if (C().showFieldFill) {
+    C().showFieldFill(spec.field || 'lookup', spec.value || spec.display || '', {
+      verb: 'Selecting',
+      meta: `${clean(spec.tab || 'General')} tab · lookup`,
+      wait: true,
+      tick: true
+    });
+  } else if (C().showActivity) {
+    C().showActivity(
+      'Selecting',
+      clean(spec.field || 'lookup'),
+      clean(spec.value || spec.display || ''),
+      { wait: true, type: 'info', meta: `${clean(spec.tab || 'General')} tab`, tick: true }
+    );
+  }
   await C().clickTab(spec.tab);
   const found = C().nearestControl([spec.field]);
   if (!found) throw new Error(`${spec.field} dropdown field was not found on the ${spec.tab} tab.`);
@@ -794,6 +814,11 @@ async function selectLookup(spec) {
   const beforeHidden = nearbyHiddenValues(control);
 
   if (lookupTextMatches(beforeValue, spec) && (hiddenCommitted(control) || !beforeHidden.length)) {
+    if (C().showFieldFill) {
+      C().showFieldFill(spec.field || 'lookup', beforeValue, { verb: 'Selected', meta: `${clean(spec.tab || 'General')} tab`, wait: false, type: 'success', duration: 2500, tick: false });
+    } else if (C().showActivity) {
+      C().showActivity('Selected', clean(spec.field || 'lookup'), clean(beforeValue), { wait: false, type: 'success', duration: 2000, tick: false });
+    }
     return { field: spec.field, selected: beforeValue, alreadySelected: true, hiddenCommitted: hiddenCommitted(control) };
   }
 
@@ -805,6 +830,11 @@ async function selectLookup(spec) {
     await wait(0);
     const selectedValue = elementValue(control);
     if (!lookupTextMatches(selectedValue, spec)) throw new Error(`${spec.field} did not remain selected after change.`);
+    if (C().showFieldFill) {
+      C().showFieldFill(spec.field || 'lookup', selectedValue, { verb: 'Selected', meta: `${clean(spec.tab || 'General')} tab`, wait: false, type: 'success', duration: 2500, tick: false });
+    } else if (C().showActivity) {
+      C().showActivity('Selected', clean(spec.field || 'lookup'), clean(selectedValue), { wait: false, type: 'success', duration: 2000, tick: false });
+    }
     return { field: spec.field, selected: selectedValue, nativeSelect: true, hiddenCommitted: true };
   }
 

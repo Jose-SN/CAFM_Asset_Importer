@@ -1,3 +1,32 @@
+# v8.0.40
+- **Notes and Spatial tabs**: fill Notes when the workbook `Notes`/`Comments` column is populated, and fill Spatial/GIS fields (including GIS Reference) when any spatial column has data — no panel checkbox required unless the user explicitly disables **Include Notes**.
+- Workbook column alias **GIS** maps to GIS Reference; CAFM field label **GIS** is recognised on the Spatial tab.
+
+# v8.0.33
+- **PPM Create New diagnostics**: snackbar shows why the New PPM window has not opened (button missing/disabled, wrong popup, popup blocked, wrong page) with actionable detail.
+- **Faster failure**: default wait capped at 10s; specific blockers fail in 2.5–8s instead of hanging 15–20s. Errors stay visible in the red snackbar.
+
+# v8.0.32
+- **Multi-PPM handoff fix**: advance `ppmIndex` and record the save *before* Save and Close closes the PPM popup — prevents re-creating PPM 1 when opening PPM 2/3.
+- **Parent fallback**: if the child closes before confirmation, parent refreshes the register and clicks Create New for the correct next row.
+- **Snackbar**: shows Save and Close click, editor closing, register refresh, Create New click, and waiting for the popup (with PPM n/N and instruction).
+
+# v8.0.31
+- **Post-PPM handoff**: after the last PPM is saved, workflow opens the asset **General** tab, clicks **Save and Close**, then opens the next asset New Entity form.
+- General nav link detection includes `FASSET.Common.New` IDs used on some Concept Evolution builds.
+
+# v8.0.30
+- **Field-level progress**: snackbar shows each field being filled or selected with the actual Excel/workbook value (e.g. `Filling: Building` → `004 - Maternity Unit`). Covers asset tabs, PPM fields, checkboxes, dropdowns, notes, and lookup selections.
+
+# v8.0.29
+- **Live progress snackbar**: wider bottom toast for every workflow step — Selecting, Clicking, Waiting (with elapsed seconds), phase changes, and asset/PPM context. One snackbar stays visible during waits for easier debugging.
+
+# v8.0.23
+- PPM parent refresh dedup: coalesce duplicate `EE_PPM_CURRENT_EDITOR_CLOSED` / `EE_PPM_CHILD_DONE` notifications, skip refresh when already in-flight, and debounce background self-close notifications.
+- Last PPM save-before-close: remove the 1800ms Save-and-Close assumption without a saved entity ID; resume fill/save when a child closes before save is confirmed.
+- After all PPMs: navigate to the saved asset General tab before `finishPostSave` / Save and New; engine routes `ppm_cycle_general_wait` on the asset page instead of redirecting back to the PPM register.
+- Waiting phases extended for refresh/close/general-wait so the orchestrator does not double-click Refresh.
+
 # v8.0.20
 - Background workflow orchestrator: `alarms` permission + periodic `RUN_AUTO_STEP` to parent/child workflow tabs so automatic import continues when the CAFM tab is unfocused or in another window.
 - PPM save URL detection: background `tabs.onUpdated` detects `ViewFPPMItem.aspx?id≠-1` and notifies the child editor to record save without waiting on throttled content-script timers.

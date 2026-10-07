@@ -34,8 +34,14 @@
     return clean(element.textContent || '');
   }
 
-  function dispatchClick(target, doubleClick = false) {
+  function dispatchClick(target, doubleClick = false, hint = '') {
     if (!target) return;
+    try {
+      const label = clean(hint || target.getAttribute?.('title') || target.textContent || '').slice(0, 80);
+      if (label && formCfg().state?.showActivity) {
+        formCfg().state.showActivity('Clicking', label, doubleClick ? 'Double-click' : 'Single click', { wait: false, type: 'info', duration: 1800, tick: false });
+      }
+    } catch (_) {}
     try { target.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); } catch (_) {}
     for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) {
       try {
@@ -197,7 +203,7 @@ function tabContextReady(name) {
   if (wanted === 'details') return Boolean(nearestControl(['Asset Code']) || nearestControl(['Description']) || nearestControl(['Building']));
   if (wanted === 'notes') return [...document.querySelectorAll('textarea')].some((el) => visible(el) && !isAssistantElement(el));
   if (wanted === 'financial/risk' || wanted === 'financial risk') return Boolean(nearestControl(['Condition']) || nearestControl(['Warranty Expires']) || nearestControl(['Operational']));
-  if (wanted === 'spatial') return Boolean(nearestControl(['GIS Reference']) || nearestControl(['Latitude']) || nearestControl(['External System']));
+  if (wanted === 'spatial') return Boolean(nearestControl(['GIS Reference', 'GIS']) || nearestControl(['Latitude']) || nearestControl(['External System']));
   return false;
 }
 
@@ -236,10 +242,23 @@ async function clickTab(name) {
   return tabContextReady(name);
 }
 
+function reportFieldFill(label, value, options = {}) {
+  try {
+    formCfg().state?.showFieldFill?.(label, value, {
+      verb: options.verb || 'Filling',
+      meta: options.meta || options.tab || '',
+      wait: false,
+      tick: false,
+      duration: 2800
+    });
+  } catch (_) {}
+}
+
 function fillByLabel(labelNames, value, options = {}) {
   if (value === '' || value == null) return { status: 'blank', label: Array.isArray(labelNames) ? labelNames[0] : labelNames };
   const found = nearestControl(labelNames, options.root || document);
   const label = Array.isArray(labelNames) ? labelNames[0] : labelNames;
+  reportFieldFill(label, value, options);
   if (!found) return { status: 'missing', label };
   if (found.control.readOnly && !options.allowReadOnly) return { status: 'readonly', label, control: found.control };
   const ok = setNativeValue(found.control, value);
@@ -271,9 +290,10 @@ function nearestCheckbox(labelNames, root = document) {
   return best;
 }
 
-function setCheckboxByLabel(labelNames, desired) {
-  const found = nearestCheckbox(labelNames);
+function setCheckboxByLabel(labelNames, desired, options = {}) {
+  const found = nearestCheckbox(labelNames, options.root || document);
   const label = Array.isArray(labelNames) ? labelNames[0] : labelNames;
+  reportFieldFill(label, Boolean(desired), { verb: 'Filling checkbox', ...options });
   if (!found) return { status: 'missing', label };
   const target = Boolean(desired);
   if (found.control.checked !== target) {
@@ -284,10 +304,11 @@ function setCheckboxByLabel(labelNames, desired) {
   return { status: found.control.checked === target ? 'filled' : 'failed', label, control: found.control };
 }
 
-function setSelectByLabel(labelNames, value) {
+function setSelectByLabel(labelNames, value, fillOptions = {}) {
   if (value === '' || value == null) return { status: 'blank', label: Array.isArray(labelNames) ? labelNames[0] : labelNames };
-  const found = nearestControl(labelNames);
+  const found = nearestControl(labelNames, fillOptions.root || document);
   const label = Array.isArray(labelNames) ? labelNames[0] : labelNames;
+  reportFieldFill(label, value, { verb: 'Filling dropdown', ...fillOptions });
   if (!found) return { status: 'missing', label };
   let select = found.control instanceof HTMLSelectElement ? found.control : null;
   if (!select) {
@@ -296,9 +317,9 @@ function setSelectByLabel(labelNames, value) {
   }
   if (!select) return { status: 'missing-select', label };
   const target = norm(value);
-  const options = [...select.options];
-  const exact = options.find((o) => norm(o.textContent) === target || norm(o.value) === target);
-  const partial = exact || options.find((o) => norm(o.textContent).includes(target) || target.includes(norm(o.textContent)));
+  const selectOptions = [...select.options];
+  const exact = selectOptions.find((o) => norm(o.textContent) === target || norm(o.value) === target);
+  const partial = exact || selectOptions.find((o) => norm(o.textContent).includes(target) || target.includes(norm(o.textContent)));
   if (!partial) return { status: 'option-missing', label };
   select.value = partial.value;
   for (const eventName of ['input', 'change', 'blur']) select.dispatchEvent(new Event(eventName, { bubbles: true }));
@@ -333,7 +354,223 @@ function findSaveAndCloseButton() {
   return candidates[0]?.closest?.('a,button,[role="button"]') || candidates[0] || null;
 }
 
+function sameOriginDocuments(rootDoc = document, output = [], depth = 0) {
+  if (!rootDoc || output.includes(rootDoc) || depth > 6) return output;
+  output.push(rootDoc);
+  for (const frame of rootDoc.querySelectorAll?.('iframe,frame') || []) {
+    try {
+      const child = frame.contentDocument;
+      if (child?.documentElement) sameOriginDocuments(child, output, depth + 1);
+    } catch (_) {}
+  }
+  return output;
+}
+
+function findSaveSplitButton() {
+  for (const doc of sameOriginDocuments()) {
+    try {
+      for (const split of doc.querySelectorAll('.x-split-button')) {
+        if (isAssistantElement(split)) continue;
+        const saveLink = split.querySelector('a[onclick*="Toolbar.Save"]');
+        if (saveLink) return split;
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+function findSaveSplitDropdownTrigger(split = null) {
+  const rootSplit = split || findSaveSplitButton();
+  if (!rootSplit) return null;
+  return rootSplit.querySelector('.x-button-drop') || null;
+}
+
+function findSaveAndCloseDropdownLink() {
+  for (const doc of sameOriginDocuments()) {
+    try {
+      for (const menu of doc.querySelectorAll('ul.x-button-drop-menu')) {
+        if (isAssistantElement(menu)) continue;
+        const link = menu.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndClose"]');
+        if (link) return link;
+      }
+      const direct = doc.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndClose"]');
+      if (direct) return direct;
+    } catch (_) {}
+  }
+  return null;
+}
+
+function isSaveSplitMenuOpen(split = null) {
+  const rootSplit = split || findSaveSplitButton();
+  if (!rootSplit) return false;
+  if (rootSplit.classList.contains('open')) return true;
+  const menu = rootSplit.querySelector('ul.x-button-drop-menu');
+  return Boolean(menu && visible(menu));
+}
+
+function saveAndCloseMenuLinkReady(link) {
+  if (!link) return false;
+  if (link.hasAttribute('disabled')) return false;
+  if (String(link.getAttribute('aria-disabled') || '').toLowerCase() === 'true') return false;
+  return true;
+}
+
+function saveAndCloseMenuLinkCallable(link) {
+  try {
+    if (typeof Toolbar !== 'undefined' && typeof Toolbar.SaveAndClose === 'function') return true;
+  } catch (_) {}
+  return Boolean(link && /Toolbar\.SaveAndClose\s*\(/.test(link.getAttribute('onclick') || ''));
+}
+
+function findSaveAndNewDropdownLink() {
+  for (const doc of sameOriginDocuments()) {
+    try {
+      for (const menu of doc.querySelectorAll('ul.x-button-drop-menu')) {
+        if (isAssistantElement(menu)) continue;
+        const link = menu.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndNew"]');
+        if (link) return link;
+      }
+      const direct = doc.querySelector('a.x-button-drop-menu-link[onclick*="Toolbar.SaveAndNew"]');
+      if (direct) return direct;
+    } catch (_) {}
+  }
+  return null;
+}
+
+function saveAndNewMenuLinkReady(link) {
+  return saveAndCloseMenuLinkReady(link);
+}
+
+function saveAndNewMenuLinkCallable(link) {
+  try {
+    if (typeof Toolbar !== 'undefined' && typeof Toolbar.SaveAndNew === 'function') return true;
+  } catch (_) {}
+  return Boolean(link && /Toolbar\.SaveAndNew\s*\(/.test(link.getAttribute('onclick') || ''));
+}
+
+/** Asset General tab: open Save split dropdown, wait for enabled Save and Close, then click. */
+function clickAssetToolbarSaveAndClose() {
+  const split = findSaveSplitButton();
+  const drop = findSaveSplitDropdownTrigger(split);
+  const menuOpen = isSaveSplitMenuOpen(split);
+  const menu = split?.querySelector('ul.x-button-drop-menu') || document.querySelector('ul.x-button-drop-menu');
+  const menuLink = findSaveAndCloseDropdownLink();
+  const state = {
+    splitFound: Boolean(split),
+    dropFound: Boolean(drop),
+    menuOpen,
+    menuVisible: Boolean(menu && visible(menu)),
+    linkFound: Boolean(menuLink),
+    linkVisible: Boolean(menuLink && visible(menuLink)),
+    linkReady: saveAndCloseMenuLinkReady(menuLink)
+  };
+
+  if (menuOpen) {
+    if (!menu || !visible(menu)) {
+      return { ok: false, pending: true, reason: 'waiting-for-save-dropdown-menu', state };
+    }
+    if (!menuLink) {
+      return { ok: false, pending: true, reason: 'save-and-close-menu-link-missing', state };
+    }
+    if (!saveAndCloseMenuLinkReady(menuLink)) {
+      return { ok: false, pending: true, reason: 'save-and-close-menu-link-disabled', state };
+    }
+    if (visible(menuLink)) {
+      dispatchClick(menuLink, false, 'Save and Close');
+      return { ok: true, method: 'split-dropdown-menu-link', pending: false, state };
+    }
+    if (saveAndCloseMenuLinkCallable(menuLink)) {
+      try {
+        Toolbar.SaveAndClose();
+        return { ok: true, method: 'Toolbar.SaveAndClose-menu-open', pending: false, state };
+      } catch (_) {}
+    }
+    return { ok: false, pending: true, reason: 'save-and-close-not-clickable', state };
+  }
+
+  if (drop) {
+    dispatchClick(drop, false, 'Save dropdown');
+    return { ok: false, pending: true, reason: 'opening-save-dropdown', state };
+  }
+
+  try {
+    if (typeof Toolbar !== 'undefined' && typeof Toolbar.SaveAndClose === 'function') {
+      Toolbar.SaveAndClose();
+      return { ok: true, method: 'Toolbar.SaveAndClose-direct', pending: false, state };
+    }
+  } catch (_) {}
+
+  return { ok: false, pending: true, reason: 'save-split-button-not-found', state };
+}
+
+/** Asset General tab: open Save split dropdown, wait for enabled Save and New, then click. */
+function clickAssetToolbarSaveAndNew() {
+  const split = findSaveSplitButton();
+  const drop = findSaveSplitDropdownTrigger(split);
+  const menuOpen = isSaveSplitMenuOpen(split);
+  const menu = split?.querySelector('ul.x-button-drop-menu') || document.querySelector('ul.x-button-drop-menu');
+  const menuLink = findSaveAndNewDropdownLink();
+  const state = {
+    splitFound: Boolean(split),
+    dropFound: Boolean(drop),
+    menuOpen,
+    menuVisible: Boolean(menu && visible(menu)),
+    linkFound: Boolean(menuLink),
+    linkVisible: Boolean(menuLink && visible(menuLink)),
+    linkReady: saveAndNewMenuLinkReady(menuLink)
+  };
+
+  if (menuOpen) {
+    if (!menu || !visible(menu)) {
+      return { ok: false, pending: true, reason: 'waiting-for-save-dropdown-menu', state };
+    }
+    if (!menuLink) {
+      return { ok: false, pending: true, reason: 'save-and-new-menu-link-missing', state };
+    }
+    if (!saveAndNewMenuLinkReady(menuLink)) {
+      return { ok: false, pending: true, reason: 'save-and-new-menu-link-disabled', state };
+    }
+    if (visible(menuLink)) {
+      dispatchClick(menuLink, false, 'Save and New');
+      return { ok: true, method: 'split-dropdown-menu-link', pending: false, state };
+    }
+    if (saveAndNewMenuLinkCallable(menuLink)) {
+      try {
+        Toolbar.SaveAndNew();
+        return { ok: true, method: 'Toolbar.SaveAndNew-menu-open', pending: false, state };
+      } catch (_) {}
+    }
+    return { ok: false, pending: true, reason: 'save-and-new-not-clickable', state };
+  }
+
+  if (drop) {
+    dispatchClick(drop, false, 'Save dropdown');
+    return { ok: false, pending: true, reason: 'opening-save-dropdown', state };
+  }
+
+  try {
+    if (typeof Toolbar !== 'undefined' && typeof Toolbar.SaveAndNew === 'function') {
+      Toolbar.SaveAndNew();
+      return { ok: true, method: 'Toolbar.SaveAndNew-direct', pending: false, state };
+    }
+  } catch (_) {}
+
+  const direct = findSaveAndNewButton();
+  if (direct && visible(direct)) {
+    dispatchClick(direct, false, 'Save and New');
+    return { ok: true, method: 'save-and-new-direct-link', pending: false, state };
+  }
+
+  return { ok: false, pending: true, reason: 'save-split-button-not-found', state };
+}
+
 function findSaveAndNewButton() {
+  for (const doc of sameOriginDocuments()) {
+    try {
+      const exact = doc.querySelector('a[onclick*="Toolbar.SaveAndNew"], a[title*="Save and New" i]');
+      if (exact && visible(exact) && !isAssistantElement(exact)) return exact;
+    } catch (_) {}
+  }
   const exact = document.querySelector('a[onclick*="Toolbar.SaveAndNew"], a[title*="Save and New" i]');
   if (exact && visible(exact) && !isAssistantElement(exact)) return exact;
   const candidates = [...document.querySelectorAll('a,button,[role="button"]')]
@@ -416,6 +653,7 @@ function validationMessage() {
     wait, visible, isAssistantElement, elementValue, dispatchClick,
     configureForm, waitForDom, labelElements, allVisibleControls, nearestControl,
     setNativeValue, tabContextReady, clickTab, fillByLabel, nearestCheckbox,
-    setCheckboxByLabel, setSelectByLabel, findSaveButton, findSaveAndCloseButton, findSaveAndNewButton, clickSaveAndClose, clickSaveAndNew, validationMessage
+    setCheckboxByLabel, setSelectByLabel, findSaveButton, findSaveAndCloseButton, findSaveAndNewButton,
+    clickSaveAndClose, clickAssetToolbarSaveAndClose, clickAssetToolbarSaveAndNew, clickSaveAndNew, validationMessage
   });
 })();

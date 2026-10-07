@@ -33,7 +33,7 @@
       for (const field of fields) {
         if (!clean(field.value)) continue;
         if (options.skipAssetCode && field.label.some((label) => norm(label) === 'asset code')) continue;
-        const result = b.fillByLabel(field.label, field.value);
+        const result = b.fillByLabel(field.label, field.value, { tab: `${tab} tab`, meta: `${tab} tab · ${record.assetCode}` });
         directResults.push({ tab, ...result, expected: String(field.value), required: Boolean(field.required) });
         if (['missing', 'readonly', 'failed'].includes(result.status)) {
           await b.recordValidationWarning(record, { scope: 'asset', tab, field: field.label[0], expected: field.value, actual: '', reason: `Fill result: ${result.status}` });
@@ -63,6 +63,7 @@
 
     if (shouldFillAssetNotes(record, b.state.settings || {})) {
       if (!(await b.clickTab('Notes'))) throw new Error('Notes tab could not be opened.');
+      b.showFieldFill?.('Notes', String(record.comments).slice(0, 2000), { meta: `Notes tab · ${record.assetCode}`, wait: false, duration: 2800, tick: false });
       let textarea = b.nearestControl(['Notes'])?.control;
       if (!(textarea instanceof HTMLTextAreaElement)) {
         textarea = [...document.querySelectorAll('textarea')].find((el) => visible(el) && !isAssistantElement(el));
@@ -72,6 +73,11 @@
       } else if (!b.setNativeValue(textarea, String(record.comments).slice(0, 2000))) {
         await b.recordValidationWarning(record, { scope: 'asset', tab: 'Notes', field: 'Notes', expected: String(record.comments).slice(0, 2000), actual: elementValue(textarea), reason: 'Notes could not be filled' });
       } else {
+        try {
+          textarea.dispatchEvent(new Event('change', { bubbles: true }));
+          textarea.dispatchEvent(new Event('blur', { bubbles: true }));
+        } catch (_) {}
+        b.addEvent('asset-field-filled', { tab: 'Notes', field: 'Notes', expected: clean(record.comments).slice(0, 2000), actual: clean(elementValue(textarea)), status: 'filled' });
         directResults.push({ tab: 'Notes', status: 'filled', label: 'Notes', expected: String(record.comments).slice(0, 2000), control: textarea });
       }
     }
@@ -130,7 +136,7 @@
 
     b.state.session.currentLookupEvidence = [];
     await b.persistSession();
-    b.showToast(`Filling ${record.assetCode}...`, 'info', 5000);
+    b.showActivity?.('Filling', record.assetCode, 'Reading workbook fields into CAFM tabs', { wait: true, meta: `Row ${record.workbookRow}`, tick: true });
     const filled = await fillAssetFieldsByTab(record);
     await wait(0);
     await verifyBeforeSave(record);

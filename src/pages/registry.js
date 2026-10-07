@@ -16,7 +16,7 @@
       id: 'asset-saved',
       label: 'Asset Saved',
       test: () => pages.isAssetPage() && pages.isSavedAssetPage(),
-      phases: ['asset_close_child', 'asset_close_wait', 'activate_open', 'activate_select', 'activate_confirm', 'activate_wait', 'activate_wait_user', 'asset_save_and_new'],
+      phases: ['asset_close_child', 'asset_close_wait', 'activate_open', 'activate_select', 'activate_confirm', 'activate_wait', 'activate_wait_user', 'asset_save_and_new', 'asset_save_and_close', 'asset_save_and_close_wait'],
       handler: 'processActivationPage'
     },
     {

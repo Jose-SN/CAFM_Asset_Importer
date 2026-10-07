@@ -341,7 +341,7 @@
     if (nextIndex >= linked.length) {
       b.state.session.auto = { ...auto, ppmResults: results, ppmResumeAfterActivation: false, ppmResumeIndex: null };
       await b.persistSession();
-      await finishPostSave(record, results);
+      await root.pages.ppmRegister.beginPpmCycleGeneralWait(record, results);
       return;
     }
 

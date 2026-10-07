@@ -120,23 +120,6 @@
       return;
     }
 
-    if (completedIterations >= Math.max(1, Number(auto.maxIterations || 1))) {
-      b.state.session.auto = {
-        ...auto,
-        active: false,
-        phase: 'complete',
-        completedAt: Date.now(),
-        processedThisRun: completedIterations,
-        maxIterations: Math.max(1, Number(auto.maxIterations || 1)),
-        ppmResults
-      };
-      b.state.session.currentLookupEvidence = [];
-      await b.persistSession();
-      b.render();
-      b.showToast(`Iteration limit reached: ${completedIterations} asset cycle(s) completed.`, 'success', 10000);
-      return;
-    }
-
     if (next < 0) {
       b.state.session.auto = { active: false, mode: auto.mode || 'automatic', phase: 'complete', completedAt: Date.now() };
       await b.persistSession();
@@ -165,7 +148,9 @@
       assetCode: b.state.assets[next].assetCode,
       previousAssetCode: record.assetCode,
       previousAssetEntityId: previousEntityId,
+      afterPpmHandoff: false,
       saveAndNewStartedAt: 0,
+      saveAndCloseStartedAt: 0,
       startedAt: auto.startedAt || Date.now(),
       processedThisRun: completedIterations,
       maxIterations: Math.max(1, Number(auto.maxIterations || 1)),
@@ -189,6 +174,88 @@
       return;
     }
     location.href = b.state.session.newEntityUrl || deriveNewEntityUrl();
+  }
+
+  async function beginPostPpmHandoff(record, ppmResults = []) {
+    const b = $();
+    const auto = b.state.session.auto || {};
+    const entityId = auto.assetEntityId || b.state.session.statuses?.[record.assetCode]?.cafmEntityId || '';
+    const activeEvidence = b.currentAssetStatusText() || b.state.session.statuses?.[record.assetCode]?.assetStatusEvidence || 'Status: ACTIVE - Active';
+    const savedPpms = ppmResults.filter((item) => item.status === 'saved').length;
+    const existingPpms = ppmResults.filter((item) => item.status === 'existing').length;
+    const activePpms = ppmResults.filter((item) => item.active).length;
+    const ppmNote = ppmResults.length ? `; PPMs: ${savedPpms} created${existingPpms ? `, ${existingPpms} already existed` : ''}${activePpms ? `, ${activePpms} ACTIVE` : ''}` : '; no enabled linked PPM rows';
+
+    await b.setStatus(record, 'saved', `Asset saved and ACTIVE${ppmNote}`, {
+      cafmEntityId: entityId,
+      assetActivated: true,
+      assetActivatedAt: b.state.session.statuses?.[record.assetCode]?.assetActivatedAt || new Date().toISOString(),
+      assetStatusEvidence: activeEvidence,
+      ppmResults
+    });
+
+    const completedIterations = Number(auto.processedThisRun || 0) + 1;
+    b.addEvent('asset-cycle-complete', {
+      assetCode: record.assetCode,
+      completedIterations,
+      maxIterations: Number(auto.maxIterations || 1),
+      ppmCount: ppmResults.length,
+      activePpmCount: activePpms
+    });
+
+    if (b.state.settings.autoDownloadTimeline) {
+      try {
+        const fileName = root.data.workbook.downloadAssetTimeline(record, { auto: true });
+        b.showToast(`Timeline log downloaded: ${fileName}`, 'info', 6000);
+      } catch (_) {}
+    }
+
+    const next = b.nextPendingIndex(b.state.session.index + 1);
+    if (next < 0) {
+      b.state.session.auto = { active: false, mode: auto.mode || 'automatic', phase: 'complete', completedAt: Date.now() };
+      await b.persistSession();
+      b.render();
+      b.showToast('Automatic Asset + Activation + PPM import completed.', 'success', 10000);
+      return false;
+    }
+
+    if (b.state.settings.autoContinueNext === false) {
+      b.state.session.auto = { active: false, mode: auto.mode || 'automatic', phase: 'complete', completedAt: Date.now(), processedThisRun: completedIterations };
+      await b.persistSession();
+      b.render();
+      b.showToast(`${record.assetCode} complete. Auto-continue is off — reload the extension if needed, then start the next row manually.`, 'success', 12000);
+      return false;
+    }
+
+    const nextCode = b.state.assets[next]?.assetCode || '';
+    b.state.session.index = next;
+    b.state.session.currentLookupEvidence = [];
+    b.state.session.newEntityUrl = b.state.session.newEntityUrl || deriveNewEntityUrl();
+    b.state.session.auto = {
+      active: true,
+      mode: auto.mode || 'automatic',
+      phase: 'asset_save_and_new',
+      index: next,
+      assetCode: nextCode,
+      previousAssetCode: record.assetCode,
+      previousAssetEntityId: entityId,
+      afterPpmHandoff: true,
+      assetSaveAndNewMenuStartedAt: 0,
+      saveAndNewStartedAt: 0,
+      saveAndCloseStartedAt: 0,
+      startedAt: auto.startedAt || Date.now(),
+      processedThisRun: completedIterations,
+      maxIterations: Math.max(1, Number(auto.maxIterations || 1)),
+      ppmIndex: 0,
+      ppmResults: []
+    };
+    await b.persistSession();
+    b.render();
+    const warningCount = (b.state.session.statuses?.[record.assetCode]?.validationWarnings || []).length;
+    const ppmSummary = activePpms ? `${savedPpms} PPM saved, ${activePpms} ACTIVE` : `${savedPpms} PPM saved`;
+    b.showToast(`${record.assetCode} complete: Asset saved, ${ppmSummary}${warningCount ? `, ${warningCount} warning(s)` : ''}. Save and New → ${nextCode}.`, warningCount ? 'warn' : 'success', 14000);
+    b.addEvent('post-ppm-handoff', { assetCode: record.assetCode, nextAssetCode: nextCode, entityId });
+    return true;
   }
 
   async function afterActivation(record) {
@@ -215,7 +282,8 @@
       assetEntityId: entityId,
       ppmIndex: 0,
       ppmResults: auto.ppmResults || [],
-      ppmGridRefreshedForIndex: -1
+      ppmGridRefreshedForIndex: 0,
+      ppmParentRefreshCounts: {}
     };
     await b.persistSession();
     b.render();
@@ -323,6 +391,7 @@
   root.workflow = root.workflow || {};
   root.workflow.postSave = Object.freeze({
     beginPostSave,
+    beginPostPpmHandoff,
     finishPostSave,
     afterActivation,
     clickSaveTracked,

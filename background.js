@@ -362,6 +362,11 @@ async function closeAllPpmChildrenAndNotifyParent(options) {
 
   let parentNotified = false;
   const notifyParent = options.notifyParent !== false;
+  if (storedParent && notifyParent) {
+    storedParent.lastCloseNotifyAt = Date.now();
+    await savePpmParent(storedParent);
+  }
+
   if (keepParent && notifyParent) {
     parentNotified = await notifyPpmParentClosed(keepParent, {
       type: 'EE_PPM_CURRENT_EDITOR_CLOSED',
@@ -403,6 +408,12 @@ async function handlePpmChildTabRemoved(tabId) {
   const nextPhase = String(parent.pendingNextPhase || 'ppm_next');
   const hasPendingClose = Boolean(parent.pendingAfterRefreshPhase || parent.pendingNextPhase);
   if (!hasPendingClose || parent.children.length > 0) return;
+  if (Number(parent.lastCloseNotifyAt || 0) && Date.now() - Number(parent.lastCloseNotifyAt) < 4000) {
+    parent.pendingNextPhase = '';
+    parent.pendingAfterRefreshPhase = '';
+    await savePpmParent(parent);
+    return;
+  }
 
   let keepParent = null;
   try {

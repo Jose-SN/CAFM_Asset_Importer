@@ -33,7 +33,7 @@
     { tab: 'Financial/Risk', labels: ['Survey Date', 'Asset Tested Date'], path: 'surveyDate', kind: 'date' },
     { tab: 'Financial/Risk', labels: ['Lease Obligation'], path: 'leaseObligation', kind: 'text' },
     { tab: 'Financial/Risk', labels: ['Actual Risk'], path: 'actualRisk', kind: 'text' },
-    { tab: 'Spatial', labels: ['GIS Reference'], path: 'spatial.gisReference', kind: 'text' },
+    { tab: 'Spatial', labels: ['GIS Reference', 'GIS'], path: 'spatial.gisReference', kind: 'text' },
     { tab: 'Spatial', labels: ['Latitude'], path: 'spatial.latitude', kind: 'text' },
     { tab: 'Spatial', labels: ['Longitude'], path: 'spatial.longitude', kind: 'text' },
     { tab: 'Spatial', labels: ['Elevation'], path: 'spatial.elevation', kind: 'text' },

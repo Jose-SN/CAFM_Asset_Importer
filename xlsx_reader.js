@@ -595,7 +595,7 @@
         actualRisk: numericText(valueByAliases(obj, ['Actual Risk'])),
 
         spatial: {
-          gisReference: trimValue(valueByAliases(obj, ['GIS Reference'])),
+          gisReference: trimValue(valueByAliases(obj, ['GIS Reference', 'GIS'])),
           latitude: numericText(valueByAliases(obj, ['Latitude'])),
           longitude: numericText(valueByAliases(obj, ['Longitude'])),
           elevation: numericText(valueByAliases(obj, ['Elevation'])),

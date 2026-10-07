@@ -6,6 +6,7 @@
   const {
     isAssetPage,
     isNewEntityPage,
+    isAssetListPage,
     isSavedAssetPage,
     isPpmListPage,
     isPpmItemPage,
@@ -27,13 +28,47 @@
     } catch (_) {}
   }
 
-  function scheduleAuto(_delay = 0) {
+  function scheduleAuto(delay = 0) {
     const b = $();
     clearTimeout(b.state.autoTimer);
-    const phase = clean(b.state.session.auto?.phase || '');
-    const watchdogMs = WAITING_PHASES.has(phase) ? 750 : 0;
+    const auto = b.state.session.auto || {};
+    const phase = clean(auto.phase || '');
+    const waitMs = Math.max(0, Number(delay) || 0);
+    const watchdogMs = WAITING_PHASES.has(phase) ? Math.max(waitMs, 750) : waitMs;
+    if (auto.active) {
+      const record = b.workflowRecord(auto);
+      const waiting = WAITING_PHASES.has(phase);
+      const waitSec = watchdogMs > 0 ? Math.max(1, Math.round(watchdogMs / 1000)) : 0;
+      if (b.showWorkflowStatus) {
+        b.showWorkflowStatus({
+          auto,
+          record,
+          currentPpm: b.currentPpm(record),
+          linkedPpms: record ? b.linkedPpms(record) : [],
+          statuses: b.state.session.statuses || {},
+          statusOf: (row) => b.statusOf(row)
+        }, {
+          verb: waiting ? 'Waiting' : 'Running',
+          wait: true,
+          waitSec,
+          tick: true,
+          type: 'info'
+        });
+      } else if (b.showActivity) {
+        const ppm = b.currentPpm(record);
+        const meta = record?.assetCode ? `Asset ${record.assetCode}` : '';
+        const ppmNote = ppm?.ppmKey ? ` · PPM ${(Number(auto.ppmIndex) || 0) + 1}` : '';
+        b.showActivity(
+          waiting ? 'Waiting' : 'Next step',
+          root.ui.progressToast.phaseLabel(phase),
+          waitSec > 0 ? `Checking again in ${waitSec}s` : 'Running next workflow step',
+          { wait: true, type: 'info', meta: `${meta}${ppmNote}`.trim(), tick: true }
+        );
+      }
+      b.render?.();
+    }
     b.state.autoTimer = setTimeout(() => runAutomatic().catch((error) => stopAutomaticWithError(error)), watchdogMs);
-    if (b.state.session.auto?.active) syncAutoOrchestrator();
+    if (auto.active) syncAutoOrchestrator();
   }
 
   async function stopAutomaticWithError(error) {
@@ -57,7 +92,14 @@
     }
     await b.persistSession();
     b.render();
+    b.showActivity?.(
+      'Failed',
+      root.ui.progressToast.phaseLabel(b.state.session.auto?.failedPhase || 'workflow'),
+      message,
+      { wait: false, type: 'error', meta: record?.assetCode || '', duration: 0, tick: false }
+    );
     b.showToast(message, 'error', 12000);
+    root.ui.progressToast.stopTick();
     syncAutoOrchestrator();
   }
 
@@ -122,6 +164,7 @@
     await b.persistSession();
     b.render();
     b.showToast('Automatic import paused.', 'info');
+    root.ui.progressToast.stopTick();
     syncAutoOrchestrator();
   }
 
@@ -132,6 +175,23 @@
     if (!auto?.active) return;
     b.state.busy = true;
     try {
+      const waitingPhase = WAITING_PHASES.has(clean(auto.phase || ''));
+      if (b.showActivity && !(b.showWorkflowStatus && waitingPhase)) {
+        const recordPreview = b.workflowRecord(auto);
+        const ppmPreview = b.currentPpm(recordPreview);
+        b.showActivity(
+          'Running',
+          root.ui.progressToast.phaseLabel(auto.phase),
+          ppmPreview?.instruction || recordPreview?.assetCode || '',
+          {
+            wait: false,
+            type: 'info',
+            meta: recordPreview?.assetCode ? `Asset ${recordPreview.assetCode}` : '',
+            tick: false,
+            duration: 0
+          }
+        );
+      }
       const index = Math.max(0, Number(auto.index ?? b.state.session.index) || 0);
       if (auto.mode !== 'ppm-current-page' && b.state.assets[index]) b.state.session.index = index;
       const record = b.workflowRecord(auto);
@@ -175,6 +235,20 @@
       }
 
       if (String(auto.phase || '').startsWith('ppm_')) {
+        if (auto.phase === 'ppm_cycle_general_wait' || auto.phase === 'ppm_cycle_complete_parent') {
+          if (isSavedAssetPage()) {
+            if (auto.phase === 'ppm_cycle_general_wait') {
+              await root.pages.ppmRegister.processPpmCycleGeneralWaitPage(record);
+            } else {
+              await root.pages.ppmRegister.processPpmListPage(record);
+            }
+            return;
+          }
+          if (auto.assetEntityId) {
+            location.href = assetEntityUrl(auto.assetEntityId);
+            return;
+          }
+        }
         if (isPpmListPage()) { await root.pages.ppmRegister.processPpmListPage(record); return; }
         if (isPpmItemPage()) { await root.pages.ppmEditor.processPpmItemPage(record); return; }
         if (auto.assetEntityId) {
@@ -196,6 +270,78 @@
         return;
       }
 
+      if (auto.phase === 'asset_save_and_close' || auto.phase === 'asset_save_and_close_wait') {
+        const entityId = String(auto.assetEntityId || auto.previousAssetEntityId || '');
+        if (auto.phase === 'asset_save_and_close_wait') {
+          const elapsed = Date.now() - Number(auto.saveAndCloseStartedAt || Date.now());
+          const leftSavedPage = !isSavedAssetPage() || (entityId && entityIdFromUrl() !== entityId);
+          if (leftSavedPage || elapsed > b.state.settings.saveTimeoutMs) {
+            await b.finishPostSave(record, auto.ppmResults || []);
+            return;
+          }
+          scheduleAuto(350);
+          return;
+        }
+        if (!entityId) {
+          await b.finishPostSave(record, auto.ppmResults || []);
+          return;
+        }
+        if (!isSavedAssetPage() || entityIdFromUrl() !== entityId) {
+          location.href = assetEntityUrl(entityId);
+          return;
+        }
+        const general = root.core.toolbar.findAssetGeneralNavLink();
+        if (general && !general.classList.contains('fsiNavSelectedItem')) {
+          b.showActivity?.('Clicking', 'General tab', 'Before Save and Close', { wait: false, meta: record?.assetCode || '', duration: 2200, tick: false });
+          dispatchClick(general, false);
+          scheduleAuto(450);
+          return;
+        }
+        const menuStarted = Number(auto.assetSaveAndCloseMenuStartedAt || Date.now());
+        if (!auto.assetSaveAndCloseMenuStartedAt) {
+          b.state.session.auto = { ...auto, assetSaveAndCloseMenuStartedAt: menuStarted };
+          await b.persistSession();
+          auto = b.state.session.auto || {};
+        }
+        const saveClose = auto.afterPpmAssetSaveAndClose
+          ? (root.core.dom.clickAssetToolbarSaveAndClose?.() || { ok: false })
+          : (b.clickSaveAndClose?.() || { ok: false });
+        b.addEvent('asset-save-and-close-click', {
+          ok: saveClose.ok,
+          method: saveClose.method || '',
+          reason: saveClose.reason || '',
+          pending: Boolean(saveClose.pending),
+          state: saveClose.state || {},
+          assetCode: record.assetCode,
+          entityId
+        });
+        if (!saveClose.ok) {
+          if (saveClose.pending && Date.now() - menuStarted < b.state.settings.lookupTimeoutMs) {
+            b.showActivity?.(
+              'Waiting',
+              'Save and Close menu',
+              saveClose.reason === 'save-and-close-menu-link-disabled'
+                ? 'Waiting for Save and Close to become enabled'
+                : 'Opening Save dropdown menu',
+              { wait: true, meta: record?.assetCode || '', tick: true }
+            );
+            scheduleAuto(350);
+            return;
+          }
+          throw new Error(`Save and Close was not detected on the General tab for ${record.assetCode}${saveClose.reason ? ` (${saveClose.reason})` : ''}.`);
+        }
+        b.showActivity?.('Waiting', 'Save and Close', 'Closing asset editor', { wait: true, meta: record?.assetCode || '', tick: true });
+        b.state.session.auto = {
+          ...auto,
+          phase: 'asset_save_and_close_wait',
+          saveAndCloseStartedAt: Date.now(),
+          assetSaveAndCloseMenuStartedAt: 0
+        };
+        await b.persistSession();
+        scheduleAuto(500);
+        return;
+      }
+
       if (auto.phase === 'asset_save_and_new') {
         const prevEntityId = String(auto.previousAssetEntityId || auto.assetEntityId || '');
         if (!prevEntityId) {
@@ -210,38 +356,122 @@
         }
         const general = root.core.toolbar.findAssetGeneralNavLink();
         if (general && !general.classList.contains('fsiNavSelectedItem')) {
+          b.showActivity?.('Clicking', 'General tab', 'Before Save and New', { wait: false, meta: record?.assetCode || '', duration: 2200, tick: false });
           dispatchClick(general, false);
           scheduleAuto(300);
           return;
         }
-        const saveAndNew = b.clickSaveAndNew?.() || { ok: false };
-        b.addEvent('asset-save-and-new-click', { ok: saveAndNew.ok, method: saveAndNew.method || '', nextAssetCode: auto.assetCode || '' });
+        let autoNow = b.state.session.auto || auto;
+        const menuStarted = Number(autoNow.assetSaveAndNewMenuStartedAt || Date.now());
+        if (!autoNow.assetSaveAndNewMenuStartedAt) {
+          b.state.session.auto = { ...autoNow, assetSaveAndNewMenuStartedAt: menuStarted };
+          await b.persistSession();
+          autoNow = b.state.session.auto || autoNow;
+        }
+        let saveAndNew = autoNow.afterPpmHandoff
+          ? (root.core.dom.clickAssetToolbarSaveAndNew?.() || { ok: false })
+          : (b.clickSaveAndNew?.() || { ok: false });
+        if (!saveAndNew.ok && !saveAndNew.pending) {
+          saveAndNew = b.clickSaveAndNew?.() || saveAndNew;
+        }
+        b.addEvent('asset-save-and-new-click', {
+          ok: saveAndNew.ok,
+          method: saveAndNew.method || '',
+          reason: saveAndNew.reason || '',
+          pending: Boolean(saveAndNew.pending),
+          nextAssetCode: autoNow.assetCode || '',
+          afterPpmHandoff: Boolean(autoNow.afterPpmHandoff)
+        });
         if (!saveAndNew.ok) {
-          b.state.session.auto = { ...auto, phase: 'navigate', saveAndNewStartedAt: 0 };
+          if (saveAndNew.pending && Date.now() - menuStarted < b.state.settings.lookupTimeoutMs) {
+            b.showActivity?.(
+              'Waiting',
+              'Save and New menu',
+              saveAndNew.reason === 'save-and-new-menu-link-disabled'
+                ? 'Waiting for Save and New to become enabled'
+                : 'Opening Save dropdown menu',
+              { wait: true, meta: autoNow.assetCode || '', tick: true }
+            );
+            scheduleAuto(350);
+            return;
+          }
+          b.state.session.auto = { ...autoNow, phase: 'navigate', saveAndNewStartedAt: 0, assetSaveAndNewMenuStartedAt: 0 };
           await b.persistSession();
           location.href = b.state.session.newEntityUrl || deriveNewEntityUrl();
           return;
         }
-        b.state.session.auto = { ...auto, phase: 'navigate', saveAndNewStartedAt: Date.now() };
+        b.showActivity?.('Waiting', 'Save and New', 'Opening asset list for next row', { wait: true, meta: autoNow.assetCode || '', tick: true });
+        b.state.session.auto = {
+          ...autoNow,
+          phase: 'navigate',
+          saveAndNewStartedAt: Date.now(),
+          assetSaveAndNewMenuStartedAt: 0,
+          afterPpmHandoff: false
+        };
         await b.persistSession();
-        scheduleAuto(300);
+        scheduleAuto(400);
         return;
       }
 
       if (auto.phase === 'navigate') {
-        if (!isNewEntityPage()) {
+        if (isNewEntityPage()) {
+          b.state.session.auto = {
+            ...auto,
+            phase: 'fill',
+            index: b.state.session.index,
+            assetCode: b.currentRecord()?.assetCode || auto.assetCode || '',
+            saveAndNewStartedAt: 0
+          };
+          await b.persistSession();
+        } else if (isAssetListPage()) {
+          const processed = Number(auto.processedThisRun || 0);
+          const maxIter = Math.max(1, Number(auto.maxIterations || 1));
+          if (processed >= maxIter) {
+            b.state.session.auto = {
+              ...auto,
+              active: false,
+              phase: 'complete',
+              completedAt: Date.now()
+            };
+            await b.persistSession();
+            b.render();
+            b.showToast(`Iteration limit reached: ${processed} asset cycle(s) completed.`, 'success', 10000);
+            return;
+          }
+          const createNew = root.core.toolbar.clickAssetListCreateNew?.() || { ok: false };
+          b.addEvent('asset-list-create-new-click', {
+            ok: createNew.ok,
+            method: createNew.method || '',
+            reason: createNew.reason || '',
+            nextAssetCode: auto.assetCode || ''
+          });
+          if (createNew.ok) {
+            b.showActivity?.('Clicking', 'Create New asset', auto.assetCode || 'next row', { wait: true, meta: auto.assetCode || '', tick: true });
+            b.state.session.auto = { ...auto, saveAndNewStartedAt: Date.now() };
+            await b.persistSession();
+            scheduleAuto(450);
+            return;
+          }
           if (auto.saveAndNewStartedAt && Date.now() - Number(auto.saveAndNewStartedAt) < b.state.settings.saveTimeoutMs) {
-            scheduleAuto(200);
+            scheduleAuto(300);
             return;
           }
           location.href = b.state.session.newEntityUrl || deriveNewEntityUrl();
           return;
+        } else if (auto.saveAndNewStartedAt && Date.now() - Number(auto.saveAndNewStartedAt) < b.state.settings.saveTimeoutMs) {
+          scheduleAuto(250);
+          return;
+        } else {
+          location.href = b.state.session.newEntityUrl || deriveNewEntityUrl();
+          return;
         }
-        b.state.session.auto = { ...auto, phase: 'fill', index: b.state.session.index, assetCode: b.currentRecord()?.assetCode || '', saveAndNewStartedAt: 0 };
-        await b.persistSession();
       }
 
       if (!isAssetPage() || !isNewEntityPage()) {
+        if (auto.phase === 'navigate' && isAssetListPage()) {
+          scheduleAuto(200);
+          return;
+        }
         location.href = b.state.session.newEntityUrl || deriveNewEntityUrl();
         return;
       }
