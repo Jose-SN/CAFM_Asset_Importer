@@ -67,10 +67,12 @@ assert(SUPPORTED_WORKBOOK_SCHEMAS.includes('CAFM Asset + PPM Import v8.0'), 'v8 
 const profile = assetProfileForRecord(record);
 assert(profile.assetTabOrder.includes('Details'), 'default profile has Details tab');
 assert(profile.assetLookupSequence.includes('Building'), 'default profile lookup sequence');
-assert(!resolveAssetTabOrder(record, {}).includes('Spatial'), 'Spatial tab skipped unless includeSpatial');
-assert(resolveAssetTabOrder(record, { includeSpatial: true }).includes('Spatial'), 'Spatial tab when enabled');
-assert(!shouldFillAssetNotes({ comments: 'Note text' }, {}), 'Notes skipped unless includeNotes');
-assert(shouldFillAssetNotes({ comments: 'Note text' }, { includeNotes: true }), 'Notes when includeNotes enabled');
+assert(resolveAssetTabOrder(record, {}).includes('Spatial'), 'Spatial tab when workbook spatial data exists');
+assert(!resolveAssetTabOrder({ assetCode: 'WCH-EMPTY' }, {}).includes('Spatial'), 'Spatial tab skipped when no spatial data');
+assert(resolveAssetTabOrder({ assetCode: 'WCH-EMPTY' }, { includeSpatial: true }).includes('Spatial'), 'Spatial tab when explicitly enabled');
+assert(shouldFillAssetNotes({ comments: 'Note text' }, {}), 'Notes filled when workbook comments exist');
+assert(!shouldFillAssetNotes({ comments: 'Note text' }, { includeNotes: false }), 'Notes skipped when includeNotes disabled');
+assert(!shouldFillAssetNotes({ comments: '' }, {}), 'Notes skipped when comments blank');
 assert(PROFILE_RULES.length >= 1, 'PROFILE_RULES registry exists');
 assert(assetProfileForRecord(record).id === DEFAULT_ASSET_PROFILE.id, 'default profile selected');
 

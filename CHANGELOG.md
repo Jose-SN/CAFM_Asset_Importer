@@ -1,3 +1,7 @@
+# v8.0.40
+- **Notes and Spatial tabs**: fill Notes when the workbook `Notes`/`Comments` column is populated, and fill Spatial/GIS fields (including GIS Reference) when any spatial column has data — no panel checkbox required unless the user explicitly disables **Include Notes**.
+- Workbook column alias **GIS** maps to GIS Reference; CAFM field label **GIS** is recognised on the Spatial tab.
+
 # v8.0.33
 - **PPM Create New diagnostics**: snackbar shows why the New PPM window has not opened (button missing/disabled, wrong popup, popup blocked, wrong page) with actionable detail.
 - **Faster failure**: default wait capped at 10s; specific blockers fail in 2.5–8s instead of hanging 15–20s. Errors stay visible in the red snackbar.

@@ -73,6 +73,11 @@
       } else if (!b.setNativeValue(textarea, String(record.comments).slice(0, 2000))) {
         await b.recordValidationWarning(record, { scope: 'asset', tab: 'Notes', field: 'Notes', expected: String(record.comments).slice(0, 2000), actual: elementValue(textarea), reason: 'Notes could not be filled' });
       } else {
+        try {
+          textarea.dispatchEvent(new Event('change', { bubbles: true }));
+          textarea.dispatchEvent(new Event('blur', { bubbles: true }));
+        } catch (_) {}
+        b.addEvent('asset-field-filled', { tab: 'Notes', field: 'Notes', expected: clean(record.comments).slice(0, 2000), actual: clean(elementValue(textarea)), status: 'filled' });
         directResults.push({ tab: 'Notes', status: 'filled', label: 'Notes', expected: String(record.comments).slice(0, 2000), control: textarea });
       }
     }

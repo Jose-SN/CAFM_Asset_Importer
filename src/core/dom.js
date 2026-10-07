@@ -203,7 +203,7 @@ function tabContextReady(name) {
   if (wanted === 'details') return Boolean(nearestControl(['Asset Code']) || nearestControl(['Description']) || nearestControl(['Building']));
   if (wanted === 'notes') return [...document.querySelectorAll('textarea')].some((el) => visible(el) && !isAssistantElement(el));
   if (wanted === 'financial/risk' || wanted === 'financial risk') return Boolean(nearestControl(['Condition']) || nearestControl(['Warranty Expires']) || nearestControl(['Operational']));
-  if (wanted === 'spatial') return Boolean(nearestControl(['GIS Reference']) || nearestControl(['Latitude']) || nearestControl(['External System']));
+  if (wanted === 'spatial') return Boolean(nearestControl(['GIS Reference', 'GIS']) || nearestControl(['Latitude']) || nearestControl(['External System']));
   return false;
 }
 
