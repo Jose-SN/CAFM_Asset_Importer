@@ -6,6 +6,9 @@
   const { visible, isAssistantElement, dispatchClick } = root.core.dom;
   const { isPpmListPage, isPpmRegisterParentPage, isEmbeddedAssetPpmPage, isSavedAssetPage, entityIdFromUrl, assetEntityUrl } = root.core.pages;
   const $ = () => root.runtime.b;
+  /** After Create New is invoked, poll for the child editor this long before a single retry click. */
+  const PPM_CREATE_NEW_OPEN_WAIT_MS = 3000;
+  const PPM_CREATE_NEW_MAX_CLICKS = 5;
 
   function findLearnedPpmNewButton() {
     const b = $();
@@ -614,7 +617,7 @@
     await b.persistSession();
     b.addEvent('ppm-create-new-click', { ...info, ...clickResult, ppmIndex, ppmKey: ppm.ppmKey, attempt: 1, clickCalled: true });
     await b.persistSession();
-    b.scheduleAuto(200);
+    b.scheduleAuto(500);
     return true;
   }
 
@@ -977,45 +980,32 @@
       const childTimeoutMs = Number(b.state.settings.ppmChildTimeoutMs) || Number(b.state.settings.lookupTimeoutMs) || 15000;
       const attempts = Number(auto.ppmNewClickAttempts || 0);
       const menuStarted = Number(auto.ppmNewMenuStartedAt || 0);
-      const menuElapsed = menuStarted ? Date.now() - menuStarted : 0;
+      const lastClickAt = Number(auto.ppmNewLastClickAt || 0);
+      const sinceLastClick = lastClickAt ? Date.now() - lastClickAt : elapsed;
 
       if (elapsed > childTimeoutMs) {
         throw new Error(`Create New was clicked/retried, but the PPM child window did not open for ${ppm.ppmKey}.`);
       }
 
-      if (elapsed >= 3000 || (menuStarted && menuElapsed >= 3000)) {
-        await handoffToUserPpmCreateNew(
-          auto,
-          ppm,
-          'PPM popup did not open automatically — click Create New (+ New) once on the PPM register.'
-        );
+      const button = exactPpmNewButton() || findNewButton() || findPpmNewToolbarControls()?.menuLink;
+      const info = ppmToolbarButtonState(button, 'a[title="Create New"][onclick*="Toolbar.New"]');
+      b.addEvent('ppm-create-new-wait-poll', {
+        ...info,
+        attempts,
+        elapsedMs: elapsed,
+        sinceLastClickMs: sinceLastClick,
+        menuStarted: Boolean(menuStarted)
+      });
+
+      if (attempts >= 1 && lastClickAt && sinceLastClick < PPM_CREATE_NEW_OPEN_WAIT_MS) {
+        await b.persistSession();
+        b.scheduleAuto(500);
         return;
       }
 
-      const button = exactPpmNewButton() || findNewButton() || findPpmNewToolbarControls()?.menuLink;
-      const info = ppmToolbarButtonState(button, 'a[title="Create New"][onclick*="Toolbar.New"]');
-      const lastClick = Number(auto.ppmNewLastClickAt || 0);
-      b.addEvent('ppm-create-new-retry-check', { ...info, attempt: attempts + 1, elapsedMs: elapsed, menuElapsedMs: menuElapsed });
-      await b.persistSession();
-      if (!button && !ppmCreateNewCallable()) {
-        if (elapsed >= 2000) {
-          await handoffToUserPpmCreateNew(auto, ppm, 'Create New button not found — click + New on the PPM toolbar once.');
-          return;
-        }
-        b.scheduleAuto(500);
-        return;
-      }
-      if (!canInvokePpmCreateNew(button)) {
-        if (elapsed >= 2000) {
-          await handoffToUserPpmCreateNew(auto, ppm, 'Create New is disabled — wait for the register to finish loading, then click + New once.');
-          return;
-        }
-        b.scheduleAuto(500);
-        return;
-      }
-      if (menuStarted && !attempts) {
+      if (menuStarted && attempts === 0 && !lastClickAt) {
         const controls = findPpmNewToolbarControls();
-        if (menuElapsed >= 1200 && controls?.menuLink && isPpmNewDropdownOpen(controls) && visible(controls.menuLink)) {
+        if (controls?.menuLink && isPpmNewDropdownOpen(controls) && visible(controls.menuLink)) {
           dispatchClick(controls.menuLink, false, 'Create New');
           const now = Date.now();
           b.state.session.auto = {
@@ -1026,31 +1016,13 @@
             ppmNewMenuStartedAt: 0
           };
           await b.persistSession();
-          b.scheduleAuto(200);
+          b.addEvent('ppm-create-new-menu-click', { ppmKey: ppm.ppmKey, method: 'dropdown-menu-after-open' });
+          b.scheduleAuto(500);
           return;
-        }
-        if (menuElapsed >= 1500) {
-          try {
-            if (typeof Toolbar !== 'undefined' && typeof Toolbar.New === 'function') {
-              Toolbar.New();
-              b.addEvent('ppm-create-new-toolbar-new-fallback', { ppmKey: ppm.ppmKey, menuElapsedMs: menuElapsed });
-              const now = Date.now();
-              b.state.session.auto = {
-                ...auto,
-                ppmNewClickAttempts: 1,
-                ppmNewLastClickAt: now,
-                ppmNewClickedForIndex: ppmIndex,
-                ppmNewMenuStartedAt: 0
-              };
-              await b.persistSession();
-              b.scheduleAuto(250);
-              return;
-            }
-          } catch (_) {}
         }
         const menuClick = clickPpmCreateNew(button, 'ppm-wait-new-menu');
         if (menuClick.pending) {
-          b.scheduleAuto(350);
+          b.scheduleAuto(400);
           return;
         }
         if (menuClick.clickCalled) {
@@ -1063,12 +1035,31 @@
             ppmNewMenuStartedAt: 0
           };
           await b.persistSession();
-          b.scheduleAuto(200);
+          b.scheduleAuto(500);
           return;
         }
+        b.scheduleAuto(400);
+        return;
       }
 
-      if (!lastClick || Date.now() - lastClick >= 700) {
+      if (attempts >= PPM_CREATE_NEW_MAX_CLICKS && lastClickAt && sinceLastClick >= PPM_CREATE_NEW_OPEN_WAIT_MS) {
+        await handoffToUserPpmCreateNew(
+          auto,
+          ppm,
+          'PPM popup did not open after two Create New attempts — click + New once on the PPM register.'
+        );
+        return;
+      }
+
+      if (attempts >= 1 && lastClickAt && sinceLastClick >= PPM_CREATE_NEW_OPEN_WAIT_MS && attempts < PPM_CREATE_NEW_MAX_CLICKS) {
+        if (!button && !ppmCreateNewCallable()) {
+          await handoffToUserPpmCreateNew(auto, ppm, 'Create New button not found — click + New on the PPM toolbar once.');
+          return;
+        }
+        if (!canInvokePpmCreateNew(button)) {
+          b.scheduleAuto(500);
+          return;
+        }
         const childBeforeClick = await getPpmChildState(record.assetCode);
         if (childBeforeClick?.found && analyzePpmChildUrl(childBeforeClick.url).kind === 'new-ppm') {
           await handlePpmChildWindow(record, auto, ppm, childBeforeClick, elapsed);
@@ -1079,11 +1070,11 @@
         if (clickResult.pending) {
           b.state.session.auto = {
             ...auto,
-            ppmNewMenuStartedAt: menuStarted || Date.now(),
+            ppmNewMenuStartedAt: Date.now(),
             ppmOpenStartedAt: Number(auto.ppmOpenStartedAt || Date.now())
           };
           await b.persistSession();
-          b.scheduleAuto(350);
+          b.scheduleAuto(400);
           return;
         }
         const now = Date.now();
@@ -1091,13 +1082,28 @@
           ...auto,
           ppmNewClickAttempts: attempts + 1,
           ppmNewLastClickAt: now,
+          ppmNewClickedForIndex: ppmIndex,
           ppmNewMenuStartedAt: 0
         };
         await b.persistSession();
         b.addEvent('ppm-create-new-retry-click', { ...info, ...clickResult, attempt: attempts + 1, clickCalled: Boolean(clickResult.clickCalled) });
-        await b.persistSession();
+        b.scheduleAuto(500);
+        return;
       }
-      b.scheduleAuto(200);
+
+      if (attempts === 0 && !menuStarted) {
+        if (!button && !ppmCreateNewCallable()) {
+          if (elapsed >= PPM_CREATE_NEW_OPEN_WAIT_MS) {
+            await handoffToUserPpmCreateNew(auto, ppm, 'Create New button not found — click + New on the PPM toolbar once.');
+            return;
+          }
+          b.scheduleAuto(500);
+          return;
+        }
+      }
+
+      await b.persistSession();
+      b.scheduleAuto(500);
       return;
     }
 
