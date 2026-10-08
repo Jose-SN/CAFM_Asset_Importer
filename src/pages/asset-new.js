@@ -3,11 +3,50 @@
 
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
-  const { wait, visible, isAssistantElement, elementValue } = root.core.dom;
+  const { wait, visible, isAssistantElement, elementValue, dispatchClick } = root.core.dom;
   const { isNewEntityPage } = root.core.pages;
   const { lookupMapping, directMappings, valueEquivalent } = root.pages.assetMappings;
   const { assetProfileForRecord, resolveAssetTabOrder, shouldFillAssetNotes } = root.data.fillProfiles;
   const $ = () => root.runtime.b;
+
+  function findAssetNotesTextarea() {
+    const selectors = [
+      'textarea[id*="FASSETNotes_Editor_TextBoxAR_COMMENTS"]',
+      'textarea[name*="TextBoxAR_COMMENTS"]',
+      'textarea[name*="AR_COMMENTS"]'
+    ];
+    for (const selector of selectors) {
+      const el = document.querySelector(selector);
+      if (el instanceof HTMLTextAreaElement && visible(el) && !isAssistantElement(el)) return el;
+    }
+    return null;
+  }
+
+  function findAssetNotesTab() {
+    const tabs = [...document.querySelectorAll('span.ajax__tab_tab, a.ajax__tab_tab, [role="tab"]')]
+      .filter((el) => visible(el) && !isAssistantElement(el) && norm(el.textContent) === 'notes');
+    const preferred = tabs.find((el) => /FASSETEditor|TabContainer|TabPanel1/i.test(`${el.id || ''}`));
+    return preferred || tabs[0] || null;
+  }
+
+  async function openAssetNotesTab() {
+    if (findAssetNotesTextarea()) return true;
+    const tab = findAssetNotesTab();
+    if (!tab) return false;
+    const clickable = tab.closest('a') || tab;
+    try {
+      if (typeof clickable.click === 'function') clickable.click();
+      else dispatchClick(clickable, false, 'Notes');
+    } catch (_) {
+      dispatchClick(clickable, false, 'Notes');
+    }
+    const deadline = Date.now() + 2600;
+    while (Date.now() < deadline) {
+      await wait(0);
+      if (findAssetNotesTextarea()) return true;
+    }
+    return Boolean(findAssetNotesTextarea());
+  }
 
   async function fillAssetFieldsByTab(record, options = {}) {
     const b = $();
@@ -62,12 +101,9 @@
     }
 
     if (shouldFillAssetNotes(record, b.state.settings || {})) {
-      if (!(await b.clickTab('Notes'))) throw new Error('Notes tab could not be opened.');
+      if (!(await openAssetNotesTab())) throw new Error('Notes tab could not be opened.');
       b.showFieldFill?.('Notes', String(record.comments).slice(0, 2000), { meta: `Notes tab · ${record.assetCode}`, wait: false, duration: 2800, tick: false });
-      let textarea = b.nearestControl(['Notes'])?.control;
-      if (!(textarea instanceof HTMLTextAreaElement)) {
-        textarea = [...document.querySelectorAll('textarea')].find((el) => visible(el) && !isAssistantElement(el));
-      }
+      let textarea = findAssetNotesTextarea();
       if (!textarea) {
         await b.recordValidationWarning(record, { scope: 'asset', tab: 'Notes', field: 'Notes', expected: String(record.comments).slice(0, 2000), actual: '', reason: 'Notes text area was not detected' });
       } else if (!b.setNativeValue(textarea, String(record.comments).slice(0, 2000))) {

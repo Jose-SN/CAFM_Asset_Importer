@@ -70,9 +70,9 @@ assert(profile.assetLookupSequence.includes('Building'), 'default profile lookup
 assert(resolveAssetTabOrder(record, {}).includes('Spatial'), 'Spatial tab when workbook spatial data exists');
 assert(!resolveAssetTabOrder({ assetCode: 'WCH-EMPTY' }, {}).includes('Spatial'), 'Spatial tab skipped when no spatial data');
 assert(resolveAssetTabOrder({ assetCode: 'WCH-EMPTY' }, { includeSpatial: true }).includes('Spatial'), 'Spatial tab when explicitly enabled');
-assert(shouldFillAssetNotes({ comments: 'Note text' }, {}), 'Notes filled when workbook comments exist');
-assert(!shouldFillAssetNotes({ comments: 'Note text' }, { includeNotes: false }), 'Notes skipped when includeNotes disabled');
-assert(!shouldFillAssetNotes({ comments: '' }, {}), 'Notes skipped when comments blank');
+assert(shouldFillAssetNotes({ comments: 'Note text' }), 'Notes filled when workbook comments exist');
+assert(shouldFillAssetNotes({ comments: 'Note text' }, { includeNotes: false }), 'Notes filled when comments exist even if includeNotes setting is off');
+assert(!shouldFillAssetNotes({ comments: '' }), 'Notes skipped when comments blank');
 assert(PROFILE_RULES.length >= 1, 'PROFILE_RULES registry exists');
 assert(assetProfileForRecord(record).id === DEFAULT_ASSET_PROFILE.id, 'default profile selected');
 

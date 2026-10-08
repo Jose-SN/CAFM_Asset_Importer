@@ -45,10 +45,8 @@
     return order;
   }
 
-  function shouldFillAssetNotes(record, settings = {}) {
-    if (!clean(record?.comments)) return false;
-    if (settings.includeNotes === false) return false;
-    return true;
+  function shouldFillAssetNotes(record) {
+    return Boolean(clean(record?.comments));
   }
 
   root.data = root.data || {};
