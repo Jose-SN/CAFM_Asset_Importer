@@ -828,64 +828,58 @@
         b.scheduleAuto(250);
         return;
       }
-      const selector = 'a[title="Refresh the page"][onclick*="Toolbar.Refresh"]';
-      const button = exactPpmRefreshButton();
-      const info = ppmToolbarButtonState(button, selector);
-      b.addEvent('ppm-parent-refresh-check', {
-        ...info,
-        targetPhase: auto.ppmAfterRefreshPhase || '',
-        parentUrl: location.href,
-        isPpmParentRegister: isPpmListPage()
-      });
-      await b.persistSession();
-      if (!button || button.hasAttribute('disabled') || String(button.getAttribute('aria-disabled') || '').toLowerCase() === 'true') {
-        const started = Number(auto.ppmParentRefreshStartedAt || Date.now());
-        if (!auto.ppmParentRefreshStartedAt) { b.state.session.auto = { ...auto, ppmParentRefreshStartedAt: started }; await b.persistSession(); }
-        if (Date.now() - started > b.state.settings.lookupTimeoutMs) throw new Error('Parent PPM Refresh button did not become available before timeout.');
-        b.scheduleAuto(300);
-        return;
-      }
       const clickedAt = Date.now();
       b.state.session.auto = {
         ...auto,
         phase: 'ppm_parent_refresh_wait',
         ppmParentRefreshPageInstance: b.PAGE_INSTANCE,
         ppmParentRefreshClickedAt: clickedAt,
-        ppmParentRefreshSawDisabled: false
+        ppmParentRefreshStartedAt: 0,
+        ppmParentRefreshSawDisabled: false,
+        ppmParentRefreshMethod: 'tab-reload'
       };
       await b.persistSession();
-      b.addEvent('ppm-parent-refresh-click', { ...info, clickCalled: true, parentUrl: location.href });
-      await b.persistSession();
-      b.showActivity?.('Clicking', 'PPM register Refresh', 'Waiting for grid to reload', { wait: true, meta: record?.assetCode || '', tick: true });
-      button.click();
-      b.scheduleAuto(250);
+      b.addEvent('ppm-parent-tab-reload', {
+        targetPhase: auto.ppmAfterRefreshPhase || '',
+        parentUrl: location.href,
+        assetCode: record?.assetCode || '',
+        isPpmParentRegister: isPpmListPage(),
+        embeddedPpm: isEmbeddedAssetPpmPage()
+      });
+      b.showActivity?.('Reloading', 'PPM parent window', 'Waiting for page to load', { wait: true, meta: record?.assetCode || '', tick: true });
+      let reloaded = false;
+      try {
+        const res = await b.runtimeMessage({
+          type: 'PPM_RELOAD_PARENT_TAB',
+          assetCode: record.assetCode,
+          assetEntityId: String(auto.assetEntityId || entityIdFromUrl() || '')
+        });
+        reloaded = Boolean(res?.ok);
+        b.addEvent('ppm-parent-tab-reload-result', { ok: reloaded, tabId: res?.tabId ?? null, method: res?.method || res?.reason || '' });
+      } catch (error) {
+        b.addEvent('ppm-parent-tab-reload-result', { ok: false, reason: String(error?.message || error) });
+      }
+      if (!reloaded) {
+        location.reload();
+      }
       return;
     }
 
     if (auto.phase === 'ppm_parent_refresh_wait') {
-      const refreshButton = exactPpmRefreshButton();
-      const disabledNow = Boolean(refreshButton) && (refreshButton.hasAttribute('disabled') || String(refreshButton.getAttribute('aria-disabled') || '').toLowerCase() === 'true');
       const elapsed = Date.now() - Number(auto.ppmParentRefreshClickedAt || Date.now());
       const pageReloaded = auto.ppmParentRefreshPageInstance !== b.PAGE_INSTANCE;
-      const sawDisabled = Boolean(auto.ppmParentRefreshSawDisabled || disabledNow);
-      if (sawDisabled !== Boolean(auto.ppmParentRefreshSawDisabled)) {
-        b.state.session.auto = { ...auto, ppmParentRefreshSawDisabled: sawDisabled };
-        await b.persistSession();
-        auto = b.state.session.auto || {};
-      }
-      const toolbarReadyAgain = Boolean(refreshButton) && !disabledNow && document.readyState === 'complete' && elapsed >= 500;
-      const refreshSettled = elapsed >= 1800 && document.readyState === 'complete';
-      if (!pageReloaded && !toolbarReadyAgain && !refreshSettled) {
+      const tabReload = auto.ppmParentRefreshMethod === 'tab-reload';
+      const refreshSettled = pageReloaded || (tabReload && elapsed >= 1200 && document.readyState === 'complete');
+      if (!refreshSettled) {
         if (elapsed > b.state.settings.lookupTimeoutMs) throw new Error('Parent PPM page refresh did not complete before timeout.');
-        b.scheduleAuto(250);
+        b.scheduleAuto(300);
         return;
       }
       const nextPhase = auto.ppmAfterRefreshPhase || 'ppm_next';
       b.addEvent('ppm-parent-refresh-complete', {
         nextPhase,
         pageReloaded,
-        toolbarReadyAgain,
-        sawDisabled,
+        tabReload,
         elapsedMs: elapsed,
         parentUrl: location.href
       });
@@ -897,6 +891,7 @@
         ppmParentRefreshClickedAt: 0,
         ppmParentRefreshPageInstance: '',
         ppmParentRefreshSawDisabled: false,
+        ppmParentRefreshMethod: '',
         ppmAfterRefreshPhase: '',
         ppmGridRefreshedForIndex: Number(auto.ppmIndex ?? 0),
         ppmRefreshJustCompleted: true

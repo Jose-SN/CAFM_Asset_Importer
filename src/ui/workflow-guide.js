@@ -23,7 +23,7 @@
     ppm_fill: 'Fill PPM fields and save',
     ppm_await_save: 'Wait for PPM save confirmation',
     ppm_child_closing: 'Close PPM editor and refresh register',
-    ppm_parent_refresh: 'Click Refresh on PPM register',
+    ppm_parent_refresh: 'Reload PPM parent window',
     ppm_parent_refresh_wait: 'Wait for PPM register to reload',
     ppm_next: 'Create the next linked PPM',
     ppm_cycle_complete_parent: 'Finish PPM cycle on this asset',

@@ -640,6 +640,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'PPM_RELOAD_PARENT_TAB') {
+    const assetCode = String(message.assetCode || '');
+    const senderTabId = sender.tab?.id;
+    (async () => {
+      const parent = await getStoredPpmParent();
+      let tabId = typeof senderTabId === 'number' ? senderTabId : null;
+      if (parent && parent.assetCode === assetCode && typeof parent.tabId === 'number') {
+        tabId = parent.tabId;
+      }
+      if (typeof tabId !== 'number') {
+        sendResponseSafe(sendResponse, { ok: false, reason: 'parent-tab-missing' });
+        return;
+      }
+      try {
+        await chrome.tabs.reload(tabId);
+        sendResponseSafe(sendResponse, { ok: true, tabId, method: 'chrome.tabs.reload' });
+      } catch (error) {
+        sendResponseSafe(sendResponse, { ok: false, reason: String(error?.message || error), tabId });
+      }
+    })().catch((error) => sendResponseSafe(sendResponse, { ok: false, reason: String(error?.message || error) }));
+    return true;
+  }
+
   if (message.type === 'PPM_CHILD_STATE') {
     const assetCode = String(message.assetCode || '');
     (async () => {
