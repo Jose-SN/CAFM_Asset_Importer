@@ -364,12 +364,41 @@
     return false;
   }
 
+  async function resumeWorkflowAfterParentTabReload() {
+    const b = $();
+    if (!b.state.assets.length) return;
+    const auto = b.state.session.auto;
+    if (!auto?.active) return;
+    const index = Math.max(0, Number(auto.index ?? b.state.session.index) || 0);
+    if (b.state.assets[index]) b.state.session.index = index;
+    const tabReloadResume = auto.phase === 'ppm_parent_refresh_wait' && auto.ppmParentRefreshMethod === 'tab-reload';
+    if (tabReloadResume) {
+      b.addEvent('ppm-parent-tab-reload-resume', {
+        assetCode: auto.assetCode || b.state.assets[index]?.assetCode || '',
+        ppmIndex: Number(auto.ppmIndex) || 0,
+        ppmAfterRefreshPhase: auto.ppmAfterRefreshPhase || '',
+        sessionIndex: b.state.session.index,
+        ppmResultsCount: (auto.ppmResults || []).length
+      });
+      b.state.session.auto = {
+        ...auto,
+        index,
+        ppmSurfaceNavStartedAt: 0
+      };
+      await b.persistSession();
+      b.render();
+      b.scheduleAuto(600);
+      return;
+    }
+    b.scheduleAuto(150);
+  }
+
   async function handlePostReloadSaveState() {
     const b = $();
     if (!b.state.assets.length) return;
     const auto = b.state.session.auto;
     if (auto?.active) {
-      b.scheduleAuto(150);
+      await resumeWorkflowAfterParentTabReload();
       return;
     }
     const manual = b.state.session.manualAwaitSave;
@@ -395,6 +424,7 @@
     finishPostSave,
     afterActivation,
     clickSaveTracked,
-    handlePostReloadSaveState
+    handlePostReloadSaveState,
+    resumeWorkflowAfterParentTabReload
   });
 })();

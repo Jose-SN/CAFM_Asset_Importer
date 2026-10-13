@@ -3,12 +3,55 @@
 
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
-  const { visible, isAssistantElement, dispatchClick } = root.core.dom;
-  const { isPpmListPage, isPpmRegisterParentPage, isEmbeddedAssetPpmPage, isSavedAssetPage, entityIdFromUrl, assetEntityUrl } = root.core.pages;
+  const { visible, isAssistantElement, dispatchClick, wait } = root.core.dom;
+  const { isPpmListPage, isPpmRegisterParentPage, isEmbeddedAssetPpmPage, isSavedAssetPage, entityIdFromUrl, assetEntityUrl, ppmListUrl } = root.core.pages;
   const $ = () => root.runtime.b;
   /** After Create New is invoked, poll for the child editor this long before a single retry click. */
   const PPM_CREATE_NEW_OPEN_WAIT_MS = 3000;
   const PPM_CREATE_NEW_MAX_CLICKS = 5;
+  const PPM_SURFACE_RESUME_PHASES = new Set([
+    'ppm_open_list',
+    'ppm_next',
+    'ppm_parent_refresh',
+    'ppm_parent_refresh_wait',
+    'ppm_wait_new',
+    'ppm_wait_user_new'
+  ]);
+
+  function phaseNeedsPpmRegisterSurface(phase) {
+    return PPM_SURFACE_RESUME_PHASES.has(String(phase || ''));
+  }
+
+  async function ensureAssetPpmTabVisible(record, auto) {
+    const b = $();
+    if (isPpmRegisterParentPage()) return true;
+    if (!isSavedAssetPage()) return false;
+    const entityId = String(auto.assetEntityId || entityIdFromUrl() || '');
+    const started = Number(auto.ppmSurfaceNavStartedAt || 0);
+    if (isPpmListPage()) return true;
+    const nav = root.core.toolbar.findAssetPpmNavLink();
+    if (nav && !started) {
+      b.state.session.auto = { ...auto, ppmSurfaceNavStartedAt: Date.now() };
+      await b.persistSession();
+      dispatchClick(nav, false);
+      b.addEvent('ppm-surface-nav-after-reload', { assetCode: record?.assetCode || '', method: 'ppm-nav-link' });
+      b.scheduleAuto(850);
+      return false;
+    }
+    const elapsed = started ? Date.now() - started : 0;
+    if (elapsed < b.state.settings.lookupTimeoutMs) {
+      if (isPpmRegisterParentPage() || isEmbeddedAssetPpmPage()) return true;
+      b.scheduleAuto(450);
+      return false;
+    }
+    if (entityId) {
+      b.addEvent('ppm-surface-nav-fallback', { assetCode: record?.assetCode || '', entityId, method: 'ppm-list-url' });
+      await b.persistSession();
+      location.href = ppmListUrl(entityId);
+      return false;
+    }
+    return false;
+  }
 
   function findLearnedPpmNewButton() {
     const b = $();
@@ -815,37 +858,54 @@
     }
 
     if (!isPpmRegisterParentPage()) {
-      b.addEvent('ppm-register-passive-not-parent', { url: location.href, assetCode: record?.assetCode || '' });
-      await b.persistSession();
-      return;
+      if (isSavedAssetPage() && auto.active && phaseNeedsPpmRegisterSurface(auto.phase)) {
+        const ready = await ensureAssetPpmTabVisible(record, auto);
+        if (!ready) return;
+        auto = b.state.session.auto || auto;
+      } else {
+        b.addEvent('ppm-register-passive-not-parent', { url: location.href, assetCode: record?.assetCode || '' });
+        await b.persistSession();
+        return;
+      }
     }
 
     if (auto.phase === 'ppm_parent_refresh') {
       const inFlightClick = Number(auto.ppmParentRefreshClickedAt || 0);
-      if (inFlightClick && Date.now() - inFlightClick < 8000) {
-        b.state.session.auto = { ...auto, phase: 'ppm_parent_refresh_wait' };
+      const priorInstance = String(auto.ppmParentRefreshPageInstance || '');
+      if (inFlightClick && Date.now() - inFlightClick < 20000) {
+        const afterReload = priorInstance && priorInstance !== b.PAGE_INSTANCE;
+        b.state.session.auto = {
+          ...auto,
+          phase: 'ppm_parent_refresh_wait',
+          ppmSurfaceNavStartedAt: afterReload ? 0 : Number(auto.ppmSurfaceNavStartedAt || 0)
+        };
         await b.persistSession();
-        b.scheduleAuto(250);
+        b.scheduleAuto(afterReload ? 500 : 300);
         return;
       }
       const clickedAt = Date.now();
-      b.state.session.auto = {
+      const snapshot = {
         ...auto,
         phase: 'ppm_parent_refresh_wait',
         ppmParentRefreshPageInstance: b.PAGE_INSTANCE,
         ppmParentRefreshClickedAt: clickedAt,
         ppmParentRefreshStartedAt: 0,
         ppmParentRefreshSawDisabled: false,
-        ppmParentRefreshMethod: 'tab-reload'
+        ppmParentRefreshMethod: 'tab-reload',
+        ppmSurfaceNavStartedAt: 0
       };
+      b.state.session.auto = snapshot;
       await b.persistSession();
       b.addEvent('ppm-parent-tab-reload', {
         targetPhase: auto.ppmAfterRefreshPhase || '',
         parentUrl: location.href,
         assetCode: record?.assetCode || '',
+        ppmIndex: Number(auto.ppmIndex) || 0,
         isPpmParentRegister: isPpmListPage(),
-        embeddedPpm: isEmbeddedAssetPpmPage()
+        embeddedPpm: isEmbeddedAssetPpmPage(),
+        pageInstance: b.PAGE_INSTANCE
       });
+      await b.persistSession();
       b.showActivity?.('Reloading', 'PPM parent window', 'Waiting for page to load', { wait: true, meta: record?.assetCode || '', tick: true });
       let reloaded = false;
       try {
@@ -859,6 +919,8 @@
       } catch (error) {
         b.addEvent('ppm-parent-tab-reload-result', { ok: false, reason: String(error?.message || error) });
       }
+      await b.persistSession();
+      await wait(80);
       if (!reloaded) {
         location.reload();
       }
@@ -866,10 +928,15 @@
     }
 
     if (auto.phase === 'ppm_parent_refresh_wait') {
+      if (!isPpmRegisterParentPage() && isSavedAssetPage()) {
+        const ready = await ensureAssetPpmTabVisible(record, auto);
+        if (!ready) return;
+        auto = b.state.session.auto || auto;
+      }
       const elapsed = Date.now() - Number(auto.ppmParentRefreshClickedAt || Date.now());
-      const pageReloaded = auto.ppmParentRefreshPageInstance !== b.PAGE_INSTANCE;
+      const pageReloaded = Boolean(auto.ppmParentRefreshPageInstance) && auto.ppmParentRefreshPageInstance !== b.PAGE_INSTANCE;
       const tabReload = auto.ppmParentRefreshMethod === 'tab-reload';
-      const refreshSettled = pageReloaded || (tabReload && elapsed >= 1200 && document.readyState === 'complete');
+      const refreshSettled = pageReloaded || (tabReload && elapsed >= 1500 && document.readyState === 'complete' && isPpmRegisterParentPage());
       if (!refreshSettled) {
         if (elapsed > b.state.settings.lookupTimeoutMs) throw new Error('Parent PPM page refresh did not complete before timeout.');
         b.scheduleAuto(300);
@@ -1177,6 +1244,8 @@
     allLinkedPpmsDone,
     processPpmCycleGeneralWaitPage,
     processPpmListPage,
-    startPpmForCurrentPage
+    startPpmForCurrentPage,
+    phaseNeedsPpmRegisterSurface,
+    ensureAssetPpmTabVisible
   });
 })();

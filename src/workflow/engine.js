@@ -249,6 +249,12 @@
             return;
           }
         }
+        if (isSavedAssetPage() && root.pages.ppmRegister.phaseNeedsPpmRegisterSurface(auto.phase)) {
+          if (!isPpmListPage()) {
+            const ready = await root.pages.ppmRegister.ensureAssetPpmTabVisible(record, auto);
+            if (!ready) return;
+          }
+        }
         if (isPpmListPage()) { await root.pages.ppmRegister.processPpmListPage(record); return; }
         if (isPpmItemPage()) { await root.pages.ppmEditor.processPpmItemPage(record); return; }
         if (auto.assetEntityId) {
