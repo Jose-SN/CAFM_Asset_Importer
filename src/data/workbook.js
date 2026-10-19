@@ -168,6 +168,7 @@ async function skipCurrent() {
   const record = C().currentRecord();
   if (!record) return;
   await setStatus(record, 'skipped', 'Skipped by user');
+  compactSessionAfterAsset(record);
   const next = nextPendingIndex(C().state.session.index + 1);
   if (next >= 0) C().state.session.index = next;
   await persistSession();
@@ -178,6 +179,7 @@ async function markSavedAndNext(note = 'Confirmed saved') {
   const record = C().currentRecord();
   if (!record) return;
   await setStatus(record, 'saved', note);
+  compactSessionAfterAsset(record);
   const next = nextPendingIndex(C().state.session.index + 1);
   if (next >= 0) C().state.session.index = next;
   await persistSession();
@@ -207,11 +209,13 @@ function downloadLog() {
     const info = C().state.session.statuses?.[record.assetCode] || {};
     const linkedCount = C().linkedPpms(record).length;
     const ppmResults = (info.ppmResults || []).map((item) => `${item.status || ''}:${item.ppmKey || ''}:${item.instruction || ''}`).join(' | ');
-    const warnings = (info.validationWarnings || []).map((item) => `${item.scope || ''}:${item.tab || ''}:${item.field || ''}: expected=${item.expected || ''}: actual=${item.actual || ''}: ${item.reason || ''}`).join(' | ');
+    const warningList = info.validationWarnings || [];
+    const warningCount = warningList.length || Number(info.validationWarningCount || 0);
+    const warnings = warningList.map((item) => `${item.scope || ''}:${item.tab || ''}:${item.field || ''}: expected=${item.expected || ''}: actual=${item.actual || ''}: ${item.reason || ''}`).join(' | ');
     rows.push([
       record.assetCode, record.workbookRow, info.status || 'pending', info.note || '', info.updatedAt || '',
       info.cafmEntityId || '', info.assetActivated ? 'YES' : 'NO', info.assetActivatedAt || '', info.assetStatusEvidence || '',
-      linkedCount, ppmResults, (info.validationWarnings || []).length, warnings
+      linkedCount, ppmResults, warningCount, warnings
     ]);
   }
   const csv = rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
@@ -343,6 +347,78 @@ function nextPendingIndex(start = C().state.session.index + 1) {
   }
   return -1;
 }
+
+function slimPpmResultsForStorage(ppmResults = []) {
+  return (ppmResults || [])
+    .map((item) => ({
+      ppmKey: clean(item?.ppmKey),
+      status: clean(item?.status),
+      active: Boolean(item?.active),
+      ppmEntityId: clean(item?.ppmEntityId || '')
+    }))
+    .filter((item) => item.ppmKey);
+}
+
+function compactStatusEntry(info = {}, record = null) {
+  const status = clean(info.status || 'pending');
+  const warnings = Array.isArray(info.validationWarnings) ? info.validationWarnings : [];
+  const ppmResults = slimPpmResultsForStorage(info.ppmResults);
+  const compact = {
+    status,
+    note: clean(info.note || '').slice(0, 600),
+    workbookRow: info.workbookRow ?? record?.workbookRow,
+    updatedAt: info.updatedAt || new Date().toISOString(),
+    cafmEntityId: clean(info.cafmEntityId || ''),
+    assetActivated: Boolean(info.assetActivated),
+    assetActivatedAt: clean(info.assetActivatedAt || ''),
+    ppmResults
+  };
+  if (status === 'failed') {
+    compact.validationWarnings = warnings.slice(-30);
+  } else {
+    compact.validationWarningCount = warnings.length;
+  }
+  return compact;
+}
+
+/** Drop heavy session history after an asset cycle; keeps progress + slim statuses for resume. */
+function compactSessionAfterAsset(record = null) {
+  if (C().state.settings.keepFullSessionHistory) return;
+
+  const assetsByCode = Object.create(null);
+  for (const row of C().state.assets || []) {
+    if (row?.assetCode) assetsByCode[row.assetCode] = row;
+  }
+
+  const statuses = C().state.session.statuses || {};
+  const nextStatuses = { ...statuses };
+  for (const [assetCode, info] of Object.entries(statuses)) {
+    if (!info || typeof info !== 'object') continue;
+    const st = clean(info.status || 'pending');
+    if (!['saved', 'skipped', 'failed'].includes(st)) continue;
+    nextStatuses[assetCode] = compactStatusEntry(info, assetsByCode[assetCode] || { assetCode, workbookRow: info.workbookRow });
+  }
+  C().state.session.statuses = nextStatuses;
+
+  C().state.session.events = [];
+  C().state.session.currentLookupEvidence = [];
+
+  const auto = C().state.session.auto;
+  if (auto && !auto.active && clean(auto.phase) === 'complete') {
+    C().state.session.auto = {
+      active: false,
+      mode: auto.mode || 'automatic',
+      phase: 'complete',
+      completedAt: auto.completedAt || Date.now(),
+      processedThisRun: Number(auto.processedThisRun || 0) || undefined,
+      maxIterations: Number(auto.maxIterations || 0) || undefined,
+      assetCode: clean(auto.assetCode || record?.assetCode || ''),
+      assetEntityId: clean(auto.assetEntityId || ''),
+      runCompleteReason: clean(auto.runCompleteReason || '') || undefined
+    };
+  }
+}
+
   root.data = root.data || {};
   root.data.workbook = Object.freeze({
     configure,
@@ -362,6 +438,7 @@ function nextPendingIndex(start = C().state.session.index + 1) {
     summarizeEvents,
     setStatus,
     statusOf,
-    nextPendingIndex
+    nextPendingIndex,
+    compactSessionAfterAsset
   });
 })();
