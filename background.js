@@ -12,6 +12,9 @@ const ASSET_EDITOR_URL = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItem\.a
 
 const SESSION_KEY = 'eeAssetImporterV80Session';
 const SETTINGS_KEY = 'eeAssetImporterV80Settings';
+const PENDING_LOOKUP_KEY = 'eeAssetImporterV80PendingLookup';
+const INSTALLED_EXTENSION_VERSION_KEY = 'eeAssetImporterV80InstalledExtensionVersion';
+const LARGE_WORKBOOK_KEY = 'eeAssetImporterV80Workbook';
 const AUTO_ALARM = 'cafm-auto-orchestrator';
 const DEFAULT_ORCHESTRATOR_MS = 2500;
 const ppmSaveUrlNotified = new Map();
@@ -566,6 +569,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'EXTENSION_STORAGE_RESET') {
+    clearImporterSessionAndWorkbookStorage()
+      .then(() => sendResponseSafe(sendResponse, { ok: true }))
+      .catch((error) => sendResponseSafe(sendResponse, { ok: false, error: String(error?.message || error) }));
+    return true;
+  }
+
   if (message.type === 'PERSIST_STORAGE') {
     Promise.resolve(navigator.storage?.persist?.())
       .then((persisted) => sendResponseSafe(sendResponse, { ok: true, persisted: Boolean(persisted) }))
@@ -979,4 +989,30 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     }
     handlePpmChildTabRemoved(tabId).catch(() => {});
   }).catch(() => {});
+});
+
+async function clearImporterSessionAndWorkbookStorage() {
+  await chrome.storage.local.remove([
+    SESSION_KEY,
+    PENDING_LOOKUP_KEY,
+    PPM_PARENT_KEY,
+    PPM_CHILD_KEY,
+    ASSET_TAB_KEY
+  ]);
+  try {
+    await largeRemove(LARGE_WORKBOOK_KEY);
+  } catch (_) {}
+  await chrome.alarms.clear(AUTO_ALARM);
+  lookupClaims.clear();
+  ppmSaveUrlNotified.clear();
+}
+
+chrome.runtime.onInstalled.addListener((details) => {
+  const version = chrome.runtime.getManifest().version;
+  (async () => {
+    if (details.reason === 'update') {
+      await clearImporterSessionAndWorkbookStorage();
+    }
+    await chrome.storage.local.set({ [INSTALLED_EXTENSION_VERSION_KEY]: version });
+  })().catch(() => {});
 });

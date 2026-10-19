@@ -5,7 +5,7 @@
   root.core = root.core || {};
 
   root.core.constants = Object.freeze({
-    VERSION: '8.0.40',
+    VERSION: '8.0.44',
     HOST_ID: 'ee-cafm-asset-importer-host',
     STORAGE: Object.freeze({
       session: 'eeAssetImporterV80Session',
@@ -14,7 +14,8 @@
       statusLearnRequest: 'eeAssetImporterV58StatusLearnRequest',
       learnedStatus: 'eeAssetImporterV58LearnedStatus',
       newLearnRequest: 'eeAssetImporterV69NewLearnRequest',
-      learnedNew: 'eeAssetImporterV69LearnedNew'
+      learnedNew: 'eeAssetImporterV69LearnedNew',
+      installedExtensionVersion: 'eeAssetImporterV80InstalledExtensionVersion'
     }),
     LARGE_KEY: 'eeAssetImporterV80Workbook',
     DEFAULT_SETTINGS: Object.freeze({
@@ -34,6 +35,7 @@
       iterationEnabled: false,
       iterationCount: 1,
       autoDownloadTimeline: false,
+      keepFullSessionHistory: false,
       autoContinueNext: true,
       useSaveAndNew: false,
       backgroundOrchestratorMs: 2500
