@@ -1,3 +1,6 @@
+# v8.0.46
+- **Session storage trim** (default on): after each completed asset cycle, drop in-browser event logs and slim per-asset status to progress fields (entity ID, status, compact PPM keys). Workbook data in IndexedDB is unchanged. Toggle **Keep full session history in browser** in Automatic import settings to retain full diagnostics. Timeline JSON (if enabled) is exported before trim.
+
 # v8.0.40
 - **Notes and Spatial tabs**: fill Notes when the workbook `Notes`/`Comments` column is populated, and fill Spatial/GIS fields (including GIS Reference) when any spatial column has data — no panel checkbox required unless the user explicitly disables **Include Notes**.
 - Workbook column alias **GIS** maps to GIS Reference; CAFM field label **GIS** is recognised on the Spatial tab.
