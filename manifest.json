@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.47",
-  "version": "8.0.47",
-  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.47: fresh log.json after clear; safe empty event log.",
+  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.48",
+  "version": "8.0.48",
+  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.48: cap PPM register refresh loops; safer post-save handoff.",
   "permissions": [
     "storage",
     "unlimitedStorage",
