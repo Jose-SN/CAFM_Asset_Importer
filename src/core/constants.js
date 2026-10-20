@@ -4,8 +4,17 @@
   const root = globalThis.CAFMImporter;
   root.core = root.core || {};
 
+  function extensionVersion() {
+    try {
+      const fromManifest = chrome?.runtime?.getManifest?.()?.version;
+      if (fromManifest) return String(fromManifest);
+    } catch (_) {}
+    return '8.0.49'; // fallback — auto-synced from manifest.json; run tools/sync-version-from-manifest.js
+  }
+
   root.core.constants = Object.freeze({
-    VERSION: '8.0.47',
+    /** Runtime version from manifest.json (fallback must match manifest `version`). */
+    VERSION: extensionVersion(),
     HOST_ID: 'ee-cafm-asset-importer-host',
     STORAGE: Object.freeze({
       session: 'eeAssetImporterV80Session',

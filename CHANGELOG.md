@@ -1,3 +1,7 @@
+# v8.0.49
+- **PPM post-save register**: 3s wait after editor close, refresh, verify saved row on grid, retry up to 5 times (3s apart); cap runaway refresh loops.
+- **Version alignment**: panel, diagnostics, and popup read `manifest.json` version; `VERSION.txt` and verify script keep fallback in sync.
+
 # v8.0.44
 - **Session storage trim** (default on): after each completed asset cycle, clear in-browser event logs and slim per-asset status (entity ID, status, compact PPM keys). Workbook in IndexedDB is unchanged until the next asset. Toggle **Keep full session history in browser** to retain full diagnostics.
 - **Extension update reset**: reloading/updating the extension clears prior session, workbook cache (IndexedDB), PPM tab tracking, and pending lookup state. Panel settings and learned controls are kept. Load your workbook again after an update.

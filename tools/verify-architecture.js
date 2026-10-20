@@ -4,8 +4,15 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
+const { syncVersionFromManifest } = require('./sync-version-from-manifest.js');
 const errors = [];
 const warnings = [];
+
+try {
+  syncVersionFromManifest({ quiet: true });
+} catch (error) {
+  errors.push(`Version sync failed: ${error?.message || error}`);
+}
 
 function read(rel) {
   return fs.readFileSync(path.join(root, rel), 'utf8');

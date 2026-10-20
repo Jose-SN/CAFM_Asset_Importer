@@ -18,7 +18,7 @@
 <body>
   <div class="brand">
     <img src="branding/engineering_efficiency_logo.png" alt="Engineering Efficiency Ltd">
-    <div><h1>CAFM Asset + PPM Importer</h1><div class="sub">Engineering Efficiency Ltd | v8.0.44</div></div>
+    <div><h1>CAFM Asset + PPM Importer</h1><div class="sub" id="versionSub">Engineering Efficiency Ltd</div></div>
   </div>
   <div class="box">
     Open a <b>New Entity</b> page to create assets, or open any <b>saved Asset</b> to update it in place from the workbook.
@@ -26,5 +26,13 @@
   <div class="box small">
     Load the workbook from the floating panel on the Asset list or New Entity form (ViewFASSETItem.aspx?id=-1). After Save, the editor closes, status changes to ACTIVE, then linked PPM rows are processed. On a saved Asset, use Edit Existing Asset to refill fields without creating a duplicate.
   </div>
+  <script>
+    try {
+      const v = chrome.runtime.getManifest().version;
+      document.getElementById('versionSub').textContent = `Engineering Efficiency Ltd | v${v}`;
+    } catch (_) {
+      document.getElementById('versionSub').textContent = 'Engineering Efficiency Ltd';
+    }
+  </script>
 </body>
 </html>
