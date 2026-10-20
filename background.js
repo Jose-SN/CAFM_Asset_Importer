@@ -13,6 +13,10 @@ const ASSET_EDITOR_URL = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItem\.a
 const SESSION_KEY = 'eeAssetImporterV80Session';
 const SETTINGS_KEY = 'eeAssetImporterV80Settings';
 const PENDING_LOOKUP_KEY = 'eeAssetImporterV80PendingLookup';
+const STATUS_LEARN_REQUEST_KEY = 'eeAssetImporterV58StatusLearnRequest';
+const LEARNED_STATUS_KEY = 'eeAssetImporterV58LearnedStatus';
+const NEW_LEARN_REQUEST_KEY = 'eeAssetImporterV69NewLearnRequest';
+const LEARNED_NEW_KEY = 'eeAssetImporterV69LearnedNew';
 const INSTALLED_EXTENSION_VERSION_KEY = 'eeAssetImporterV80InstalledExtensionVersion';
 const LARGE_WORKBOOK_KEY = 'eeAssetImporterV80Workbook';
 const AUTO_ALARM = 'cafm-auto-orchestrator';
@@ -994,7 +998,12 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 async function clearImporterSessionAndWorkbookStorage() {
   await chrome.storage.local.remove([
     SESSION_KEY,
+    SETTINGS_KEY,
     PENDING_LOOKUP_KEY,
+    STATUS_LEARN_REQUEST_KEY,
+    LEARNED_STATUS_KEY,
+    NEW_LEARN_REQUEST_KEY,
+    LEARNED_NEW_KEY,
     PPM_PARENT_KEY,
     PPM_CHILD_KEY,
     ASSET_TAB_KEY

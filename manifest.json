@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.44",
-  "version": "8.0.44",
-  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.44: session trim after each asset; clear session/workbook on extension update.",
+  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.46",
+  "version": "8.0.46",
+  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.46: full storage reset on Clear session and extension update.",
   "permissions": [
     "storage",
     "unlimitedStorage",

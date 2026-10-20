@@ -451,6 +451,7 @@ function injectPanel() {
             <button id="downloadDiagnostic" class="action">Download diagnostic JSON</button>
             <button id="clear" class="action danger">Clear session</button>
           </div>
+          <div class="muted" style="margin-top:7px">Clear session wipes workbook cache, progress, event log, settings, and learned toolbar data in the extension (not CAFM or Downloads). Updating the extension clears the same data automatically.</div>
           <div class="muted" style="margin-top:7px">NEW asset sequence: fill populated workbook fields -> Save -> verify saved Asset ID -> Change Asset Status -> Active -> PPM workflow. Legacy toolbar detection is corrected to use page-relative coordinates and one-click protection. v8 uses state-driven progression with no inter-record pacing delay and skips optional Notes/Spatial tabs unless enabled and populated. EDIT EXISTING: open a saved asset, use Fill saved asset from workbook, review, then Save existing changes only (or the normal CAFM Save). Edit mode matches by Asset Code, never creates a duplicate, never clears blank workbook fields, and does not alter asset status or existing PPMs.</div>
         </div>
         <div class="footer">Move this panel by dragging the header. Site and calculated/read-only fields are not overwritten.</div>

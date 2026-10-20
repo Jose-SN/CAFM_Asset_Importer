@@ -3,7 +3,7 @@
 
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
-  const { VERSION, STORAGE, DEFAULT_SETTINGS } = root.core.constants;
+  const { VERSION, STORAGE, DEFAULT_SETTINGS, STORAGE_RESET_KEYS } = root.core.constants;
   const {
     isNewEntityPage,
     deriveNewEntityUrl
@@ -78,17 +78,27 @@ function freshEmptySession() {
   };
 }
 
-async function clearImporterDataSilently() {
-  await clearLargeWorkbook();
-  await storageRemove([STORAGE.session, STORAGE.pendingLookup]);
-  try {
-    await runtimeMessage({ type: 'EXTENSION_STORAGE_RESET' });
-  } catch (_) {}
+function resetImporterMemoryState() {
   C().state.assets = [];
   C().state.allAssets = [];
   C().state.ppms = [];
   C().state.cache = null;
   C().state.session = freshEmptySession();
+  C().state.settings = { ...DEFAULT_SETTINGS };
+  C().state.learnedStatus = null;
+  C().state.learnedNew = null;
+  C().state.teachStatusArmed = false;
+  C().state.teachNewArmed = false;
+  C().state.lastLoggedPhase = '';
+}
+
+async function clearImporterDataSilently() {
+  await clearLargeWorkbook();
+  await storageRemove([...STORAGE_RESET_KEYS]);
+  try {
+    await runtimeMessage({ type: 'EXTENSION_STORAGE_RESET' });
+  } catch (_) {}
+  resetImporterMemoryState();
 }
 
 async function reconcileExtensionVersionOnLoad() {
@@ -100,9 +110,9 @@ async function reconcileExtensionVersionOnLoad() {
   if (hadPriorMarker || hadSession) {
     await clearImporterDataSilently();
     C().showToast?.(
-      `Extension updated to v${VERSION}. Previous session and workbook cache were cleared — load your workbook again.`,
+      `Extension updated to v${VERSION}. Session, event log, workbook cache, settings, and learned toolbar data were cleared — reload CAFM tabs and load your workbook again.`,
       'info',
-      18000
+      20000
     );
   }
   await storageSet({ [STORAGE.installedExtensionVersion]: VERSION });
@@ -235,8 +245,22 @@ async function markSavedAndNext(note = 'Confirmed saved') {
 }
 
 async function clearSession() {
-  if (!confirm('Clear the loaded workbook and importer progress? This does not delete anything from CAFM.')) return;
+  if (
+    !confirm(
+      'Clear all importer data from this browser?\n\n'
+        + 'Removes: workbook cache, session progress, diagnostic event log, panel settings, learned toolbar buttons, and tab handoff state.\n\n'
+        + 'Does not delete CAFM records or files in your Downloads folder (e.g. exported log.json). Reload CAFM tabs after clearing.\n\n'
+        + 'Continue?'
+    )
+  ) {
+    return;
+  }
   await clearImporterDataSilently();
+  C().showToast?.(
+    'Importer storage cleared. Reload CAFM tabs, then load your workbook again.',
+    'success',
+    14000
+  );
   C().render();
 }
 

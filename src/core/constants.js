@@ -5,7 +5,7 @@
   root.core = root.core || {};
 
   root.core.constants = Object.freeze({
-    VERSION: '8.0.44',
+    VERSION: '8.0.46',
     HOST_ID: 'ee-cafm-asset-importer-host',
     STORAGE: Object.freeze({
       session: 'eeAssetImporterV80Session',
@@ -17,6 +17,16 @@
       learnedNew: 'eeAssetImporterV69LearnedNew',
       installedExtensionVersion: 'eeAssetImporterV80InstalledExtensionVersion'
     }),
+    /** chrome.storage.local keys removed on Clear session / extension update (not installedExtensionVersion). */
+    STORAGE_RESET_KEYS: Object.freeze([
+      'eeAssetImporterV80Session',
+      'eeAssetImporterV80Settings',
+      'eeAssetImporterV80PendingLookup',
+      'eeAssetImporterV58StatusLearnRequest',
+      'eeAssetImporterV58LearnedStatus',
+      'eeAssetImporterV69NewLearnRequest',
+      'eeAssetImporterV69LearnedNew'
+    ]),
     LARGE_KEY: 'eeAssetImporterV80Workbook',
     DEFAULT_SETTINGS: Object.freeze({
       lookupTimeoutMs: 20000,
