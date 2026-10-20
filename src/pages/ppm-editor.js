@@ -184,7 +184,7 @@
   async function processPpmItemPage(record) {
     const b = $();
     const auto = b.state.session.auto || {};
-    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait', 'ppm_cycle_complete_parent', 'ppm_cycle_general_wait'].includes(auto.phase)) {
+    if (['ppm_parent_refresh', 'ppm_parent_refresh_delay', 'ppm_parent_refresh_wait', 'ppm_cycle_complete_parent', 'ppm_cycle_general_wait'].includes(auto.phase)) {
       return;
     }
 

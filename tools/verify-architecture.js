@@ -45,7 +45,7 @@ const knownPhases = new Set([
   'activate_confirm', 'activate_wait', 'activate_wait_user', 'ppm_open_list', 'ppm_wait_new',
   'ppm_wait_user_new', 'ppm_fill', 'ppm_await_save', 'ppm_status_open', 'ppm_status_select',
   'ppm_status_confirm', 'ppm_status_wait', 'ppm_status_wait_user', 'ppm_child_closing',
-  'ppm_parent_refresh_wait', 'ppm_parent_refresh', 'ppm_next', 'ppm_cycle_complete_parent',
+  'ppm_parent_refresh_wait', 'ppm_parent_refresh_delay', 'ppm_parent_refresh', 'ppm_next', 'ppm_cycle_complete_parent',
   'complete', 'paused', 'error'
 ]);
 

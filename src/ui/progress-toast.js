@@ -35,6 +35,7 @@
     ppm_fill: 'Fill PPM form from Excel',
     ppm_await_save: 'Wait for PPM save confirmation',
     ppm_parent_refresh: 'Click PPM register Refresh',
+    ppm_parent_refresh_delay: 'Wait before PPM register Refresh',
     ppm_parent_refresh_wait: 'Wait for PPM register refresh',
     ppm_next: 'Prepare next linked PPM',
     ppm_cycle_complete_parent: 'Finish PPM cycle on asset',

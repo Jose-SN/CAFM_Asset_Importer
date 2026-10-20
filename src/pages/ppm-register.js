@@ -9,33 +9,63 @@
   /** After Create New is invoked, poll for the child editor this long before a single retry click. */
   const PPM_CREATE_NEW_OPEN_WAIT_MS = 3000;
   const PPM_CREATE_NEW_MAX_CLICKS = 5;
-  /** Max parent register Refresh clicks per linked PPM row (all sources: close handoff, grid prep, duplicate-child). */
-  const PPM_PARENT_REFRESH_MAX_PER_INDEX = 4;
+  /** Max parent register Refresh clicks per linked PPM row (post-save verify retries included). */
+  const PPM_PARENT_REFRESH_MAX_PER_INDEX = 5;
+  /** Wait after PPM editor closes before the first register Refresh. */
+  const PPM_PARENT_REFRESH_POST_CLOSE_DELAY_MS = 3000;
+  /** Minimum gap between register Refresh clicks when verifying the saved row. */
+  const PPM_PARENT_REFRESH_GAP_MS = 3000;
 
   function ppmParentRefreshCount(auto, ppmIndex = Number(auto?.ppmIndex || 0)) {
     const refreshCounts = auto?.ppmParentRefreshCounts || {};
     return Number(refreshCounts[ppmIndex] || 0);
   }
 
-  function ppmParentRefreshLimitError(ppmIndex, count) {
+  function isPostSaveRegisterVerify(auto) {
+    return Boolean(clean(auto?.ppmParentRefreshVerifyPpmKey));
+  }
+
+  function ppmParentRefreshAttemptCount(auto) {
+    if (isPostSaveRegisterVerify(auto)) {
+      return Number(auto?.ppmPostSaveRefreshCount || 0);
+    }
+    return ppmParentRefreshCount(auto);
+  }
+
+  function ppmParentRefreshLimitError(auto, count) {
+    const verifyPpmKey = clean(auto?.ppmParentRefreshVerifyPpmKey);
+    if (verifyPpmKey) {
+      return `PPM register refresh limit reached (${count} refreshes after save for ${verifyPpmKey}). Click Refresh once on the register, confirm the saved row is listed, then resume automatic import.`;
+    }
+    const ppmIndex = Number(auto?.ppmIndex || 0);
     return `PPM register refresh limit reached (${count} refreshes for PPM row ${ppmIndex + 1}). Close any leftover CAFM PPM editor tabs or windows, click Refresh once on the PPM register, then resume automatic import.`;
   }
 
   function assertPpmParentRefreshUnderLimit(auto) {
-    const ppmIndex = Number(auto?.ppmIndex || 0);
-    const count = ppmParentRefreshCount(auto, ppmIndex);
+    const count = ppmParentRefreshAttemptCount(auto);
     if (count >= PPM_PARENT_REFRESH_MAX_PER_INDEX) {
-      throw new Error(ppmParentRefreshLimitError(ppmIndex, count));
+      throw new Error(ppmParentRefreshLimitError(auto, count));
     }
+  }
+
+  function bumpPpmParentRefreshAttemptFields(auto) {
+    if (isPostSaveRegisterVerify(auto)) {
+      return {
+        ppmPostSaveRefreshCount: ppmParentRefreshAttemptCount(auto) + 1
+      };
+    }
+    const ppmIndex = Number(auto?.ppmIndex || 0);
+    const refreshCounts = { ...(auto?.ppmParentRefreshCounts || {}) };
+    refreshCounts[ppmIndex] = ppmParentRefreshCount(auto, ppmIndex) + 1;
+    return { ppmParentRefreshCounts: refreshCounts };
   }
 
   function buildPpmParentRefreshSession(auto, afterRefreshPhase) {
     const ppmIndex = Number(auto?.ppmIndex || 0);
-    const refreshCounts = { ...(auto?.ppmParentRefreshCounts || {}) };
-    refreshCounts[ppmIndex] = ppmParentRefreshCount(auto, ppmIndex) + 1;
     const resolvedAfter = String(afterRefreshPhase || auto?.ppmAfterRefreshPhase || 'ppm_next');
     return {
       ...auto,
+      ...bumpPpmParentRefreshAttemptFields(auto),
       phase: 'ppm_parent_refresh',
       ppmAfterRefreshPhase: resolvedAfter,
       ppmParentRefreshStartedAt: 0,
@@ -43,7 +73,7 @@
       ppmParentRefreshPageInstance: '',
       ppmParentRefreshSawDisabled: false,
       ppmParentRefreshCycleId: `${Date.now()}-${ppmIndex}`,
-      ppmParentRefreshCounts: refreshCounts
+      ppmParentRefreshDueAt: 0
     };
   }
 
@@ -51,19 +81,64 @@
    * Arm parent refresh after PPM child close (background messages). Returns null when coalesced.
    * @throws when per-row refresh limit exceeded
    */
+  function isPostSavePpmCloseHandoff(auto) {
+    const phase = String(auto?.phase || '');
+    return phase === 'ppm_child_closing' || Boolean(clean(auto?.ppmAfterRefreshPhase));
+  }
+
+  function ppmToVerifyAfterRefresh(record, auto) {
+    const b = $();
+    const verifyKey = clean(auto?.ppmParentRefreshVerifyPpmKey);
+    const linked = b.linkedPpms(record);
+    if (verifyKey) {
+      return linked.find((item) => clean(item.ppmKey) === verifyKey) || null;
+    }
+    const results = auto?.ppmResults || [];
+    const lastSaved = [...results].reverse().find((item) => clean(item.status) === 'saved');
+    if (!lastSaved?.ppmKey) return null;
+    return linked.find((item) => clean(item.ppmKey) === clean(lastSaved.ppmKey)) || null;
+  }
+
+  function ppmSavedRowVisibleOnRegister(record, auto) {
+    const ppm = ppmToVerifyAfterRefresh(record, auto);
+    if (!ppm) return true;
+    return ppmListContainsCurrent(ppm);
+  }
+
+  function schedulePpmParentRefreshRetry(auto, reason) {
+    return {
+      ...auto,
+      phase: 'ppm_parent_refresh_delay',
+      ppmParentRefreshDueAt: Date.now() + PPM_PARENT_REFRESH_GAP_MS,
+      ppmParentRefreshStartedAt: 0,
+      ppmParentRefreshClickedAt: 0,
+      ppmParentRefreshPageInstance: '',
+      ppmParentRefreshSawDisabled: false,
+      ppmParentRefreshRetryReason: reason || ''
+    };
+  }
+
   function tryArmPpmParentRefreshAfterChildClose(currentAuto, afterRefreshPhase) {
     const phase = String(currentAuto?.phase || '');
     if ([
       'ppm_parent_refresh',
       'ppm_parent_refresh_wait',
-      'ppm_open_list',
-      'ppm_wait_new',
-      'ppm_wait_user_new'
+      'ppm_parent_refresh_delay'
     ].includes(phase)) {
       return null;
     }
-    if (currentAuto?.ppmRefreshJustCompleted) {
-      return null;
+    const postSaveClose = isPostSavePpmCloseHandoff(currentAuto);
+    if (!postSaveClose) {
+      if ([
+        'ppm_open_list',
+        'ppm_wait_new',
+        'ppm_wait_user_new'
+      ].includes(phase)) {
+        return null;
+      }
+      if (currentAuto?.ppmRefreshJustCompleted) {
+        return null;
+      }
     }
     const lastNotify = Number(currentAuto?.ppmParentCloseNotifyAt || 0);
     if (lastNotify && Date.now() - lastNotify < 2500) {
@@ -72,8 +147,16 @@
     assertPpmParentRefreshUnderLimit(currentAuto);
     const resolvedAfter = String(afterRefreshPhase || currentAuto?.ppmAfterRefreshPhase || 'ppm_next');
     return {
-      ...buildPpmParentRefreshSession(currentAuto, resolvedAfter),
+      ...currentAuto,
       active: true,
+      phase: 'ppm_parent_refresh_delay',
+      ppmAfterRefreshPhase: resolvedAfter,
+      ppmParentRefreshDueAt: Date.now() + PPM_PARENT_REFRESH_POST_CLOSE_DELAY_MS,
+      ppmParentRefreshStartedAt: 0,
+      ppmParentRefreshClickedAt: 0,
+      ppmParentRefreshPageInstance: '',
+      ppmParentRefreshSawDisabled: false,
+      ppmRefreshJustCompleted: false,
       ppmParentCloseNotifyAt: Date.now(),
       ppmNewClickedForIndex: -1,
       ppmListReadyStartedAt: 0,
@@ -535,7 +618,7 @@
   async function beginPpmParentRefresh(auto, afterRefreshPhase) {
     const b = $();
     const phase = String(auto.phase || '');
-    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait'].includes(phase)) {
+    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait', 'ppm_parent_refresh_delay'].includes(phase)) {
       const mergedAfter = afterRefreshPhase || auto.ppmAfterRefreshPhase || 'ppm_next';
       if (mergedAfter !== auto.ppmAfterRefreshPhase) {
         b.state.session.auto = { ...auto, ppmAfterRefreshPhase: mergedAfter };
@@ -901,7 +984,32 @@
       return;
     }
 
+    if (auto.phase === 'ppm_parent_refresh_delay') {
+      const dueAt = Number(auto.ppmParentRefreshDueAt || 0);
+      const remaining = dueAt - Date.now();
+      if (remaining > 0) {
+        b.showActivity?.(
+          'Waiting',
+          'PPM register refresh',
+          `After editor closed · ${Math.max(1, Math.ceil(remaining / 1000))}s`,
+          { wait: true, meta: record?.assetCode || '', tick: true }
+        );
+        b.scheduleAuto(Math.min(remaining, 800));
+        return;
+      }
+      assertPpmParentRefreshUnderLimit(auto);
+      b.state.session.auto = buildPpmParentRefreshSession(auto, auto.ppmAfterRefreshPhase || 'ppm_next');
+      await b.persistSession();
+      b.scheduleAuto(150);
+      return;
+    }
+
     if (auto.phase === 'ppm_parent_refresh') {
+      const gapDueAt = Number(auto.ppmParentRefreshDueAt || 0);
+      if (gapDueAt && Date.now() < gapDueAt) {
+        b.scheduleAuto(Math.min(gapDueAt - Date.now(), 800));
+        return;
+      }
       const inFlightClick = Number(auto.ppmParentRefreshClickedAt || 0);
       if (inFlightClick && Date.now() - inFlightClick < 8000) {
         b.state.session.auto = { ...auto, phase: 'ppm_parent_refresh_wait' };
@@ -955,14 +1063,44 @@
         auto = b.state.session.auto || {};
       }
       const toolbarReadyAgain = Boolean(refreshButton) && !disabledNow && document.readyState === 'complete' && elapsed >= 500;
-      const minSettleMs = isEmbeddedAssetPpmPage() ? 2800 : 1800;
-      const refreshSettled = isEmbeddedAssetPpmPage()
-        ? elapsed >= minSettleMs && document.readyState === 'complete'
-          && (sawDisabled || pageReloaded || elapsed >= minSettleMs + 1200)
-        : elapsed >= minSettleMs && document.readyState === 'complete';
+      const minSettleMs = 1500;
+      const refreshSettled = elapsed >= minSettleMs && document.readyState === 'complete';
       if (!pageReloaded && !toolbarReadyAgain && !refreshSettled) {
         if (elapsed > b.state.settings.lookupTimeoutMs) throw new Error('Parent PPM page refresh did not complete before timeout.');
         b.scheduleAuto(250);
+        return;
+      }
+      const verifyPpm = ppmToVerifyAfterRefresh(record, auto);
+      const rowVisible = ppmSavedRowVisibleOnRegister(record, auto);
+      b.addEvent('ppm-parent-refresh-verify', {
+        rowVisible,
+        verifyPpmKey: verifyPpm?.ppmKey || '',
+        verifyInstruction: verifyPpm?.instruction || '',
+        refreshCount: ppmParentRefreshAttemptCount(auto),
+        parentUrl: location.href
+      });
+      if (!rowVisible) {
+        if (ppmParentRefreshAttemptCount(auto) >= PPM_PARENT_REFRESH_MAX_PER_INDEX) {
+          const ppmIndex = Number(auto.ppmIndex || 0);
+          throw new Error(
+            `Saved PPM${verifyPpm?.instruction ? ` (${verifyPpm.instruction})` : ''} did not appear on the register after ${PPM_PARENT_REFRESH_MAX_PER_INDEX} refreshes. ` +
+            'Refresh the register once manually, confirm the row is listed, then resume automatic import.'
+          );
+        }
+        b.addEvent('ppm-parent-refresh-retry', {
+          reason: 'saved-row-not-visible',
+          nextGapMs: PPM_PARENT_REFRESH_GAP_MS,
+          refreshCount: ppmParentRefreshAttemptCount(auto)
+        });
+        b.state.session.auto = schedulePpmParentRefreshRetry(auto, 'saved-row-not-visible');
+        await b.persistSession();
+        b.showActivity?.(
+          'Waiting',
+          'PPM register refresh',
+          `Saved row not visible yet · retry in ${PPM_PARENT_REFRESH_GAP_MS / 1000}s`,
+          { wait: true, meta: verifyPpm?.instruction || record?.assetCode || '', tick: true }
+        );
+        b.scheduleAuto(400);
         return;
       }
       const nextPhase = auto.ppmAfterRefreshPhase || 'ppm_next';
@@ -971,6 +1109,7 @@
         pageReloaded,
         toolbarReadyAgain,
         sawDisabled,
+        rowVisible,
         elapsedMs: elapsed,
         parentUrl: location.href
       });
@@ -983,6 +1122,10 @@
         ppmParentRefreshPageInstance: '',
         ppmParentRefreshSawDisabled: false,
         ppmAfterRefreshPhase: '',
+        ppmParentRefreshDueAt: 0,
+        ppmParentRefreshRetryReason: '',
+        ppmParentRefreshVerifyPpmKey: '',
+        ppmPostSaveRefreshCount: 0,
         ppmGridRefreshedForIndex: Number(auto.ppmIndex ?? 0),
         ppmRefreshJustCompleted: true
       };
