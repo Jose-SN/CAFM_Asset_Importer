@@ -138,9 +138,6 @@
       ppmListReadyStartedAt: 0,
       ppmAfterRefreshPhase: afterRefreshPhase,
       ppmParentRefreshStartedAt: 0,
-      ppmParentRefreshVerifyPpmKey: clean(savedPpm?.ppmKey || ''),
-      ppmPostSaveRefreshCount: 0,
-      ppmParentRefreshDueAt: 0,
       ppmRefreshJustCompleted: false
     };
     await b.persistSession();

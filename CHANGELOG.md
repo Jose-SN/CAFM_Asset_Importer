@@ -1,6 +1,8 @@
+# v8.0.50
+- **PPM post-save register**: after Save, close editor, then one parent register Refresh (no multi-second wait or grid verify/retry loop).
+
 # v8.0.49
-- **PPM post-save register**: 3s wait after editor close, refresh, verify saved row on grid, retry up to 5 times (3s apart); cap runaway refresh loops.
-- **Version alignment**: panel, diagnostics, and popup read `manifest.json` version; `VERSION.txt` and verify script keep fallback in sync.
+- **Version alignment**: panel, diagnostics, and popup read `manifest.json` version; `tools/sync-version-from-manifest.js` keeps derived files in sync.
 
 # v8.0.44
 - **Session storage trim** (default on): after each completed asset cycle, clear in-browser event logs and slim per-asset status (entity ID, status, compact PPM keys). Workbook in IndexedDB is unchanged until the next asset. Toggle **Keep full session history in browser** to retain full diagnostics.

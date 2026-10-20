@@ -149,8 +149,8 @@
             'Waiting',
             'PPM editor closed',
             afterRefreshPhase === 'ppm_cycle_complete_parent'
-              ? 'Refresh register in 3s · finishing PPMs'
-              : `Refresh register in 3s · then Create New (PPM ${ppmSlot})`,
+              ? 'Refreshing register · finishing PPMs'
+              : `Refreshing register · then Create New (PPM ${ppmSlot})`,
             { wait: true, meta: nextPpm?.instruction || handoffRecord?.assetCode || '', tick: true }
           );
           scheduleAuto(200);
@@ -189,7 +189,7 @@
           showActivity?.(
             'Waiting',
             'PPM child closed',
-            `Refresh register in 3s · PPM ${(Number(nextAuto.ppmIndex) || 0) + 1}`,
+            `Refreshing register · PPM ${(Number(nextAuto.ppmIndex) || 0) + 1}`,
             { wait: true, meta: nextPpm?.instruction || handoffRecord?.assetCode || '', tick: true }
           );
           scheduleAuto(200);
