@@ -12,7 +12,8 @@
     return cfg;
   }
 
-  function schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase) {
+  function schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase, settings) {
+    root.workflow.loopSafety.assertPpmRegisterRefreshAllowed(currentAuto, settings);
     const phase = String(currentAuto.phase || '');
     if ([
       'ppm_parent_refresh',
@@ -49,23 +50,74 @@
     };
   }
 
+  /** After save: session already advanced — skip register Refresh and go straight to next PPM or cycle complete. */
+  function schedulePpmParentHandoffAfterClose(currentAuto, afterRefreshPhase, settings) {
+    if (currentAuto?.ppmSkipRegisterRefresh) {
+      const phase = String(currentAuto.phase || '');
+      if (['ppm_next', 'ppm_cycle_complete_parent', 'ppm_cycle_general_wait'].includes(phase)) {
+        return null;
+      }
+      const lastNotify = Number(currentAuto.ppmParentCloseNotifyAt || 0);
+      if (lastNotify && Date.now() - lastNotify < 2500) {
+        return null;
+      }
+      const resolvedAfter = String(afterRefreshPhase || currentAuto.ppmAfterRefreshPhase || 'ppm_next');
+      const ppmIndex = Number(currentAuto.ppmIndex ?? 0);
+      return {
+        ...currentAuto,
+        active: true,
+        phase: resolvedAfter,
+        ppmAfterRefreshPhase: '',
+        ppmSkipRegisterRefresh: false,
+        ppmRefreshJustCompleted: true,
+        ppmGridRefreshedForIndex: ppmIndex,
+        ppmParentCloseNotifyAt: Date.now(),
+        ppmNewClickedForIndex: -1,
+        ppmListReadyStartedAt: 0,
+        ppmOpenStartedAt: 0,
+        ppmNewClickAttempts: 0,
+        ppmNewLastClickAt: 0,
+        ppmChildHandoffAt: 0
+      };
+    }
+    return schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase, settings);
+  }
+
   function initMessageListeners() {
     chrome.runtime.onMessage.addListener((message) => {
       if (!message || typeof message !== 'object') return;
       const {
         state, addEvent, storageGet, persistSession, render, scheduleAuto, runAutomatic,
+        stopAutomaticWithError,
         isPpmRegisterParentPage, isPpmItemPage, isAssetPage, assetEntityUrl, entityIdFromUrl,
         isSavedAssetPage, workflowRecord, currentPpm, recordPpmResult, showActivity
       } = C();
+
+      if (message.type === 'EXTENSION_VERSION_RESET') {
+        root.data.workbook.applyRuntimeExtensionReset(message).catch(() => {});
+        return;
+      }
 
       if (message.type === 'RUN_AUTO_STEP') {
         storageGet([STORAGE.session]).then(async (stored) => {
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
           if (!state.session.auto?.active) return;
           try {
+            if (message.source === 'background-orchestrator') {
+              const tick = root.workflow.loopSafety.nextOrchestratorTickFields(
+                state.session.auto,
+                state.settings
+              );
+              state.session.auto = { ...state.session.auto, ...tick };
+              await persistSession();
+            }
             await runAutomatic();
-          } catch (_) {
-            scheduleAuto(0);
+          } catch (error) {
+            if (typeof stopAutomaticWithError === 'function') {
+              await stopAutomaticWithError(error);
+            } else {
+              scheduleAuto(0);
+            }
           }
         }).catch(() => {});
         return;
@@ -143,24 +195,36 @@
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
           const currentAuto = state.session.auto || {};
           const afterRefreshPhase = String(message.nextPhase || 'ppm_next');
-          const nextAuto = schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase);
-          if (!nextAuto) {
-            addEvent('ppm-parent-refresh-coalesced', { afterRefreshPhase, priorPhase: currentAuto.phase || '' });
-            return;
+          try {
+            const nextAuto = schedulePpmParentHandoffAfterClose(currentAuto, afterRefreshPhase, state.settings);
+            if (!nextAuto) {
+              addEvent('ppm-parent-refresh-coalesced', { afterRefreshPhase, priorPhase: currentAuto.phase || '' });
+              return;
+            }
+            state.session.auto = nextAuto;
+            await persistSession();
+            render();
+            const handoffRecord = workflowRecord(nextAuto);
+            const nextPpm = currentPpm(handoffRecord);
+            const ppmSlot = (Number(nextAuto.ppmIndex) || 0) + 1;
+            const skipRefresh = Boolean(currentAuto.ppmSkipRegisterRefresh);
+            showActivity?.(
+              'Waiting',
+              'PPM editor closed',
+              skipRefresh
+                ? (afterRefreshPhase === 'ppm_cycle_complete_parent'
+                  ? 'Finishing PPMs · no register refresh'
+                  : `Create New for PPM ${ppmSlot} · no register refresh`)
+                : (afterRefreshPhase === 'ppm_cycle_complete_parent'
+                  ? 'Refreshing register · finishing PPMs'
+                  : `Refreshing register · then Create New (PPM ${ppmSlot})`),
+              { wait: true, meta: nextPpm?.instruction || handoffRecord?.assetCode || '', tick: true }
+            );
+            addEvent('ppm-parent-handoff', { afterRefreshPhase, skipRefresh, ppmIndex: nextAuto.ppmIndex ?? null });
+            scheduleAuto(100);
+          } catch (error) {
+            await stopAutomaticWithError(error);
           }
-          state.session.auto = nextAuto;
-          await persistSession();
-          render();
-          const handoffRecord = workflowRecord(nextAuto);
-          const nextPpm = currentPpm(handoffRecord);
-          const ppmSlot = (Number(nextAuto.ppmIndex) || 0) + 1;
-          showActivity?.(
-            'Waiting',
-            'PPM editor closed',
-            afterRefreshPhase === 'ppm_cycle_complete_parent' ? 'Refreshing register · finishing PPMs' : `Refreshing register · then Create New (PPM ${ppmSlot})`,
-            { wait: true, meta: nextPpm?.instruction || handoffRecord?.assetCode || '', tick: true }
-          );
-          scheduleAuto(100);
         }).catch(() => scheduleAuto(200));
         return;
       }
@@ -177,23 +241,30 @@
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
           const currentAuto = state.session.auto || {};
           const afterRefreshPhase = String(message.afterRefreshPhase || currentAuto.ppmAfterRefreshPhase || 'ppm_next');
-          const nextAuto = schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase);
-          if (!nextAuto) {
-            addEvent('ppm-parent-refresh-coalesced', { afterRefreshPhase, priorPhase: currentAuto.phase || '', source: 'child-done' });
-            return;
+          try {
+            const nextAuto = schedulePpmParentHandoffAfterClose(currentAuto, afterRefreshPhase, state.settings);
+            if (!nextAuto) {
+              addEvent('ppm-parent-refresh-coalesced', { afterRefreshPhase, priorPhase: currentAuto.phase || '', source: 'child-done' });
+              return;
+            }
+            state.session.auto = nextAuto;
+            await persistSession();
+            render();
+            const handoffRecord = workflowRecord(nextAuto);
+            const nextPpm = currentPpm(handoffRecord);
+            const skipRefresh = Boolean(currentAuto.ppmSkipRegisterRefresh);
+            showActivity?.(
+              'Waiting',
+              'PPM child closed',
+              skipRefresh
+                ? `Next PPM ${(Number(nextAuto.ppmIndex) || 0) + 1} · no register refresh`
+                : `Refreshing register · PPM ${(Number(nextAuto.ppmIndex) || 0) + 1}`,
+              { wait: true, meta: nextPpm?.instruction || handoffRecord?.assetCode || '', tick: true }
+            );
+            scheduleAuto(50);
+          } catch (error) {
+            await stopAutomaticWithError(error);
           }
-          state.session.auto = nextAuto;
-          await persistSession();
-          render();
-          const handoffRecord = workflowRecord(nextAuto);
-          const nextPpm = currentPpm(handoffRecord);
-          showActivity?.(
-            'Waiting',
-            'PPM child closed',
-            `Refreshing register · PPM ${(Number(nextAuto.ppmIndex) || 0) + 1}`,
-            { wait: true, meta: nextPpm?.instruction || handoffRecord?.assetCode || '', tick: true }
-          );
-          scheduleAuto(50);
         }).catch(() => scheduleAuto(150));
       }
     });

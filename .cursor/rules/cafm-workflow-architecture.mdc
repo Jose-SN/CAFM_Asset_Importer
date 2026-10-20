@@ -144,4 +144,4 @@ background.js      → ASSET_CLOSE_EDITOR_TAB, PPM child close sweeps, tab focus
 
 ## After workflow changes
 
-Run `node tools/verify-architecture.js` and bump `manifest.json` version if shipping.
+Run `node tools/verify-architecture.js` when shipping. **Version:** change only `manifest.json` `"version"`; verify runs `tools/sync-version-from-manifest.js` to update `name`, `VERSION.txt`, `log.json` template, and `constants.js` fallback. UI/popup/diagnostics read the manifest at runtime.

@@ -4,8 +4,15 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
+const { syncVersionFromManifest } = require('./sync-version-from-manifest.js');
 const errors = [];
 const warnings = [];
+
+try {
+  syncVersionFromManifest({ quiet: true });
+} catch (error) {
+  errors.push(`Version sync failed: ${error?.message || error}`);
+}
 
 function read(rel) {
   return fs.readFileSync(path.join(root, rel), 'utf8');
@@ -27,6 +34,7 @@ const requiredNamespaces = [
   ['src/pages/ppm-register.js', 'processPpmListPage'],
   ['src/pages/ppm-editor.js', 'processPpmItemPage'],
   ['src/pages/ppm-status.js', 'processPpmStatusPage'],
+  ['src/workflow/loop-safety.js', 'loopSafety'],
   ['src/workflow/engine.js', 'runAutomatic'],
   ['src/data/field-registry.js', 'ASSET_DIRECT_FIELDS'],
   ['src/data/preflight.js', 'summarize'],
@@ -45,7 +53,7 @@ const knownPhases = new Set([
   'activate_confirm', 'activate_wait', 'activate_wait_user', 'ppm_open_list', 'ppm_wait_new',
   'ppm_wait_user_new', 'ppm_fill', 'ppm_await_save', 'ppm_status_open', 'ppm_status_select',
   'ppm_status_confirm', 'ppm_status_wait', 'ppm_status_wait_user', 'ppm_child_closing',
-  'ppm_parent_refresh_wait', 'ppm_parent_refresh', 'ppm_next', 'ppm_cycle_complete_parent',
+  'ppm_parent_refresh_wait', 'ppm_parent_refresh_delay', 'ppm_parent_refresh', 'ppm_next', 'ppm_cycle_complete_parent',
   'complete', 'paused', 'error'
 ]);
 

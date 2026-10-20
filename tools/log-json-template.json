@@ -1,0 +1,40 @@
+{
+  "generatedAt": "",
+  "extensionVersion": "",
+  "page": {
+    "url": "",
+    "title": "",
+    "readyState": ""
+  },
+  "workbook": null,
+  "current": {
+    "assetCode": "",
+    "workbookRow": "",
+    "assetIndex": 0,
+    "phase": "",
+    "ppmIndex": null,
+    "ppmKey": "",
+    "currentAssetStatus": "",
+    "currentPpmStatus": ""
+  },
+  "iteration": {
+    "enabled": false,
+    "configuredCount": 1,
+    "runMax": 1,
+    "processedThisRun": 0
+  },
+  "settings": {},
+  "auto": null,
+  "status": null,
+  "recentEvents": [],
+  "timingSummary": {
+    "totalEvents": 0,
+    "slowestSteps": [],
+    "phaseDurations": []
+  },
+  "validationMessage": "",
+  "learnedControls": {
+    "status": null,
+    "ppmNew": null
+  }
+}

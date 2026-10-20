@@ -4,8 +4,17 @@
   const root = globalThis.CAFMImporter;
   root.core = root.core || {};
 
+  function extensionVersion() {
+    try {
+      const fromManifest = chrome?.runtime?.getManifest?.()?.version;
+      if (fromManifest) return String(fromManifest);
+    } catch (_) {}
+    return '8.0.55'; // fallback — auto-synced from manifest.json; run tools/sync-version-from-manifest.js
+  }
+
   root.core.constants = Object.freeze({
-    VERSION: '8.0.40',
+    /** Runtime version from manifest.json (fallback must match manifest `version`). */
+    VERSION: extensionVersion(),
     HOST_ID: 'ee-cafm-asset-importer-host',
     STORAGE: Object.freeze({
       session: 'eeAssetImporterV80Session',
@@ -14,8 +23,19 @@
       statusLearnRequest: 'eeAssetImporterV58StatusLearnRequest',
       learnedStatus: 'eeAssetImporterV58LearnedStatus',
       newLearnRequest: 'eeAssetImporterV69NewLearnRequest',
-      learnedNew: 'eeAssetImporterV69LearnedNew'
+      learnedNew: 'eeAssetImporterV69LearnedNew',
+      installedExtensionVersion: 'eeAssetImporterV80InstalledExtensionVersion'
     }),
+    /** chrome.storage.local keys removed on Clear session / extension update (not installedExtensionVersion). */
+    STORAGE_RESET_KEYS: Object.freeze([
+      'eeAssetImporterV80Session',
+      'eeAssetImporterV80Settings',
+      'eeAssetImporterV80PendingLookup',
+      'eeAssetImporterV58StatusLearnRequest',
+      'eeAssetImporterV58LearnedStatus',
+      'eeAssetImporterV69NewLearnRequest',
+      'eeAssetImporterV69LearnedNew'
+    ]),
     LARGE_KEY: 'eeAssetImporterV80Workbook',
     DEFAULT_SETTINGS: Object.freeze({
       lookupTimeoutMs: 20000,
@@ -34,9 +54,14 @@
       iterationEnabled: false,
       iterationCount: 1,
       autoDownloadTimeline: false,
+      keepFullSessionHistory: false,
       autoContinueNext: true,
       useSaveAndNew: false,
-      backgroundOrchestratorMs: 2500
+      backgroundOrchestratorMs: 2500,
+      /** Max repeats for refresh / same-phase poll / toolbar retries per asset (not workbook row count). */
+      safetyLoopMaxSteps: 25,
+      workflowLoopMaxSteps: 25,
+      ppmRegisterRefreshMaxClicks: 25
     }),
     assetPagePattern: /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItem\.aspx/i,
     assetListPagePattern: /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItems\.aspx/i,

@@ -3,6 +3,9 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 Push-Location $Root
 
+Write-Host "`n>> node tools/ensure-log-json.js" -ForegroundColor Cyan
+node tools/ensure-log-json.js
+
 $checks = @(
   'tools/verify-modules.js',
   'tools/verify-load-order.js',

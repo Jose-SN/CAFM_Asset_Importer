@@ -8,7 +8,10 @@
   const $ = () => root.runtime.b;
   /** After Create New is invoked, poll for the child editor this long before a single retry click. */
   const PPM_CREATE_NEW_OPEN_WAIT_MS = 3000;
-  const PPM_CREATE_NEW_MAX_CLICKS = 5;
+
+  function ppmCreateNewMaxClicks() {
+    return root.workflow.loopSafety.toolbarActionMaxAttempts($().state.settings);
+  }
 
   function findLearnedPpmNewButton() {
     const b = $();
@@ -440,8 +443,11 @@
     }
   }
 
+  const loopSafety = root.workflow.loopSafety;
+
   async function beginPpmParentRefresh(auto, afterRefreshPhase) {
     const b = $();
+    loopSafety.assertPpmRegisterRefreshAllowed(auto, b.state.settings);
     const phase = String(auto.phase || '');
     if (['ppm_parent_refresh', 'ppm_parent_refresh_wait'].includes(phase)) {
       const mergedAfter = afterRefreshPhase || auto.ppmAfterRefreshPhase || 'ppm_next';
@@ -814,6 +820,16 @@
       return;
     }
 
+    if (auto.phase === 'ppm_next' && auto.ppmRefreshJustCompleted) {
+      await sweepPpmChildren(record, { context: 'post-close-no-refresh' });
+      const ppm = b.currentPpm(record);
+      if (ppm && await trySkipExistingPpm(record, ppm, auto)) {
+        return;
+      }
+      await attemptPpmCreateNewClick(record, auto);
+      return;
+    }
+
     if (!isPpmRegisterParentPage()) {
       b.addEvent('ppm-register-passive-not-parent', { url: location.href, assetCode: record?.assetCode || '' });
       await b.persistSession();
@@ -845,16 +861,24 @@
         b.scheduleAuto(300);
         return;
       }
+      loopSafety.assertPpmRegisterRefreshAllowed(auto, b.state.settings);
       const clickedAt = Date.now();
       b.state.session.auto = {
         ...auto,
+        ...loopSafety.bumpPpmRegisterRefreshTotal(auto),
         phase: 'ppm_parent_refresh_wait',
         ppmParentRefreshPageInstance: b.PAGE_INSTANCE,
         ppmParentRefreshClickedAt: clickedAt,
         ppmParentRefreshSawDisabled: false
       };
       await b.persistSession();
-      b.addEvent('ppm-parent-refresh-click', { ...info, clickCalled: true, parentUrl: location.href });
+      auto = b.state.session.auto || {};
+      b.addEvent('ppm-parent-refresh-click', {
+        ...info,
+        clickCalled: true,
+        parentUrl: location.href,
+        refreshTotal: loopSafety.ppmRegisterRefreshTotal(auto)
+      });
       await b.persistSession();
       b.showActivity?.('Clicking', 'PPM register Refresh', 'Waiting for grid to reload', { wait: true, meta: record?.assetCode || '', tick: true });
       button.click();
@@ -1042,7 +1066,8 @@
         return;
       }
 
-      if (attempts >= PPM_CREATE_NEW_MAX_CLICKS && lastClickAt && sinceLastClick >= PPM_CREATE_NEW_OPEN_WAIT_MS) {
+      const createNewMax = ppmCreateNewMaxClicks();
+      if (attempts >= createNewMax && lastClickAt && sinceLastClick >= PPM_CREATE_NEW_OPEN_WAIT_MS) {
         await handoffToUserPpmCreateNew(
           auto,
           ppm,
@@ -1051,7 +1076,7 @@
         return;
       }
 
-      if (attempts >= 1 && lastClickAt && sinceLastClick >= PPM_CREATE_NEW_OPEN_WAIT_MS && attempts < PPM_CREATE_NEW_MAX_CLICKS) {
+      if (attempts >= 1 && lastClickAt && sinceLastClick >= PPM_CREATE_NEW_OPEN_WAIT_MS && attempts < createNewMax) {
         if (!button && !ppmCreateNewCallable()) {
           await handoffToUserPpmCreateNew(auto, ppm, 'Create New button not found — click + New on the PPM toolbar once.');
           return;

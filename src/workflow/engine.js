@@ -18,6 +18,7 @@
     deriveNewEntityUrl
   } = root.core.pages;
   const { WAITING_PHASES } = root.workflow.phases;
+  const { freshLoopCounters, nextWorkflowLoopFields } = root.workflow.loopSafety;
   const { beginPostSave } = root.workflow.postSave;
   const { dispatchClick } = root.core.dom;
   const $ = () => root.runtime.b;
@@ -26,6 +27,14 @@
     try {
       chrome.runtime.sendMessage({ type: 'AUTO_ORCHESTRATOR_SYNC' }).catch(() => {});
     } catch (_) {}
+  }
+
+  function abortScheduledAuto() {
+    const b = $();
+    clearTimeout(b.state.autoTimer);
+    b.state.autoTimer = null;
+    b.state.busy = false;
+    root.ui.progressToast.stopTick();
   }
 
   function scheduleAuto(delay = 0) {
@@ -121,7 +130,8 @@
     b.state.session.auto = {
       active: true, mode: 'automatic', phase: 'fill', index: b.state.session.index,
       assetCode: record.assetCode, startedAt: Date.now(), ppmIndex: 0, ppmResults: [],
-      processedThisRun: 0, maxIterations
+      processedThisRun: 0, maxIterations,
+      ...freshLoopCounters()
     };
     b.addEvent('run-start', { maxIterations, iterationEnabled: Boolean(b.state.settings.iterationEnabled) });
     await b.persistSession();
@@ -146,7 +156,10 @@
       phase: resumePhase,
       error: '',
       index: b.state.session.index,
-      assetCode: record.assetCode
+      assetCode: record.assetCode,
+      workflowLoopPhase: '',
+      workflowLoopCount: 0,
+      autoOrchestratorTicks: 0
     };
     b.addEvent('run-resume', { resumePhase, assetCode: record.assetCode, index: b.state.session.index });
     await b.persistSession();
@@ -171,10 +184,19 @@
   async function runAutomatic() {
     const b = $();
     if (b.state.busy) return;
-    const auto = b.state.session.auto;
+    let auto = b.state.session.auto;
     if (!auto?.active) return;
     b.state.busy = true;
     try {
+      const loopFields = nextWorkflowLoopFields(auto, b.state.settings);
+      if (
+        loopFields.workflowLoopPhase !== auto.workflowLoopPhase
+        || loopFields.workflowLoopCount !== auto.workflowLoopCount
+      ) {
+        b.state.session.auto = { ...b.state.session.auto, ...loopFields };
+        await b.persistSession();
+        auto = b.state.session.auto;
+      }
       const waitingPhase = WAITING_PHASES.has(clean(auto.phase || ''));
       if (b.showActivity && !(b.showWorkflowStatus && waitingPhase)) {
         const recordPreview = b.workflowRecord(auto);
@@ -531,6 +553,6 @@
 
   root.workflow = root.workflow || {};
   root.workflow.engine = Object.freeze({
-    scheduleAuto, runAutomatic, startAutomatic, pauseAutomatic, resumeAutomatic, stopAutomaticWithError
+    scheduleAuto, abortScheduledAuto, runAutomatic, startAutomatic, pauseAutomatic, resumeAutomatic, stopAutomaticWithError
   });
 })();

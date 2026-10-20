@@ -1,3 +1,19 @@
+# v8.0.53
+- **Loop safety**: stop automatic import after 25 repeats in the same phase, 25 PPM register Refresh clicks per run, or 25 background orchestrator ticks; clear error instead of browser OOM.
+
+# v8.0.52
+- **PPM multi-row handoff**: record each save in session (with CAFM or session entity id) before close; parent skips register Refresh and opens Create New for the next linked row.
+
+# v8.0.51
+- **PPM register Refresh**: reverted today’s refresh-loop / delay / verify changes; post-save handoff matches pre-8.0.48 behavior.
+
+# v8.0.49
+- **Version alignment**: panel, diagnostics, and popup read `manifest.json` version; `tools/sync-version-from-manifest.js` keeps derived files in sync.
+
+# v8.0.44
+- **Session storage trim** (default on): after each completed asset cycle, clear in-browser event logs and slim per-asset status (entity ID, status, compact PPM keys). Workbook in IndexedDB is unchanged until the next asset. Toggle **Keep full session history in browser** to retain full diagnostics.
+- **Extension update reset**: reloading/updating the extension clears prior session, workbook cache (IndexedDB), PPM tab tracking, and pending lookup state. Panel settings and learned controls are kept. Load your workbook again after an update.
+
 # v8.0.40
 - **Notes and Spatial tabs**: fill Notes when the workbook `Notes`/`Comments` column is populated, and fill Spatial/GIS fields (including GIS Reference) when any spatial column has data — no panel checkbox required unless the user explicitly disables **Include Notes**.
 - Workbook column alias **GIS** maps to GIS Reference; CAFM field label **GIS** is recognised on the Spatial tab.

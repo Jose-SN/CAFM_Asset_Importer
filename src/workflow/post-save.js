@@ -35,7 +35,10 @@
       activationConfirmStartedAt: 0,
       ppmIndex: 0,
       ppmResults: [],
-      error: ''
+      error: '',
+      ...root.workflow.loopSafety.resetSafetyLoopCounters(),
+      toolbarRetryCounts: {},
+      ppmParentRefreshCounts: {}
     };
     b.state.session.manualAwaitSave = null;
     await b.persistSession();
@@ -73,6 +76,7 @@
         assetEntityId: entityId,
         ppmResults
       };
+      root.data.workbook.compactSessionAfterAsset(record);
       await b.persistSession();
       b.render();
       b.showToast(`${record.assetCode}: PPM workflow complete${ppmNote}.`, 'success', 10000);
@@ -102,6 +106,8 @@
         b.showToast(`Timeline log downloaded: ${fileName}`, 'info', 6000);
       } catch (_) {}
     }
+
+    root.data.workbook.compactSessionAfterAsset(record);
 
     const next = b.nextPendingIndex(b.state.session.index + 1);
     if (auto.mode === 'manual-post-save') {
@@ -155,11 +161,15 @@
       processedThisRun: completedIterations,
       maxIterations: Math.max(1, Number(auto.maxIterations || 1)),
       ppmIndex: 0,
-      ppmResults: []
+      ppmResults: [],
+      ...root.workflow.loopSafety.resetSafetyLoopCounters(),
+      toolbarRetryCounts: {},
+      ppmParentRefreshCounts: {}
     };
     await b.persistSession();
     b.render();
-    const warningCount = (b.state.session.statuses?.[record.assetCode]?.validationWarnings || []).length;
+    const statusInfo = b.state.session.statuses?.[record.assetCode] || {};
+    const warningCount = (statusInfo.validationWarnings || []).length || Number(statusInfo.validationWarningCount || 0);
     const ppmSummary = activePpms ? `${savedPpms} PPM saved, ${activePpms} ACTIVE` : `${savedPpms} PPM saved`;
     const nextCode = b.state.assets[next]?.assetCode || '';
     b.showToast(`${record.assetCode} complete: Asset saved, ${ppmSummary}${warningCount ? `, ${warningCount} warning(s)` : ''}. Next: ${nextCode}.`, warningCount ? 'warn' : 'success', 14000);
@@ -210,6 +220,8 @@
       } catch (_) {}
     }
 
+    root.data.workbook.compactSessionAfterAsset(record);
+
     const next = b.nextPendingIndex(b.state.session.index + 1);
     if (next < 0) {
       b.state.session.auto = { active: false, mode: auto.mode || 'automatic', phase: 'complete', completedAt: Date.now() };
@@ -247,11 +259,15 @@
       processedThisRun: completedIterations,
       maxIterations: Math.max(1, Number(auto.maxIterations || 1)),
       ppmIndex: 0,
-      ppmResults: []
+      ppmResults: [],
+      ...root.workflow.loopSafety.resetSafetyLoopCounters(),
+      toolbarRetryCounts: {},
+      ppmParentRefreshCounts: {}
     };
     await b.persistSession();
     b.render();
-    const warningCount = (b.state.session.statuses?.[record.assetCode]?.validationWarnings || []).length;
+    const statusInfo = b.state.session.statuses?.[record.assetCode] || {};
+    const warningCount = (statusInfo.validationWarnings || []).length || Number(statusInfo.validationWarningCount || 0);
     const ppmSummary = activePpms ? `${savedPpms} PPM saved, ${activePpms} ACTIVE` : `${savedPpms} PPM saved`;
     b.showToast(`${record.assetCode} complete: Asset saved, ${ppmSummary}${warningCount ? `, ${warningCount} warning(s)` : ''}. Save and New → ${nextCode}.`, warningCount ? 'warn' : 'success', 14000);
     b.addEvent('post-ppm-handoff', { assetCode: record.assetCode, nextAssetCode: nextCode, entityId });
@@ -283,7 +299,9 @@
       ppmIndex: 0,
       ppmResults: auto.ppmResults || [],
       ppmGridRefreshedForIndex: 0,
-      ppmParentRefreshCounts: {}
+      ppmParentRefreshCounts: {},
+      ...root.workflow.loopSafety.resetSafetyLoopCounters(),
+      toolbarRetryCounts: {}
     };
     await b.persistSession();
     b.render();

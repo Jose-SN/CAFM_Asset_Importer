@@ -242,10 +242,15 @@ function render() {
   C().state.els.iterateBatch.checked = Boolean(C().state.settings.iterationEnabled);
   C().state.els.iterationCount.value = String(Math.max(1, Number(C().state.settings.iterationCount) || 1));
   C().state.els.iterationCount.disabled = !C().state.settings.iterationEnabled;
+  if (C().state.els.safetyLoopMaxSteps) {
+    const loopMax = Math.max(5, Math.min(500, Math.floor(Number(C().state.settings.safetyLoopMaxSteps) || 25)));
+    C().state.els.safetyLoopMaxSteps.value = String(loopMax);
+  }
   C().state.els.includeNotes.checked = Boolean(C().state.settings.includeNotes);
   C().state.els.includeSpatial.checked = Boolean(C().state.settings.includeSpatial);
   C().state.els.skipInvalid.checked = Boolean(C().state.settings.skipInvalidRows);
   if (C().state.els.autoDownloadTimeline) C().state.els.autoDownloadTimeline.checked = Boolean(C().state.settings.autoDownloadTimeline);
+  if (C().state.els.keepFullSessionHistory) C().state.els.keepFullSessionHistory.checked = Boolean(C().state.settings.keepFullSessionHistory);
   if (C().state.els.autoContinueNext) C().state.els.autoContinueNext.checked = C().state.settings.autoContinueNext !== false;
   if (C().state.els.useSaveAndNew) C().state.els.useSaveAndNew.checked = C().state.settings.useSaveAndNew === true;
 }
@@ -433,14 +438,16 @@ function injectPanel() {
           <div id="progressLabel" class="muted" hidden style="margin-top:4px;font-size:10px"></div>
           <label class="option"><input id="iterateBatch" type="checkbox"> Enable multiple asset iterations</label>
           <label class="option">Asset iteration count <input id="iterationCount" type="number" min="1" max="10000" step="1" value="1" style="width:90px"></label>
-          <div class="muted" style="margin:4px 0 8px">Unchecked = exactly one complete Asset + linked PPM cycle, then stop. Checked = continue until the asset iteration count is reached.</div>
+          <label class="option">Max safety loop steps <input id="safetyLoopMaxSteps" type="number" min="5" max="500" step="1" value="25" style="width:90px"></label>
+          <div class="muted" style="margin:4px 0 8px">Unchecked = exactly one complete Asset + linked PPM cycle, then stop. Checked = continue until the asset iteration count is reached. Safety loop steps cap Refresh clicks, Create New retries, and same-phase polling per asset (not how many workbook rows you import).</div>
           <label class="option"><input id="includeNotes" type="checkbox"> Include Notes tab only when workbook data is populated</label>
           <label class="option"><input id="includeSpatial" type="checkbox"> Include Spatial / GIS tab only when workbook data is populated</label>
           <label class="option"><input id="skipInvalid" type="checkbox"> Skip invalid workbook rows instead of stopping</label>
           <label class="option"><input id="autoDownloadTimeline" type="checkbox"> Auto-download timeline JSON when each asset cycle completes</label>
+          <label class="option"><input id="keepFullSessionHistory" type="checkbox"> Keep full session history in browser (uses more storage; off trims after each asset)</label>
           <label class="option"><input id="autoContinueNext" type="checkbox"> Auto-continue to next asset after PPM cycle</label>
           <label class="option"><input id="useSaveAndNew" type="checkbox"> Legacy: use Save and New instead of Save and Close between assets</label>
-          <div class="muted">Proceeds when CAFM state is verified. Safety timeouts default to 20s (PPM child wait 15s). Reload the extension at chrome://extensions after code updates.</div>
+          <div class="muted">Proceeds when CAFM state is verified. Safety timeouts default to 20s (PPM child wait 15s). After updating the extension at chrome://extensions, reload every open CAFM tab (F5) — storage and the service worker reset automatically on version change.</div>
         </div>
         <div id="sessionSection" class="section">
           <h3>Session</h3>
@@ -449,6 +456,7 @@ function injectPanel() {
             <button id="downloadDiagnostic" class="action">Download diagnostic JSON</button>
             <button id="clear" class="action danger">Clear session</button>
           </div>
+          <div class="muted" style="margin-top:7px">Clear session wipes extension storage (not CAFM). It saves a fresh empty log.json to Downloads and keeps an empty event log in the browser. Diagnostic JSON also downloads as log.json. Deleting repo log.json is safe — run node tools/ensure-log-json.js to recreate it.</div>
           <div class="muted" style="margin-top:7px">NEW asset sequence: fill populated workbook fields -> Save -> verify saved Asset ID -> Change Asset Status -> Active -> PPM workflow. Legacy toolbar detection is corrected to use page-relative coordinates and one-click protection. v8 uses state-driven progression with no inter-record pacing delay and skips optional Notes/Spatial tabs unless enabled and populated. EDIT EXISTING: open a saved asset, use Fill saved asset from workbook, review, then Save existing changes only (or the normal CAFM Save). Edit mode matches by Asset Code, never creates a duplicate, never clears blank workbook fields, and does not alter asset status or existing PPMs.</div>
         </div>
         <div class="footer">Move this panel by dragging the header. Site and calculated/read-only fields are not overwritten.</div>
@@ -461,7 +469,7 @@ function injectPanel() {
     </div>
   `;
 
-  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
+  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'safetyLoopMaxSteps', 'includeNotes', 'includeSpatial', 'skipInvalid', 'autoDownloadTimeline', 'keepFullSessionHistory', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
   for (const id of ids) C().state.els[id] = shadow.getElementById(id);
   root.ui.progressToast.configureToastElements({
     toast: C().state.els.toast,
@@ -568,6 +576,10 @@ function injectPanel() {
     C().state.settings.autoDownloadTimeline = C().state.els.autoDownloadTimeline.checked;
     await C().persistSession();
   });
+  C().state.els.keepFullSessionHistory.addEventListener('change', async () => {
+    C().state.settings.keepFullSessionHistory = C().state.els.keepFullSessionHistory.checked;
+    await C().persistSession();
+  });
   C().state.els.autoContinueNext.addEventListener('change', async () => {
     C().state.settings.autoContinueNext = C().state.els.autoContinueNext.checked;
     await C().persistSession();
@@ -583,6 +595,14 @@ function injectPanel() {
   });
   C().state.els.iterationCount.addEventListener('change', async () => {
     C().state.settings.iterationCount = Math.max(1, Math.min(10000, Math.floor(Number(C().state.els.iterationCount.value) || 1)));
+    await C().persistSession();
+    render();
+  });
+  C().state.els.safetyLoopMaxSteps.addEventListener('change', async () => {
+    const n = Math.max(5, Math.min(500, Math.floor(Number(C().state.els.safetyLoopMaxSteps.value) || 25)));
+    C().state.settings.safetyLoopMaxSteps = n;
+    C().state.settings.workflowLoopMaxSteps = n;
+    C().state.settings.ppmRegisterRefreshMaxClicks = n;
     await C().persistSession();
     render();
   });

@@ -12,6 +12,13 @@ const ASSET_EDITOR_URL = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItem\.a
 
 const SESSION_KEY = 'eeAssetImporterV80Session';
 const SETTINGS_KEY = 'eeAssetImporterV80Settings';
+const PENDING_LOOKUP_KEY = 'eeAssetImporterV80PendingLookup';
+const STATUS_LEARN_REQUEST_KEY = 'eeAssetImporterV58StatusLearnRequest';
+const LEARNED_STATUS_KEY = 'eeAssetImporterV58LearnedStatus';
+const NEW_LEARN_REQUEST_KEY = 'eeAssetImporterV69NewLearnRequest';
+const LEARNED_NEW_KEY = 'eeAssetImporterV69LearnedNew';
+const INSTALLED_EXTENSION_VERSION_KEY = 'eeAssetImporterV80InstalledExtensionVersion';
+const LARGE_WORKBOOK_KEY = 'eeAssetImporterV80Workbook';
 const AUTO_ALARM = 'cafm-auto-orchestrator';
 const DEFAULT_ORCHESTRATOR_MS = 2500;
 const ppmSaveUrlNotified = new Map();
@@ -506,6 +513,56 @@ async function largeRemove(key) {
   db.close();
 }
 
+async function largeClearAll() {
+  const db = await openLargeDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).clear();
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error || new Error('Unable to clear importer storage'));
+  });
+  db.close();
+}
+
+async function clearExtensionCaches() {
+  try {
+    if (typeof caches === 'undefined' || !caches.keys) return;
+    const keys = await caches.keys();
+    await Promise.all(keys.map((key) => caches.delete(key)));
+  } catch (_) {}
+}
+
+async function clearChromeSessionStorage() {
+  try {
+    await chrome.storage.session?.clear?.();
+  } catch (_) {}
+}
+
+const CONCEPT_TAB_URLS = ['http://concept/*', 'https://concept/*'];
+
+async function broadcastExtensionResetToConceptTabs(reason) {
+  const version = chrome.runtime.getManifest().version;
+  let tabs = [];
+  try {
+    tabs = await chrome.tabs.query({ url: CONCEPT_TAB_URLS });
+  } catch (_) {
+    return 0;
+  }
+  let sent = 0;
+  for (const tab of tabs) {
+    if (typeof tab.id !== 'number') continue;
+    try {
+      await chrome.tabs.sendMessage(tab.id, {
+        type: 'EXTENSION_VERSION_RESET',
+        version,
+        reason: String(reason || 'reset')
+      });
+      sent += 1;
+    } catch (_) {}
+  }
+  return sent;
+}
+
 async function largeStats() {
   const db = await openLargeDb();
   const records = await new Promise((resolve, reject) => {
@@ -562,6 +619,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'LARGE_STORAGE_STATS') {
     largeStats()
       .then((stats) => sendResponseSafe(sendResponse, { ok: true, ...stats }))
+      .catch((error) => sendResponseSafe(sendResponse, { ok: false, error: String(error?.message || error) }));
+    return true;
+  }
+
+  if (message.type === 'EXTENSION_STORAGE_RESET') {
+    clearImporterSessionAndWorkbookStorage()
+      .then(async () => {
+        await broadcastExtensionResetToConceptTabs('storage-reset');
+        sendResponseSafe(sendResponse, { ok: true });
+      })
       .catch((error) => sendResponseSafe(sendResponse, { ok: false, error: String(error?.message || error) }));
     return true;
   }
@@ -980,3 +1047,63 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     handlePpmChildTabRemoved(tabId).catch(() => {});
   }).catch(() => {});
 });
+
+async function clearImporterSessionAndWorkbookStorage() {
+  await chrome.storage.local.remove([
+    SESSION_KEY,
+    SETTINGS_KEY,
+    PENDING_LOOKUP_KEY,
+    STATUS_LEARN_REQUEST_KEY,
+    LEARNED_STATUS_KEY,
+    NEW_LEARN_REQUEST_KEY,
+    LEARNED_NEW_KEY,
+    PPM_PARENT_KEY,
+    PPM_CHILD_KEY,
+    ASSET_TAB_KEY
+  ]);
+  try {
+    await largeClearAll();
+  } catch (_) {
+    try {
+      await largeRemove(LARGE_WORKBOOK_KEY);
+    } catch (_) {}
+  }
+  await clearExtensionCaches();
+  await clearChromeSessionStorage();
+  await chrome.alarms.clear(AUTO_ALARM);
+  lookupClaims.clear();
+  ppmSaveUrlNotified.clear();
+}
+
+async function handleExtensionVersionChange(reason) {
+  const version = chrome.runtime.getManifest().version;
+  await clearImporterSessionAndWorkbookStorage();
+  await chrome.storage.local.set({ [INSTALLED_EXTENSION_VERSION_KEY]: version });
+  await broadcastExtensionResetToConceptTabs(reason || 'update');
+}
+
+async function ensureExtensionVersionAligned() {
+  const version = chrome.runtime.getManifest().version;
+  const data = await chrome.storage.local.get(INSTALLED_EXTENSION_VERSION_KEY);
+  const stored = String(data[INSTALLED_EXTENSION_VERSION_KEY] || '').trim();
+  if (!stored) {
+    await chrome.storage.local.set({ [INSTALLED_EXTENSION_VERSION_KEY]: version });
+    return;
+  }
+  if (stored !== version) {
+    await handleExtensionVersionChange('version-mismatch');
+  }
+}
+
+chrome.runtime.onInstalled.addListener((details) => {
+  (async () => {
+    if (details.reason === 'update' || details.reason === 'chrome_update') {
+      await handleExtensionVersionChange(details.reason);
+      return;
+    }
+    const version = chrome.runtime.getManifest().version;
+    await chrome.storage.local.set({ [INSTALLED_EXTENSION_VERSION_KEY]: version });
+  })().catch(() => {});
+});
+
+ensureExtensionVersionAligned().catch(() => {});

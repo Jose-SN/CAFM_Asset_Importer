@@ -3,7 +3,7 @@
 
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
-  const { VERSION, STORAGE, DEFAULT_SETTINGS } = root.core.constants;
+  const { VERSION, STORAGE, DEFAULT_SETTINGS, STORAGE_RESET_KEYS } = root.core.constants;
   const {
     isNewEntityPage,
     deriveNewEntityUrl
@@ -12,6 +12,7 @@
     storageGet,
     storageSet,
     storageRemove,
+    runtimeMessage,
     saveLargeWorkbook,
     loadLargeWorkbook,
     clearLargeWorkbook
@@ -62,7 +63,90 @@ async function persistSession() {
   } catch (_) {}
 }
 
+function freshEmptySession() {
+  return {
+    fileName: '',
+    fileSize: 0,
+    fileModified: 0,
+    index: 0,
+    statuses: {},
+    newEntityUrl: deriveNewEntityUrl(),
+    auto: null,
+    manualAwaitSave: null,
+    currentLookupEvidence: [],
+    events: []
+  };
+}
+
+function resetImporterMemoryState() {
+  const st = C().state;
+  clearTimeout(st.autoTimer);
+  st.autoTimer = null;
+  st.busy = false;
+  st.assets = [];
+  st.allAssets = [];
+  st.ppms = [];
+  st.cache = null;
+  st.session = freshEmptySession();
+  st.settings = { ...DEFAULT_SETTINGS };
+  st.learnedStatus = null;
+  st.learnedNew = null;
+  st.teachStatusArmed = false;
+  st.teachNewArmed = false;
+  st.lastLoggedPhase = '';
+}
+
+async function clearImporterDataSilently() {
+  await clearLargeWorkbook();
+  await storageRemove([...STORAGE_RESET_KEYS]);
+  try {
+    await runtimeMessage({ type: 'EXTENSION_STORAGE_RESET' });
+  } catch (_) {}
+  resetImporterMemoryState();
+}
+
+/** Stop timers and in-memory state after background cleared storage (open tabs without reload). */
+async function applyRuntimeExtensionReset(message = {}) {
+  const version = clean(message.version || VERSION) || VERSION;
+  const reason = clean(message.reason || '');
+  try {
+    root.workflow.engine.abortScheduledAuto();
+  } catch (_) {}
+  resetImporterMemoryState();
+  await storageSet({ [STORAGE.installedExtensionVersion]: version });
+  const reloadNote = reason === 'update' || reason === 'version-mismatch'
+    ? ' Reload every open CAFM tab (F5), then load your workbook again.'
+    : reason === 'storage-reset'
+      ? ' Reload CAFM tabs if automation was running.'
+      : ' Reload this CAFM tab (F5) if anything still looks stuck.';
+  C().showToast?.(
+    `Extension v${version}: automation stopped and importer data was reset.${reloadNote}`,
+    'warn',
+    22000
+  );
+  C().render?.();
+}
+
+async function reconcileExtensionVersionOnLoad() {
+  const data = await storageGet([STORAGE.installedExtensionVersion, STORAGE.session]);
+  const storedVersion = clean(data[STORAGE.installedExtensionVersion] || '');
+  if (storedVersion === VERSION) return false;
+  const hadPriorMarker = Boolean(storedVersion);
+  const hadSession = Boolean(data[STORAGE.session]);
+  if (hadPriorMarker || hadSession) {
+    await clearImporterDataSilently();
+    C().showToast?.(
+      `Extension updated to v${VERSION}. Session, event log, workbook cache, settings, and learned toolbar data were cleared — reload CAFM tabs and load your workbook again.`,
+      'info',
+      20000
+    );
+  }
+  await storageSet({ [STORAGE.installedExtensionVersion]: VERSION });
+  return hadPriorMarker || hadSession;
+}
+
 async function restoreState() {
+  await reconcileExtensionVersionOnLoad();
   const stored = await storageGet([STORAGE.session, STORAGE.settings, STORAGE.learnedStatus, STORAGE.learnedNew]);
   if (stored[STORAGE.settings]) {
     const previousSettings = stored[STORAGE.settings];
@@ -74,8 +158,10 @@ async function restoreState() {
     C().state.session = {
       ...C().state.session,
       ...stored[STORAGE.session],
-      events: Array.isArray(stored[STORAGE.session].events) ? stored[STORAGE.session].events : (C().state.session.events || [])
+      events: Array.isArray(stored[STORAGE.session].events) ? stored[STORAGE.session].events : []
     };
+  } else if (!Array.isArray(C().state.session.events)) {
+    C().state.session.events = [];
   }
   const cache = await loadLargeWorkbook();
   if (cache?.allAssets?.length || cache?.assets?.length || cache?.ppms?.length) {
@@ -168,6 +254,7 @@ async function skipCurrent() {
   const record = C().currentRecord();
   if (!record) return;
   await setStatus(record, 'skipped', 'Skipped by user');
+  compactSessionAfterAsset(record);
   const next = nextPendingIndex(C().state.session.index + 1);
   if (next >= 0) C().state.session.index = next;
   await persistSession();
@@ -178,6 +265,7 @@ async function markSavedAndNext(note = 'Confirmed saved') {
   const record = C().currentRecord();
   if (!record) return;
   await setStatus(record, 'saved', note);
+  compactSessionAfterAsset(record);
   const next = nextPendingIndex(C().state.session.index + 1);
   if (next >= 0) C().state.session.index = next;
   await persistSession();
@@ -185,14 +273,25 @@ async function markSavedAndNext(note = 'Confirmed saved') {
 }
 
 async function clearSession() {
-  if (!confirm('Clear the loaded workbook and importer progress? This does not delete anything from CAFM.')) return;
-  await clearLargeWorkbook();
-  await storageRemove([STORAGE.session, STORAGE.pendingLookup]);
-  C().state.assets = [];
-  C().state.allAssets = [];
-  C().state.ppms = [];
-  C().state.cache = null;
-  C().state.session = { fileName: '', fileSize: 0, fileModified: 0, index: 0, statuses: {}, newEntityUrl: deriveNewEntityUrl(), auto: null, manualAwaitSave: null, currentLookupEvidence: [] };
+  if (
+    !confirm(
+      'Clear all importer data from this browser?\n\n'
+        + 'Removes: workbook cache, session progress, diagnostic event log, panel settings, learned toolbar buttons, and tab handoff state.\n\n'
+        + 'Does not delete CAFM records or files in your Downloads folder (e.g. exported log.json). Reload CAFM tabs after clearing.\n\n'
+        + 'Continue?'
+    )
+  ) {
+    return;
+  }
+  await clearImporterDataSilently();
+  if (!Array.isArray(C().state.session.events)) C().state.session.events = [];
+  await persistSession();
+  downloadFreshLogJsonAfterClear();
+  C().showToast?.(
+    'Importer storage cleared. A fresh empty log.json was saved to Downloads. Reload CAFM tabs, then load your workbook again.',
+    'success',
+    14000
+  );
   C().render();
 }
 
@@ -207,11 +306,13 @@ function downloadLog() {
     const info = C().state.session.statuses?.[record.assetCode] || {};
     const linkedCount = C().linkedPpms(record).length;
     const ppmResults = (info.ppmResults || []).map((item) => `${item.status || ''}:${item.ppmKey || ''}:${item.instruction || ''}`).join(' | ');
-    const warnings = (info.validationWarnings || []).map((item) => `${item.scope || ''}:${item.tab || ''}:${item.field || ''}: expected=${item.expected || ''}: actual=${item.actual || ''}: ${item.reason || ''}`).join(' | ');
+    const warningList = info.validationWarnings || [];
+    const warningCount = warningList.length || Number(info.validationWarningCount || 0);
+    const warnings = warningList.map((item) => `${item.scope || ''}:${item.tab || ''}:${item.field || ''}: expected=${item.expected || ''}: actual=${item.actual || ''}: ${item.reason || ''}`).join(' | ');
     rows.push([
       record.assetCode, record.workbookRow, info.status || 'pending', info.note || '', info.updatedAt || '',
       info.cafmEntityId || '', info.assetActivated ? 'YES' : 'NO', info.assetActivatedAt || '', info.assetStatusEvidence || '',
-      linkedCount, ppmResults, (info.validationWarnings || []).length, warnings
+      linkedCount, ppmResults, warningCount, warnings
     ]);
   }
   const csv = rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
@@ -246,9 +347,11 @@ function summarizeEvents(events = []) {
 }
 
 function buildDiagnosticPayload(record) {
-  const auto = C().state.session.auto || null;
+  const session = C().state.session || {};
+  const auto = session.auto || null;
   const resolved = record || C().workflowRecord(auto) || C().currentRecord();
-  const recentEvents = (C().state.session.events || []).slice(-2000);
+  const events = Array.isArray(session.events) ? session.events : [];
+  const recentEvents = events.slice(-2000);
   return {
     generatedAt: new Date().toISOString(),
     extensionVersion: VERSION,
@@ -291,7 +394,7 @@ function downloadAssetTimeline(record, options = {}) {
   const assetCode = clean(record?.assetCode || payload.current?.assetCode || 'no-asset').replace(/[^A-Za-z0-9_-]+/g, '_');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const prefix = options.diagnostic ? 'EE_CAFM_Diagnostic' : 'EE_CAFM_Timeline';
-  const fileName = `${prefix}_v${VERSION}_${assetCode}_${stamp}.json`;
+  const fileName = options.logJson ? 'log.json' : `${prefix}_v${VERSION}_${assetCode}_${stamp}.json`;
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -299,19 +402,27 @@ function downloadAssetTimeline(record, options = {}) {
   a.download = fileName;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  try {
-    C().addEvent('asset-timeline-download', {
-      assetCode: record?.assetCode || payload.current?.assetCode || '',
-      auto: Boolean(options.auto),
-      fileName
-    });
-  } catch (_) {}
+  if (!options.skipAddEvent) {
+    try {
+      C().addEvent('asset-timeline-download', {
+        assetCode: record?.assetCode || payload.current?.assetCode || '',
+        auto: Boolean(options.auto),
+        fileName
+      });
+    } catch (_) {}
+  }
   return fileName;
 }
 
 function downloadDiagnostic() {
   const record = C().workflowRecord(C().state.session.auto) || C().currentRecord();
-  downloadAssetTimeline(record, { diagnostic: true });
+  downloadAssetTimeline(record, { diagnostic: true, logJson: true });
+}
+
+function downloadFreshLogJsonAfterClear() {
+  try {
+    downloadAssetTimeline(null, { diagnostic: true, logJson: true, skipAddEvent: true });
+  } catch (_) {}
 }
 
 async function setStatus(record, status, note = '', extra = {}) {
@@ -343,6 +454,76 @@ function nextPendingIndex(start = C().state.session.index + 1) {
   }
   return -1;
 }
+
+function slimPpmResultsForStorage(ppmResults = []) {
+  return (ppmResults || [])
+    .map((item) => ({
+      ppmKey: clean(item?.ppmKey),
+      status: clean(item?.status),
+      active: Boolean(item?.active),
+      ppmEntityId: clean(item?.ppmEntityId || '')
+    }))
+    .filter((item) => item.ppmKey);
+}
+
+function compactStatusEntry(info = {}, record = null) {
+  const status = clean(info.status || 'pending');
+  const warnings = Array.isArray(info.validationWarnings) ? info.validationWarnings : [];
+  const ppmResults = slimPpmResultsForStorage(info.ppmResults);
+  const compact = {
+    status,
+    note: clean(info.note || '').slice(0, 600),
+    workbookRow: info.workbookRow ?? record?.workbookRow,
+    updatedAt: info.updatedAt || new Date().toISOString(),
+    cafmEntityId: clean(info.cafmEntityId || ''),
+    assetActivated: Boolean(info.assetActivated),
+    assetActivatedAt: clean(info.assetActivatedAt || ''),
+    ppmResults
+  };
+  if (status === 'failed') {
+    compact.validationWarnings = warnings.slice(-30);
+  } else {
+    compact.validationWarningCount = warnings.length;
+  }
+  return compact;
+}
+
+/** Drop heavy session history after an asset cycle; keeps progress + slim statuses for resume. */
+function compactSessionAfterAsset(record = null) {
+  if (C().state.settings.keepFullSessionHistory) return;
+
+  const assetsByCode = Object.create(null);
+  for (const row of C().state.assets || []) {
+    if (row?.assetCode) assetsByCode[row.assetCode] = row;
+  }
+
+  const statuses = C().state.session.statuses || {};
+  const nextStatuses = { ...statuses };
+  for (const [assetCode, info] of Object.entries(statuses)) {
+    if (!info || typeof info !== 'object') continue;
+    const st = clean(info.status || 'pending');
+    if (!['saved', 'skipped', 'failed'].includes(st)) continue;
+    nextStatuses[assetCode] = compactStatusEntry(info, assetsByCode[assetCode] || { assetCode, workbookRow: info.workbookRow });
+  }
+  C().state.session.statuses = nextStatuses;
+  C().state.session.events = [];
+  C().state.session.currentLookupEvidence = [];
+
+  const auto = C().state.session.auto;
+  if (auto && !auto.active && clean(auto.phase) === 'complete') {
+    C().state.session.auto = {
+      active: false,
+      mode: auto.mode || 'automatic',
+      phase: 'complete',
+      completedAt: auto.completedAt || Date.now(),
+      processedThisRun: Number(auto.processedThisRun || 0) || undefined,
+      maxIterations: Number(auto.maxIterations || 0) || undefined,
+      assetCode: clean(auto.assetCode || record?.assetCode || ''),
+      assetEntityId: clean(auto.assetEntityId || '')
+    };
+  }
+}
+
   root.data = root.data || {};
   root.data.workbook = Object.freeze({
     configure,
@@ -362,6 +543,9 @@ function nextPendingIndex(start = C().state.session.index + 1) {
     summarizeEvents,
     setStatus,
     statusOf,
-    nextPendingIndex
+    nextPendingIndex,
+    compactSessionAfterAsset,
+    clearImporterDataSilently,
+    applyRuntimeExtensionReset
   });
 })();
