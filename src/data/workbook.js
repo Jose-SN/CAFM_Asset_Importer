@@ -132,8 +132,10 @@ async function restoreState() {
     C().state.session = {
       ...C().state.session,
       ...stored[STORAGE.session],
-      events: Array.isArray(stored[STORAGE.session].events) ? stored[STORAGE.session].events : (C().state.session.events || [])
+      events: Array.isArray(stored[STORAGE.session].events) ? stored[STORAGE.session].events : []
     };
+  } else if (!Array.isArray(C().state.session.events)) {
+    C().state.session.events = [];
   }
   const cache = await loadLargeWorkbook();
   if (cache?.allAssets?.length || cache?.assets?.length || cache?.ppms?.length) {
@@ -256,8 +258,11 @@ async function clearSession() {
     return;
   }
   await clearImporterDataSilently();
+  if (!Array.isArray(C().state.session.events)) C().state.session.events = [];
+  await persistSession();
+  downloadFreshLogJsonAfterClear();
   C().showToast?.(
-    'Importer storage cleared. Reload CAFM tabs, then load your workbook again.',
+    'Importer storage cleared. A fresh empty log.json was saved to Downloads. Reload CAFM tabs, then load your workbook again.',
     'success',
     14000
   );
@@ -316,9 +321,11 @@ function summarizeEvents(events = []) {
 }
 
 function buildDiagnosticPayload(record) {
-  const auto = C().state.session.auto || null;
+  const session = C().state.session || {};
+  const auto = session.auto || null;
   const resolved = record || C().workflowRecord(auto) || C().currentRecord();
-  const recentEvents = (C().state.session.events || []).slice(-2000);
+  const events = Array.isArray(session.events) ? session.events : [];
+  const recentEvents = events.slice(-2000);
   return {
     generatedAt: new Date().toISOString(),
     extensionVersion: VERSION,
@@ -361,7 +368,7 @@ function downloadAssetTimeline(record, options = {}) {
   const assetCode = clean(record?.assetCode || payload.current?.assetCode || 'no-asset').replace(/[^A-Za-z0-9_-]+/g, '_');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const prefix = options.diagnostic ? 'EE_CAFM_Diagnostic' : 'EE_CAFM_Timeline';
-  const fileName = `${prefix}_v${VERSION}_${assetCode}_${stamp}.json`;
+  const fileName = options.logJson ? 'log.json' : `${prefix}_v${VERSION}_${assetCode}_${stamp}.json`;
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -369,19 +376,27 @@ function downloadAssetTimeline(record, options = {}) {
   a.download = fileName;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  try {
-    C().addEvent('asset-timeline-download', {
-      assetCode: record?.assetCode || payload.current?.assetCode || '',
-      auto: Boolean(options.auto),
-      fileName
-    });
-  } catch (_) {}
+  if (!options.skipAddEvent) {
+    try {
+      C().addEvent('asset-timeline-download', {
+        assetCode: record?.assetCode || payload.current?.assetCode || '',
+        auto: Boolean(options.auto),
+        fileName
+      });
+    } catch (_) {}
+  }
   return fileName;
 }
 
 function downloadDiagnostic() {
   const record = C().workflowRecord(C().state.session.auto) || C().currentRecord();
-  downloadAssetTimeline(record, { diagnostic: true });
+  downloadAssetTimeline(record, { diagnostic: true, logJson: true });
+}
+
+function downloadFreshLogJsonAfterClear() {
+  try {
+    downloadAssetTimeline(null, { diagnostic: true, logJson: true, skipAddEvent: true });
+  } catch (_) {}
 }
 
 async function setStatus(record, status, note = '', extra = {}) {
