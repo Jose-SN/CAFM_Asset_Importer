@@ -1,5 +1,5 @@
-# v8.0.50
-- **PPM post-save register**: after Save, close editor, then one parent register Refresh (no multi-second wait or grid verify/retry loop).
+# v8.0.51
+- **PPM register Refresh**: reverted today’s refresh-loop / delay / verify changes; post-save handoff matches pre-8.0.48 behavior.
 
 # v8.0.49
 - **Version alignment**: panel, diagnostics, and popup read `manifest.json` version; `tools/sync-version-from-manifest.js` keeps derived files in sync.

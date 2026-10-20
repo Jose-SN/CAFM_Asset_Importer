@@ -9,85 +9,6 @@
   /** After Create New is invoked, poll for the child editor this long before a single retry click. */
   const PPM_CREATE_NEW_OPEN_WAIT_MS = 3000;
   const PPM_CREATE_NEW_MAX_CLICKS = 5;
-  /** Safety cap on register Refresh clicks per PPM index (duplicate-child recovery only). */
-  const PPM_PARENT_REFRESH_MAX_PER_INDEX = 5;
-
-  function ppmParentRefreshCount(auto, ppmIndex = Number(auto?.ppmIndex || 0)) {
-    const refreshCounts = auto?.ppmParentRefreshCounts || {};
-    return Number(refreshCounts[ppmIndex] || 0);
-  }
-
-  function ppmParentRefreshLimitError(ppmIndex, count) {
-    return `PPM register refresh limit reached (${count} refreshes for PPM row ${ppmIndex + 1}). Close any leftover CAFM PPM editor tabs or windows, click Refresh once on the PPM register, then resume automatic import.`;
-  }
-
-  function assertPpmParentRefreshUnderLimit(auto) {
-    const ppmIndex = Number(auto?.ppmIndex || 0);
-    const count = ppmParentRefreshCount(auto, ppmIndex);
-    if (count >= PPM_PARENT_REFRESH_MAX_PER_INDEX) {
-      throw new Error(ppmParentRefreshLimitError(ppmIndex, count));
-    }
-  }
-
-  function buildPpmParentRefreshSession(auto, afterRefreshPhase) {
-    const ppmIndex = Number(auto?.ppmIndex || 0);
-    const refreshCounts = { ...(auto?.ppmParentRefreshCounts || {}) };
-    refreshCounts[ppmIndex] = ppmParentRefreshCount(auto, ppmIndex) + 1;
-    const resolvedAfter = String(afterRefreshPhase || auto?.ppmAfterRefreshPhase || 'ppm_next');
-    return {
-      ...auto,
-      phase: 'ppm_parent_refresh',
-      ppmAfterRefreshPhase: resolvedAfter,
-      ppmParentRefreshStartedAt: 0,
-      ppmParentRefreshClickedAt: 0,
-      ppmParentRefreshPageInstance: '',
-      ppmParentRefreshSawDisabled: false,
-      ppmParentRefreshCycleId: `${Date.now()}-${ppmIndex}`,
-      ppmParentRefreshCounts: refreshCounts
-    };
-  }
-
-  function isPostSavePpmCloseHandoff(auto) {
-    const phase = String(auto?.phase || '');
-    return phase === 'ppm_child_closing' || Boolean(clean(auto?.ppmAfterRefreshPhase));
-  }
-
-  /**
-   * Arm parent refresh after PPM child close (background messages). Returns null when coalesced.
-   * @throws when per-row refresh limit exceeded
-   */
-  function tryArmPpmParentRefreshAfterChildClose(currentAuto, afterRefreshPhase) {
-    const phase = String(currentAuto?.phase || '');
-    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait', 'ppm_parent_refresh_delay'].includes(phase)) {
-      return null;
-    }
-    const postSaveClose = isPostSavePpmCloseHandoff(currentAuto);
-    if (!postSaveClose) {
-      if (['ppm_open_list', 'ppm_wait_new', 'ppm_wait_user_new'].includes(phase)) {
-        return null;
-      }
-      if (currentAuto?.ppmRefreshJustCompleted) {
-        return null;
-      }
-    }
-    const lastNotify = Number(currentAuto?.ppmParentCloseNotifyAt || 0);
-    if (lastNotify && Date.now() - lastNotify < 2500) {
-      return null;
-    }
-    assertPpmParentRefreshUnderLimit(currentAuto);
-    const resolvedAfter = String(afterRefreshPhase || currentAuto?.ppmAfterRefreshPhase || 'ppm_next');
-    return {
-      ...buildPpmParentRefreshSession(currentAuto, resolvedAfter),
-      active: true,
-      ppmRefreshJustCompleted: false,
-      ppmParentCloseNotifyAt: Date.now(),
-      ppmNewClickedForIndex: -1,
-      ppmListReadyStartedAt: 0,
-      ppmOpenStartedAt: 0,
-      ppmNewClickAttempts: 0,
-      ppmNewLastClickAt: 0
-    };
-  }
 
   function findLearnedPpmNewButton() {
     const b = $();
@@ -298,25 +219,6 @@
         clickAttempts
       });
       await sweepPpmChildren(record, { context: 'duplicate-child-detected' });
-      const childAfterSweep = await getPpmChildState(record.assetCode);
-      if (!childAfterSweep?.found) {
-        b.addEvent('ppm-duplicate-child-cleared', { assetCode: record.assetCode, ppmKey: ppm.ppmKey });
-        b.state.session.auto = {
-          ...auto,
-          phase: 'ppm_wait_new',
-          ppmOpenStartedAt: Number(auto.ppmOpenStartedAt || Date.now()),
-          ppmNewClickAttempts: 0,
-          ppmNewLastClickAt: 0,
-          ppmNewClickedForIndex: -1
-        };
-        await b.persistSession();
-        b.scheduleAuto(350);
-        return true;
-      }
-      const afterSweep = analyzePpmChildUrl(childAfterSweep.url);
-      if (afterSweep.kind === 'new-ppm') {
-        return await handlePpmChildWindow(record, auto, ppm, childAfterSweep, openElapsed);
-      }
       await beginPpmParentRefresh(auto, auto.ppmAfterRefreshPhase || 'ppm_next');
       return true;
     }
@@ -541,7 +443,7 @@
   async function beginPpmParentRefresh(auto, afterRefreshPhase) {
     const b = $();
     const phase = String(auto.phase || '');
-    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait', 'ppm_parent_refresh_delay'].includes(phase)) {
+    if (['ppm_parent_refresh', 'ppm_parent_refresh_wait'].includes(phase)) {
       const mergedAfter = afterRefreshPhase || auto.ppmAfterRefreshPhase || 'ppm_next';
       if (mergedAfter !== auto.ppmAfterRefreshPhase) {
         b.state.session.auto = { ...auto, ppmAfterRefreshPhase: mergedAfter };
@@ -550,8 +452,20 @@
       b.scheduleAuto(200);
       return;
     }
-    assertPpmParentRefreshUnderLimit(auto);
-    b.state.session.auto = buildPpmParentRefreshSession(auto, afterRefreshPhase);
+    const ppmIndex = Number(auto.ppmIndex || 0);
+    const refreshCounts = { ...(auto.ppmParentRefreshCounts || {}) };
+    refreshCounts[ppmIndex] = Number(refreshCounts[ppmIndex] || 0) + 1;
+    b.state.session.auto = {
+      ...auto,
+      phase: 'ppm_parent_refresh',
+      ppmAfterRefreshPhase: afterRefreshPhase,
+      ppmParentRefreshStartedAt: 0,
+      ppmParentRefreshClickedAt: 0,
+      ppmParentRefreshPageInstance: '',
+      ppmParentRefreshSawDisabled: false,
+      ppmParentRefreshCycleId: `${Date.now()}-${ppmIndex}`,
+      ppmParentRefreshCounts: refreshCounts
+    };
     await b.persistSession();
     b.scheduleAuto(100);
   }
@@ -764,7 +678,6 @@
     if (Number(auto.ppmGridRefreshedForIndex ?? -1) === Number(ppmIndex)) return false;
     // First visit after PPM tab navigation — grid is already loading; refresh causes loops on embedded tab.
     if (String(auto.phase || '') === 'ppm_open_list') return false;
-    if (ppmParentRefreshCount(auto, ppmIndex) >= PPM_PARENT_REFRESH_MAX_PER_INDEX) return false;
     const refreshCounts = auto.ppmParentRefreshCounts || {};
     if (Number(refreshCounts[ppmIndex] || 0) >= 2) return false;
     return true;
@@ -907,17 +820,6 @@
       return;
     }
 
-    if (auto.phase === 'ppm_parent_refresh_delay') {
-      b.state.session.auto = {
-        ...auto,
-        phase: 'ppm_parent_refresh',
-        ppmParentRefreshDueAt: 0
-      };
-      await b.persistSession();
-      b.scheduleAuto(100);
-      return;
-    }
-
     if (auto.phase === 'ppm_parent_refresh') {
       const inFlightClick = Number(auto.ppmParentRefreshClickedAt || 0);
       if (inFlightClick && Date.now() - inFlightClick < 8000) {
@@ -972,8 +874,7 @@
         auto = b.state.session.auto || {};
       }
       const toolbarReadyAgain = Boolean(refreshButton) && !disabledNow && document.readyState === 'complete' && elapsed >= 500;
-      const minSettleMs = 1500;
-      const refreshSettled = elapsed >= minSettleMs && document.readyState === 'complete';
+      const refreshSettled = elapsed >= 1800 && document.readyState === 'complete';
       if (!pageReloaded && !toolbarReadyAgain && !refreshSettled) {
         if (elapsed > b.state.settings.lookupTimeoutMs) throw new Error('Parent PPM page refresh did not complete before timeout.');
         b.scheduleAuto(250);
@@ -1276,7 +1177,6 @@
     analyzePpmChildUrl,
     sweepPpmChildren,
     beginPpmParentRefresh,
-    tryArmPpmParentRefreshAfterChildClose,
     beginPpmCycleGeneralWait,
     completePpmCycleOnParent,
     allLinkedPpmsDone,

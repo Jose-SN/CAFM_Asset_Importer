@@ -23,7 +23,7 @@
       id: 'ppm-register',
       label: 'PPM Register (parent)',
       test: () => pages.isPpmRegisterParentPage(),
-      phases: ['ppm_open_list', 'ppm_wait_new', 'ppm_wait_user_new', 'ppm_next', 'ppm_parent_refresh', 'ppm_parent_refresh_delay', 'ppm_parent_refresh_wait', 'ppm_cycle_complete_parent', 'ppm_cycle_general_wait'],
+      phases: ['ppm_open_list', 'ppm_wait_new', 'ppm_wait_user_new', 'ppm_next', 'ppm_parent_refresh', 'ppm_parent_refresh_wait', 'ppm_cycle_complete_parent', 'ppm_cycle_general_wait'],
       handler: 'processPpmListPage'
     },
     {

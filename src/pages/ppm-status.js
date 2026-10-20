@@ -137,8 +137,7 @@
       ppmNewClickedForIndex: -1,
       ppmListReadyStartedAt: 0,
       ppmAfterRefreshPhase: afterRefreshPhase,
-      ppmParentRefreshStartedAt: 0,
-      ppmRefreshJustCompleted: false
+      ppmParentRefreshStartedAt: 0
     };
     await b.persistSession();
     b.addEvent('ppm-child-complete', {

@@ -13,25 +13,40 @@
   }
 
   function schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase) {
-    const arm = root.pages?.ppmRegister?.tryArmPpmParentRefreshAfterChildClose;
-    if (typeof arm === 'function') {
-      return arm(currentAuto, afterRefreshPhase);
+    const phase = String(currentAuto.phase || '');
+    if ([
+      'ppm_parent_refresh',
+      'ppm_parent_refresh_wait',
+      'ppm_open_list',
+      'ppm_wait_new',
+      'ppm_wait_user_new'
+    ].includes(phase)) {
+      return null;
     }
-    return null;
-  }
-
-  async function stopAutomaticFromMessage(error) {
-    const { state, addEvent, persistSession, render, showActivity } = C();
-    const message = String(error?.message || error || 'Automatic import stopped.');
-    addEvent('error', { message, source: 'ppm-parent-refresh-limit' });
-    if (state.session.auto) {
-      state.session.auto.failedPhase = state.session.auto.phase;
-      state.session.auto.active = false;
-      state.session.auto.phase = 'paused';
+    if (currentAuto.ppmRefreshJustCompleted) {
+      return null;
     }
-    await persistSession();
-    render();
-    showActivity?.('Stopped', 'PPM register refresh', message, { wait: false, type: 'error', duration: 16000 });
+    const lastNotify = Number(currentAuto.ppmParentCloseNotifyAt || 0);
+    if (lastNotify && Date.now() - lastNotify < 2500) {
+      return null;
+    }
+    const resolvedAfter = String(afterRefreshPhase || currentAuto.ppmAfterRefreshPhase || 'ppm_next');
+    return {
+      ...currentAuto,
+      active: true,
+      phase: 'ppm_parent_refresh',
+      ppmAfterRefreshPhase: resolvedAfter,
+      ppmParentRefreshStartedAt: 0,
+      ppmParentRefreshClickedAt: 0,
+      ppmParentRefreshPageInstance: '',
+      ppmParentRefreshSawDisabled: false,
+      ppmParentCloseNotifyAt: Date.now(),
+      ppmNewClickedForIndex: -1,
+      ppmListReadyStartedAt: 0,
+      ppmOpenStartedAt: 0,
+      ppmNewClickAttempts: 0,
+      ppmNewLastClickAt: 0
+    };
   }
 
   function initMessageListeners() {
@@ -128,13 +143,7 @@
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
           const currentAuto = state.session.auto || {};
           const afterRefreshPhase = String(message.nextPhase || 'ppm_next');
-          let nextAuto;
-          try {
-            nextAuto = schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase);
-          } catch (error) {
-            await stopAutomaticFromMessage(error);
-            return;
-          }
+          const nextAuto = schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase);
           if (!nextAuto) {
             addEvent('ppm-parent-refresh-coalesced', { afterRefreshPhase, priorPhase: currentAuto.phase || '' });
             return;
@@ -148,12 +157,10 @@
           showActivity?.(
             'Waiting',
             'PPM editor closed',
-            afterRefreshPhase === 'ppm_cycle_complete_parent'
-              ? 'Refreshing register · finishing PPMs'
-              : `Refreshing register · then Create New (PPM ${ppmSlot})`,
+            afterRefreshPhase === 'ppm_cycle_complete_parent' ? 'Refreshing register · finishing PPMs' : `Refreshing register · then Create New (PPM ${ppmSlot})`,
             { wait: true, meta: nextPpm?.instruction || handoffRecord?.assetCode || '', tick: true }
           );
-          scheduleAuto(200);
+          scheduleAuto(100);
         }).catch(() => scheduleAuto(200));
         return;
       }
@@ -170,13 +177,7 @@
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
           const currentAuto = state.session.auto || {};
           const afterRefreshPhase = String(message.afterRefreshPhase || currentAuto.ppmAfterRefreshPhase || 'ppm_next');
-          let nextAuto;
-          try {
-            nextAuto = schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase);
-          } catch (error) {
-            await stopAutomaticFromMessage(error);
-            return;
-          }
+          const nextAuto = schedulePpmParentRefreshAfterClose(currentAuto, afterRefreshPhase);
           if (!nextAuto) {
             addEvent('ppm-parent-refresh-coalesced', { afterRefreshPhase, priorPhase: currentAuto.phase || '', source: 'child-done' });
             return;
@@ -192,7 +193,7 @@
             `Refreshing register · PPM ${(Number(nextAuto.ppmIndex) || 0) + 1}`,
             { wait: true, meta: nextPpm?.instruction || handoffRecord?.assetCode || '', tick: true }
           );
-          scheduleAuto(200);
+          scheduleAuto(50);
         }).catch(() => scheduleAuto(150));
       }
     });
