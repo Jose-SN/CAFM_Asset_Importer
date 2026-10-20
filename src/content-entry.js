@@ -200,6 +200,7 @@
     configureEvents({ state, workflowRecord, currentRecord, persistSession, showToast });
     configureMessages({
       state, addEvent, storageGet, persistSession, render, scheduleAuto, runAutomatic,
+      stopAutomaticWithError: CI.workflow.engine.stopAutomaticWithError,
       isPpmRegisterParentPage, isPpmItemPage: CI.core.pages.isPpmItemPage, isAssetPage,
       assetEntityUrl: CI.core.pages.assetEntityUrl,
       entityIdFromUrl: CI.core.pages.entityIdFromUrl,

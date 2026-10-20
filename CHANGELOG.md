@@ -1,3 +1,6 @@
+# v8.0.53
+- **Loop safety**: stop automatic import after 25 repeats in the same phase, 25 PPM register Refresh clicks per run, or 25 background orchestrator ticks; clear error instead of browser OOM.
+
 # v8.0.52
 - **PPM multi-row handoff**: record each save in session (with CAFM or session entity id) before close; parent skips register Refresh and opens Create New for the next linked row.
 

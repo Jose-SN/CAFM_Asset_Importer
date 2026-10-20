@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.52",
-  "version": "8.0.52",
-  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.52: post-save 3s wait, verify PPM row, refresh up to 5x.",
+  "name": "Engineering Efficiency Ltd - CAFM Asset + PPM Importer v8.0.54",
+  "version": "8.0.54",
+  "description": "Engineering Efficiency CAFM Asset + PPM importer v8.0.54: post-save 3s wait, verify PPM row, refresh up to 5x.",
   "permissions": [
     "storage",
     "unlimitedStorage",
@@ -37,6 +37,7 @@
         "src/core/toolbar.js",
         "src/core/teach.js",
         "src/workflow/phases.js",
+        "src/workflow/loop-safety.js",
         "src/runtime/host.js",
         "src/runtime/messages.js",
         "src/data/ppm.js",

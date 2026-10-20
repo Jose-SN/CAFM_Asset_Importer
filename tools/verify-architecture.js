@@ -34,6 +34,7 @@ const requiredNamespaces = [
   ['src/pages/ppm-register.js', 'processPpmListPage'],
   ['src/pages/ppm-editor.js', 'processPpmItemPage'],
   ['src/pages/ppm-status.js', 'processPpmStatusPage'],
+  ['src/workflow/loop-safety.js', 'loopSafety'],
   ['src/workflow/engine.js', 'runAutomatic'],
   ['src/data/field-registry.js', 'ASSET_DIRECT_FIELDS'],
   ['src/data/preflight.js', 'summarize'],

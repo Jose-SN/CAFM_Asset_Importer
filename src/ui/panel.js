@@ -242,6 +242,10 @@ function render() {
   C().state.els.iterateBatch.checked = Boolean(C().state.settings.iterationEnabled);
   C().state.els.iterationCount.value = String(Math.max(1, Number(C().state.settings.iterationCount) || 1));
   C().state.els.iterationCount.disabled = !C().state.settings.iterationEnabled;
+  if (C().state.els.safetyLoopMaxSteps) {
+    const loopMax = Math.max(5, Math.min(500, Math.floor(Number(C().state.settings.safetyLoopMaxSteps) || 25)));
+    C().state.els.safetyLoopMaxSteps.value = String(loopMax);
+  }
   C().state.els.includeNotes.checked = Boolean(C().state.settings.includeNotes);
   C().state.els.includeSpatial.checked = Boolean(C().state.settings.includeSpatial);
   C().state.els.skipInvalid.checked = Boolean(C().state.settings.skipInvalidRows);
@@ -434,7 +438,8 @@ function injectPanel() {
           <div id="progressLabel" class="muted" hidden style="margin-top:4px;font-size:10px"></div>
           <label class="option"><input id="iterateBatch" type="checkbox"> Enable multiple asset iterations</label>
           <label class="option">Asset iteration count <input id="iterationCount" type="number" min="1" max="10000" step="1" value="1" style="width:90px"></label>
-          <div class="muted" style="margin:4px 0 8px">Unchecked = exactly one complete Asset + linked PPM cycle, then stop. Checked = continue until the asset iteration count is reached.</div>
+          <label class="option">Max safety loop steps <input id="safetyLoopMaxSteps" type="number" min="5" max="500" step="1" value="25" style="width:90px"></label>
+          <div class="muted" style="margin:4px 0 8px">Unchecked = exactly one complete Asset + linked PPM cycle, then stop. Checked = continue until the asset iteration count is reached. Safety loop steps cap Refresh clicks, Create New retries, and same-phase polling per asset (not how many workbook rows you import).</div>
           <label class="option"><input id="includeNotes" type="checkbox"> Include Notes tab only when workbook data is populated</label>
           <label class="option"><input id="includeSpatial" type="checkbox"> Include Spatial / GIS tab only when workbook data is populated</label>
           <label class="option"><input id="skipInvalid" type="checkbox"> Skip invalid workbook rows instead of stopping</label>
@@ -464,7 +469,7 @@ function injectPanel() {
     </div>
   `;
 
-  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'autoDownloadTimeline', 'keepFullSessionHistory', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
+  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'safetyLoopMaxSteps', 'includeNotes', 'includeSpatial', 'skipInvalid', 'autoDownloadTimeline', 'keepFullSessionHistory', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
   for (const id of ids) C().state.els[id] = shadow.getElementById(id);
   root.ui.progressToast.configureToastElements({
     toast: C().state.els.toast,
@@ -590,6 +595,14 @@ function injectPanel() {
   });
   C().state.els.iterationCount.addEventListener('change', async () => {
     C().state.settings.iterationCount = Math.max(1, Math.min(10000, Math.floor(Number(C().state.els.iterationCount.value) || 1)));
+    await C().persistSession();
+    render();
+  });
+  C().state.els.safetyLoopMaxSteps.addEventListener('change', async () => {
+    const n = Math.max(5, Math.min(500, Math.floor(Number(C().state.els.safetyLoopMaxSteps.value) || 25)));
+    C().state.settings.safetyLoopMaxSteps = n;
+    C().state.settings.workflowLoopMaxSteps = n;
+    C().state.settings.ppmRegisterRefreshMaxClicks = n;
     await C().persistSession();
     render();
   });

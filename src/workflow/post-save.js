@@ -35,7 +35,10 @@
       activationConfirmStartedAt: 0,
       ppmIndex: 0,
       ppmResults: [],
-      error: ''
+      error: '',
+      ...root.workflow.loopSafety.resetSafetyLoopCounters(),
+      toolbarRetryCounts: {},
+      ppmParentRefreshCounts: {}
     };
     b.state.session.manualAwaitSave = null;
     await b.persistSession();
@@ -158,7 +161,10 @@
       processedThisRun: completedIterations,
       maxIterations: Math.max(1, Number(auto.maxIterations || 1)),
       ppmIndex: 0,
-      ppmResults: []
+      ppmResults: [],
+      ...root.workflow.loopSafety.resetSafetyLoopCounters(),
+      toolbarRetryCounts: {},
+      ppmParentRefreshCounts: {}
     };
     await b.persistSession();
     b.render();
@@ -253,7 +259,10 @@
       processedThisRun: completedIterations,
       maxIterations: Math.max(1, Number(auto.maxIterations || 1)),
       ppmIndex: 0,
-      ppmResults: []
+      ppmResults: [],
+      ...root.workflow.loopSafety.resetSafetyLoopCounters(),
+      toolbarRetryCounts: {},
+      ppmParentRefreshCounts: {}
     };
     await b.persistSession();
     b.render();
@@ -290,7 +299,9 @@
       ppmIndex: 0,
       ppmResults: auto.ppmResults || [],
       ppmGridRefreshedForIndex: 0,
-      ppmParentRefreshCounts: {}
+      ppmParentRefreshCounts: {},
+      ...root.workflow.loopSafety.resetSafetyLoopCounters(),
+      toolbarRetryCounts: {}
     };
     await b.persistSession();
     b.render();
