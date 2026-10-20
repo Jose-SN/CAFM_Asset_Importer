@@ -9,7 +9,7 @@
       const fromManifest = chrome?.runtime?.getManifest?.()?.version;
       if (fromManifest) return String(fromManifest);
     } catch (_) {}
-    return '8.0.51'; // fallback — auto-synced from manifest.json; run tools/sync-version-from-manifest.js
+    return '8.0.52'; // fallback — auto-synced from manifest.json; run tools/sync-version-from-manifest.js
   }
 
   root.core.constants = Object.freeze({

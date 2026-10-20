@@ -814,6 +814,16 @@
       return;
     }
 
+    if (auto.phase === 'ppm_next' && auto.ppmRefreshJustCompleted) {
+      await sweepPpmChildren(record, { context: 'post-close-no-refresh' });
+      const ppm = b.currentPpm(record);
+      if (ppm && await trySkipExistingPpm(record, ppm, auto)) {
+        return;
+      }
+      await attemptPpmCreateNewClick(record, auto);
+      return;
+    }
+
     if (!isPpmRegisterParentPage()) {
       b.addEvent('ppm-register-passive-not-parent', { url: location.href, assetCode: record?.assetCode || '' });
       await b.persistSession();

@@ -1,3 +1,6 @@
+# v8.0.52
+- **PPM multi-row handoff**: record each save in session (with CAFM or session entity id) before close; parent skips register Refresh and opens Create New for the next linked row.
+
 # v8.0.51
 - **PPM register Refresh**: reverted today’s refresh-loop / delay / verify changes; post-save handoff matches pre-8.0.48 behavior.
 

@@ -127,17 +127,21 @@
     const afterRefreshPhase = hasNext ? 'ppm_next' : 'ppm_cycle_complete_parent';
     const nextPhase = hasNext ? 'ppm_next' : 'ppm_cycle_complete_parent';
 
+    const nextPpmIndex = hasNext ? nextIndex : Number(auto.ppmIndex || 0);
     b.state.session.auto = {
       ...auto,
       phase: 'ppm_child_closing',
-      ppmIndex: hasNext ? nextIndex : Number(auto.ppmIndex || 0),
+      ppmIndex: nextPpmIndex,
       ppmResults: results,
       ppmResumeAfterActivation: false,
       ppmResumeIndex: null,
       ppmNewClickedForIndex: -1,
       ppmListReadyStartedAt: 0,
       ppmAfterRefreshPhase: afterRefreshPhase,
-      ppmParentRefreshStartedAt: 0
+      ppmParentRefreshStartedAt: 0,
+      ppmSkipRegisterRefresh: true,
+      ppmGridRefreshedForIndex: nextPpmIndex,
+      ppmRefreshJustCompleted: false
     };
     await b.persistSession();
     b.addEvent('ppm-child-complete', {
@@ -299,13 +303,15 @@
       b.addEvent('ppm-save-result-ignored', { ppmKey: ppm.ppmKey, priorStatus: prior.status });
       return;
     }
-    b.addEvent('ppm-save-result', { ppmKey: ppm.ppmKey, instruction: ppm.instruction, status, ppmEntityId });
+    const resolvedPpmEntityId = clean(ppmEntityId)
+      || `session-${clean(ppm.ppmKey)}-${Date.now().toString(36)}`;
+    b.addEvent('ppm-save-result', { ppmKey: ppm.ppmKey, instruction: ppm.instruction, status, ppmEntityId: resolvedPpmEntityId });
     const results = [...(auto.ppmResults || []), {
       ppmKey: ppm.ppmKey,
       instruction: ppm.instruction,
       status,
       note,
-      ppmEntityId,
+      ppmEntityId: resolvedPpmEntityId,
       activateAfterSave: PPM_ACTIVATION_ENABLED && status === 'saved',
       active: false,
       savedAt: new Date().toISOString()
