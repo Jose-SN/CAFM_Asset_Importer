@@ -29,6 +29,14 @@
     } catch (_) {}
   }
 
+  function abortScheduledAuto() {
+    const b = $();
+    clearTimeout(b.state.autoTimer);
+    b.state.autoTimer = null;
+    b.state.busy = false;
+    root.ui.progressToast.stopTick();
+  }
+
   function scheduleAuto(delay = 0) {
     const b = $();
     clearTimeout(b.state.autoTimer);
@@ -545,6 +553,6 @@
 
   root.workflow = root.workflow || {};
   root.workflow.engine = Object.freeze({
-    scheduleAuto, runAutomatic, startAutomatic, pauseAutomatic, resumeAutomatic, stopAutomaticWithError
+    scheduleAuto, abortScheduledAuto, runAutomatic, startAutomatic, pauseAutomatic, resumeAutomatic, stopAutomaticWithError
   });
 })();

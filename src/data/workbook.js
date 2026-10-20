@@ -79,17 +79,21 @@ function freshEmptySession() {
 }
 
 function resetImporterMemoryState() {
-  C().state.assets = [];
-  C().state.allAssets = [];
-  C().state.ppms = [];
-  C().state.cache = null;
-  C().state.session = freshEmptySession();
-  C().state.settings = { ...DEFAULT_SETTINGS };
-  C().state.learnedStatus = null;
-  C().state.learnedNew = null;
-  C().state.teachStatusArmed = false;
-  C().state.teachNewArmed = false;
-  C().state.lastLoggedPhase = '';
+  const st = C().state;
+  clearTimeout(st.autoTimer);
+  st.autoTimer = null;
+  st.busy = false;
+  st.assets = [];
+  st.allAssets = [];
+  st.ppms = [];
+  st.cache = null;
+  st.session = freshEmptySession();
+  st.settings = { ...DEFAULT_SETTINGS };
+  st.learnedStatus = null;
+  st.learnedNew = null;
+  st.teachStatusArmed = false;
+  st.teachNewArmed = false;
+  st.lastLoggedPhase = '';
 }
 
 async function clearImporterDataSilently() {
@@ -99,6 +103,28 @@ async function clearImporterDataSilently() {
     await runtimeMessage({ type: 'EXTENSION_STORAGE_RESET' });
   } catch (_) {}
   resetImporterMemoryState();
+}
+
+/** Stop timers and in-memory state after background cleared storage (open tabs without reload). */
+async function applyRuntimeExtensionReset(message = {}) {
+  const version = clean(message.version || VERSION) || VERSION;
+  const reason = clean(message.reason || '');
+  try {
+    root.workflow.engine.abortScheduledAuto();
+  } catch (_) {}
+  resetImporterMemoryState();
+  await storageSet({ [STORAGE.installedExtensionVersion]: version });
+  const reloadNote = reason === 'update' || reason === 'version-mismatch'
+    ? ' Reload every open CAFM tab (F5), then load your workbook again.'
+    : reason === 'storage-reset'
+      ? ' Reload CAFM tabs if automation was running.'
+      : ' Reload this CAFM tab (F5) if anything still looks stuck.';
+  C().showToast?.(
+    `Extension v${version}: automation stopped and importer data was reset.${reloadNote}`,
+    'warn',
+    22000
+  );
+  C().render?.();
 }
 
 async function reconcileExtensionVersionOnLoad() {
@@ -519,6 +545,7 @@ function compactSessionAfterAsset(record = null) {
     statusOf,
     nextPendingIndex,
     compactSessionAfterAsset,
-    clearImporterDataSilently
+    clearImporterDataSilently,
+    applyRuntimeExtensionReset
   });
 })();

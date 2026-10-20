@@ -447,7 +447,7 @@ function injectPanel() {
           <label class="option"><input id="keepFullSessionHistory" type="checkbox"> Keep full session history in browser (uses more storage; off trims after each asset)</label>
           <label class="option"><input id="autoContinueNext" type="checkbox"> Auto-continue to next asset after PPM cycle</label>
           <label class="option"><input id="useSaveAndNew" type="checkbox"> Legacy: use Save and New instead of Save and Close between assets</label>
-          <div class="muted">Proceeds when CAFM state is verified. Safety timeouts default to 20s (PPM child wait 15s). Reload the extension at chrome://extensions after code updates.</div>
+          <div class="muted">Proceeds when CAFM state is verified. Safety timeouts default to 20s (PPM child wait 15s). After updating the extension at chrome://extensions, reload every open CAFM tab (F5) — storage and the service worker reset automatically on version change.</div>
         </div>
         <div id="sessionSection" class="section">
           <h3>Session</h3>

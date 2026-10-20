@@ -93,6 +93,11 @@
         isSavedAssetPage, workflowRecord, currentPpm, recordPpmResult, showActivity
       } = C();
 
+      if (message.type === 'EXTENSION_VERSION_RESET') {
+        root.data.workbook.applyRuntimeExtensionReset(message).catch(() => {});
+        return;
+      }
+
       if (message.type === 'RUN_AUTO_STEP') {
         storageGet([STORAGE.session]).then(async (stored) => {
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };

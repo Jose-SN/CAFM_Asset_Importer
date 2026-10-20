@@ -4,6 +4,15 @@
   const CI = globalThis.CAFMImporter;
   if (!CI?.core?.constants) return;
 
+  /** @type {null | Record<string, unknown>} */
+  let pendingExtensionReset = null;
+  try {
+    chrome.runtime.onMessage.addListener((message) => {
+      if (!message || message.type !== 'EXTENSION_VERSION_RESET') return;
+      pendingExtensionReset = message;
+    });
+  } catch (_) {}
+
   const { clean, norm } = CI.core.text;
   const {
     wait,
@@ -225,6 +234,12 @@
       await restoreState();
     } catch (error) {
       restoreError = error;
+    }
+    if (pendingExtensionReset && CI.data?.workbook?.applyRuntimeExtensionReset) {
+      try {
+        await CI.data.workbook.applyRuntimeExtensionReset(pendingExtensionReset);
+      } catch (_) {}
+      pendingExtensionReset = null;
     }
 
     if (!isPanelPage()) {
