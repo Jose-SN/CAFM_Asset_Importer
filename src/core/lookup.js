@@ -4,7 +4,7 @@
   const root = globalThis.CAFMImporter;
   const { clean, norm, uniqueNonBlank } = root.core.text;
   const { wait, visible, isAssistantElement, elementValue, dispatchClick } = root.core.dom;
-  const { buildingNumber } = root.core.lookupSpec;
+  const { buildingCodeBeforeHyphen } = root.core.lookupSpec;
   const { STORAGE } = root.core.constants;
   const { isAssetPage } = root.core.pages;
   const { storageGet, storageSet, runtimeMessage } = root.core.storage;
@@ -26,6 +26,20 @@
   function C() {
     if (!cfg) throw new Error('CAFMImporter lookup is not configured yet.');
     return cfg;
+  }
+
+  function lookupStepDebug(step, payload = {}) {
+    if (!C().state?.settings?.lookupStepDebug) return;
+    const entry = {
+      type: 'lookup-debug',
+      at: Date.now(),
+      step: String(step || ''),
+      ...payload
+    };
+    console.log('[CAFM lookup debug]', entry);
+    const events = C().state.session?.events;
+    if (Array.isArray(events)) events.push(entry);
+    debugger;
   }
 
   function ppmInstructionCanon(value) {
@@ -117,8 +131,10 @@ function lookupTextMatches(text, spec) {
   }
 
   if (spec.field === 'Building' && code) {
-    const first = candidate.match(/^(?:wch-)?0*(\d{1,3})(?:\s*[-:]|\s|$)/i)?.[1];
-    if (first && String(Number(first)) === String(Number(code.replace(/\D/g, '')))) return true;
+    const collapsedCandidate = candidate.replace(/\s+/g, '').toLowerCase();
+    const collapsedCode = code.replace(/\s+/g, '').toLowerCase();
+    if (collapsedCandidate === collapsedCode || collapsedCandidate.startsWith(`${collapsedCode}-`)) return true;
+    return false;
   }
   if (code) {
     const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -152,11 +168,12 @@ function lookupScore(text, spec) {
   if (candidate === display && display) score += 12000;
 
   if (spec.field === 'Building' && code) {
-    const first = candidate.match(/^(?:wch-)?0*(\d{1,3})(?:\s*[-:]|\s|$)/i)?.[1];
-    if (first && String(Number(first)) === String(Number(code.replace(/\D/g, '')))) score += 10000;
-    else if (first) return -Infinity;
-    const name = norm(spec.buildingName);
-    if (name && candidate.includes(name)) score += 2200;
+    const collapsedCandidate = candidate.replace(/\s+/g, '').toLowerCase();
+    const collapsedCode = code.replace(/\s+/g, '').toLowerCase();
+    if (collapsedCandidate === collapsedCode) score += 11000;
+    else if (collapsedCandidate.startsWith(`${collapsedCode}-`)) score += 10500;
+    else if (collapsedCandidate.includes(collapsedCode)) score += 5000;
+    else return -Infinity;
   } else if (code) {
     const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
@@ -176,12 +193,6 @@ function lookupScore(text, spec) {
     if (!a) continue;
     if (candidate === a) score += 5000;
     else if (a.length >= 5 && candidate.includes(a)) score += 1000;
-  }
-  if (spec.field === 'Location') {
-    const floor = norm(spec.floorName);
-    const desc = norm(spec.locationDescription);
-    if (floor && candidate.includes(floor)) score += 600;
-    if (desc && candidate.includes(desc)) score += 500;
   }
   return score;
 }
@@ -670,14 +681,15 @@ async function waitForCommittedLookup(spec, beforeFingerprint, timeoutMs = C().s
 
 async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden) {
   // Searchable Evolution combo boxes often return no rows when a long lookup
-  // description is typed verbatim. Building tries Building CAFM Value first,
-  // then workbook fallbacks (code, name, short building number). System/Type
-  // try CAFM Value first, then code/description fallbacks. Instruction uses
-  // a short filter first, then the exact workbook row from the dropdown.
-  const buildingShort = spec.field === 'Building' ? buildingNumber(spec.value || spec.display || spec.strictCode) : '';
-  const cafmValueFirst = ['Building', 'System', 'Type', 'Supplier', 'Condition'].includes(spec.field);
+  // Building / Location: one or two search terms only; click row to commit (no same-term retry).
+  // Other CAFM-value-first fields try display then fallbacks. Instruction uses short filter first.
+  const cafmValueFirst = ['System', 'Type', 'Supplier', 'Condition'].includes(spec.field);
   const terms = spec.field === 'Instruction'
     ? uniqueNonBlank([...(spec.searchTerms || []), spec.strictCode, spec.sourceCode, spec.description, spec.value, spec.display])
+    : spec.field === 'Building'
+      ? uniqueNonBlank(spec.searchTerms?.length ? spec.searchTerms : [buildingCodeBeforeHyphen(spec.display || spec.value)])
+    : spec.field === 'Location'
+      ? uniqueNonBlank(spec.searchTerms || [])
     : cafmValueFirst
       ? uniqueNonBlank([
           spec.display,
@@ -685,8 +697,7 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
           ...(spec.searchTerms || []),
           spec.strictCode,
           spec.sourceCode,
-          spec.description,
-          ...(spec.field === 'Building' ? [buildingShort] : [])
+          spec.description
         ])
       : uniqueNonBlank([
           spec.strictCode,
@@ -697,14 +708,36 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
           ...(spec.searchTerms || [])
         ]);
   const commitTimeoutMs = Number(C().state.settings.lookupCommitTimeoutMs) || 8000;
-  const clickFirstField = spec.field === 'Instruction' || spec.field === 'Building';
+  const clickFirstField = spec.field === 'Instruction' || spec.field === 'Building' || spec.field === 'Location';
+  const clickFirstNoSameTermRetry = spec.field === 'Building' || spec.field === 'Location';
+
+  lookupStepDebug('inline-lookup-start', {
+    field: spec.field,
+    tab: spec.tab,
+    cafmValue: clean(spec.display || spec.value),
+    buildingSearch: spec.field === 'Building' ? clean(spec.strictCode) : '',
+    strictCode: clean(spec.strictCode),
+    searchTerms: terms,
+    termCount: terms.length
+  });
 
   let lastTyped = '';
-  for (const term of terms) {
+  for (let termIndex = 0; termIndex < terms.length; termIndex += 1) {
+    const term = terms[termIndex];
     lastTyped = term;
+    const isCafmValueTerm = norm(term) === norm(spec.display) || norm(term) === norm(spec.value);
+    lookupStepDebug('search-term-before-type', {
+      field: spec.field,
+      term,
+      termIndex,
+      termTotal: terms.length,
+      isCafmValueTerm,
+      cafmDisplay: clean(spec.display),
+      workbookValue: clean(spec.value)
+    });
     const beforeFingerprint = lookupCommitFingerprint(control);
     await typeIntoInlineLookup(control, term);
-    let options = await waitForInlineOptions(spec, control, spec.field === 'Location' ? 5600 : 4600);
+    let options = await waitForInlineOptions(spec, control, 4600);
 
     if (!options.length) {
       try { control.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
@@ -712,15 +745,57 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
       await wait(0);
       options = inlineOptionCandidates(spec, control);
     }
-    if (!options.length) continue;
+    if (!options.length) {
+      lookupStepDebug('search-term-no-dropdown-rows', {
+        field: spec.field,
+        term,
+        termIndex,
+        termTotal: terms.length,
+        isCafmValueTerm,
+        nextTerm: terms[termIndex + 1] || ''
+      });
+      continue;
+    }
+
+    lookupStepDebug('search-term-dropdown-rows', {
+      field: spec.field,
+      term,
+      termIndex,
+      optionCount: options.length,
+      sampleOptions: options.slice(0, 5).map((item) => clean(item.text))
+    });
 
     const exactOptions = options.filter((item) => lookupTextMatches(item.text, spec));
-    if (!exactOptions.length) continue;
+    if (!exactOptions.length) {
+      lookupStepDebug('search-term-no-exact-match', {
+        field: spec.field,
+        term,
+        termIndex,
+        optionCount: options.length,
+        sampleOptions: options.slice(0, 8).map((item) => clean(item.text)),
+        nextTerm: terms[termIndex + 1] || ''
+      });
+      continue;
+    }
     const best = exactOptions[0];
     const second = exactOptions[1];
     if (second && norm(best.text) !== norm(second.text) && Math.abs(best.score - second.score) < 220) {
+      lookupStepDebug('search-term-ambiguous-match', {
+        field: spec.field,
+        term,
+        best: clean(best.text),
+        second: clean(second.text)
+      });
       throw new Error(`Ambiguous ${spec.field} dropdown. More than one inline CAFM option matches ${spec.value}.`);
     }
+
+    lookupStepDebug('search-term-exact-match-before-commit', {
+      field: spec.field,
+      term,
+      termIndex,
+      selectedText: clean(best.text),
+      score: best.score
+    });
 
     // PPM Instruction is deliberately handled like the demonstrated manual
     // workflow: type a short filter, then click the exact required row from
@@ -741,12 +816,12 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
       committed = await waitForCommittedLookup(spec, beforeFingerprint, commitTimeoutMs);
     }
 
-    if (!committed) {
+    if (!committed && !clickFirstNoSameTermRetry) {
       // Re-open the dropdown before the click fallback. The Enter attempt can
       // close/re-render the popup, so never click a stale option node.
       const liveControl = C().nearestControl([spec.field])?.control || control;
       await typeIntoInlineLookup(liveControl, term);
-      let freshOptions = await waitForInlineOptions(spec, liveControl, spec.field === 'Location' ? 5200 : 4300);
+      let freshOptions = await waitForInlineOptions(spec, liveControl, 4300);
       freshOptions = freshOptions.filter((item) => lookupTextMatches(item.text, spec));
       if (freshOptions.length) {
         const clickable = bestClickableForOption(freshOptions[0].node);
@@ -761,6 +836,12 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
     }
 
     if (committed) {
+      lookupStepDebug('search-term-committed', {
+        field: spec.field,
+        term,
+        committedValue: clean(committed.value),
+        selectedText: clean(best.text)
+      });
       if (C().showFieldFill) {
         C().showFieldFill(spec.field || 'lookup', committed.value || best.text || '', { verb: 'Selected', meta: `${clean(spec.tab || 'General')} tab`, wait: false, type: 'success', duration: 2500, tick: false });
       } else if (C().showActivity) {
@@ -786,8 +867,20 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
       try { live.focus(); } catch (_) {}
       setFocusedInputValue(live, '', null);
     }
+    lookupStepDebug('search-term-commit-failed-try-next', {
+      field: spec.field,
+      term,
+      termIndex,
+      nextTerm: terms[termIndex + 1] || ''
+    });
     await wait(0);
   }
+
+  lookupStepDebug('inline-lookup-exhausted', {
+    field: spec.field,
+    cafmValue: clean(spec.display || spec.value),
+    termsTried: terms
+  });
 
   if (lastTyped) {
     const live = C().nearestControl([spec.field])?.control || control;
@@ -800,6 +893,13 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
 }
 
 async function selectLookup(spec) {
+  lookupStepDebug('lookup-field-start', {
+    field: spec.field,
+    tab: spec.tab,
+    cafmValue: clean(spec.display || spec.value),
+    strictCode: clean(spec.strictCode),
+    description: clean(spec.description)
+  });
   if (C().showFieldFill) {
     C().showFieldFill(spec.field || 'lookup', spec.value || spec.display || '', {
       verb: 'Selecting',
@@ -823,6 +923,7 @@ async function selectLookup(spec) {
   const beforeHidden = nearbyHiddenValues(control);
 
   if (lookupTextMatches(beforeValue, spec) && (hiddenCommitted(control) || !beforeHidden.length)) {
+    lookupStepDebug('lookup-already-selected', { field: spec.field, beforeValue: clean(beforeValue) });
     if (C().showFieldFill) {
       C().showFieldFill(spec.field || 'lookup', beforeValue, { verb: 'Selected', meta: `${clean(spec.tab || 'General')} tab`, wait: false, type: 'success', duration: 2500, tick: false });
     } else if (C().showActivity) {
@@ -832,8 +933,15 @@ async function selectLookup(spec) {
   }
 
   if (control instanceof HTMLSelectElement) {
+    lookupStepDebug('lookup-native-select-start', { field: spec.field, optionCount: control.options.length });
     const option = [...control.options].find((item) => lookupTextMatches(`${item.value} ${item.textContent}`, spec));
-    if (!option) throw new Error(`No exact ${spec.field} option exists in the CAFM list for ${spec.value}.`);
+    if (!option) {
+      lookupStepDebug('lookup-native-select-no-match', {
+        field: spec.field,
+        cafmValue: clean(spec.display || spec.value)
+      });
+      throw new Error(`No exact ${spec.field} option exists in the CAFM list for ${spec.value}.`);
+    }
     control.value = option.value;
     control.dispatchEvent(new Event('change', { bubbles: true }));
     await wait(0);

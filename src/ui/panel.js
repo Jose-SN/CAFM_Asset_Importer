@@ -208,6 +208,7 @@ function render() {
   if (C().state.els.autoDownloadTimeline) C().state.els.autoDownloadTimeline.checked = Boolean(C().state.settings.autoDownloadTimeline);
   if (C().state.els.autoContinueNext) C().state.els.autoContinueNext.checked = C().state.settings.autoContinueNext !== false;
   if (C().state.els.useSaveAndNew) C().state.els.useSaveAndNew.checked = C().state.settings.useSaveAndNew === true;
+  if (C().state.els.lookupStepDebug) C().state.els.lookupStepDebug.checked = Boolean(C().state.settings.lookupStepDebug);
 }
 
 function makeDraggable() {
@@ -397,6 +398,7 @@ function injectPanel() {
           <label class="option"><input id="includeNotes" type="checkbox"> Include Notes tab only when workbook data is populated</label>
           <label class="option"><input id="includeSpatial" type="checkbox"> Include Spatial / GIS tab only when workbook data is populated</label>
           <label class="option"><input id="skipInvalid" type="checkbox"> Skip invalid workbook rows instead of stopping</label>
+          <label class="option"><input id="lookupStepDebug" type="checkbox"> Debug lookup steps (DevTools breakpoints on each CAFM search term)</label>
           <label class="option"><input id="autoDownloadTimeline" type="checkbox"> Auto-download timeline JSON when each asset cycle completes</label>
           <label class="option"><input id="autoContinueNext" type="checkbox"> Auto-continue to next asset after activation</label>
           <label class="option"><input id="useSaveAndNew" type="checkbox"> Legacy: use Save and New instead of Save and Close between assets</label>
@@ -421,7 +423,7 @@ function injectPanel() {
     </div>
   `;
 
-  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
+  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'lookupStepDebug', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
   for (const id of ids) C().state.els[id] = shadow.getElementById(id);
   root.ui.progressToast.configureToastElements({
     toast: C().state.els.toast,
@@ -508,6 +510,13 @@ function injectPanel() {
   C().state.els.skipInvalid.addEventListener('change', async () => {
     C().state.settings.skipInvalidRows = C().state.els.skipInvalid.checked;
     await C().persistSession();
+  });
+  C().state.els.lookupStepDebug.addEventListener('change', async () => {
+    C().state.settings.lookupStepDebug = C().state.els.lookupStepDebug.checked;
+    await C().persistSession();
+    showToast(C().state.settings.lookupStepDebug
+      ? 'Lookup debug on: open DevTools on this tab before Fill / Start automatic.'
+      : 'Lookup debug off.', 'info', 8000);
   });
   C().state.els.autoDownloadTimeline.addEventListener('change', async () => {
     C().state.settings.autoDownloadTimeline = C().state.els.autoDownloadTimeline.checked;

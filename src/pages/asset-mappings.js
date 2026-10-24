@@ -3,7 +3,7 @@
 
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
-  const { makeLookupSpec, splitLookupValue, buildingNumber } = root.core.lookupSpec;
+  const { makeLookupSpec, splitLookupValue } = root.core.lookupSpec;
   const { directMappingsFromRegistry } = root.data.fieldRegistry;
 
   function lookupMapping(record) {
@@ -14,9 +14,8 @@
     const supplier = splitLookupValue(record.supplier);
     const costCentre = splitLookupValue(record.costCentre);
     const buildingDisplay = clean(record.buildingCafmValue || record.buildingDisplay || record.buildingFull || record.buildingCode || record.buildingSearch);
-    const buildingStrict = clean(record.buildingListCode || record.buildingCode || record.buildingSearch || buildingNumber(buildingDisplay));
-    const locationDisplay = clean(record.locationCode || record.locationCafmValue || record.locationDisplay || record.locationFull || record.locationSearch);
-    const locationStrict = clean(record.locationCode || record.locationSearch);
+    const locationCode = clean(record.locationCode);
+    const locationCafmValue = clean(record.locationCafmValue);
     const systemDisplay = clean(record.system);
     const systemStrict = clean(
       record.systemCode || system.code || (/^[A-Z0-9_&/+.-]+$/.test(clean(record.system)) ? clean(record.system) : '')
@@ -36,22 +35,11 @@
     const conditionDescription = condition.description;
 
     return [
-      makeLookupSpec('Building', buildingDisplay || buildingStrict, {
-        strictCode: buildingStrict,
-        display: buildingDisplay,
-        buildingName: record.buildingName,
-        aliases: [record.buildingFull, record.buildingCode, record.buildingSearch, record.buildingName],
-        searchTerms: [buildingDisplay, buildingStrict, record.buildingName, buildingNumber(buildingDisplay || buildingStrict)]
-      }),
+      makeLookupSpec('Building', buildingDisplay, { display: buildingDisplay }),
       makeLookupSpec('Floor', record.floorName, { display: record.floorName, aliases: [record.floorName], searchTerms: [record.floorName] }),
-      makeLookupSpec('Location', locationDisplay || locationStrict, {
-        strictCode: locationStrict,
-        display: locationDisplay,
-        sourceCode: locationStrict,
-        locationDescription: record.locationDescription,
-        floorName: record.floorName,
-        aliases: [record.locationFull, record.locationDescription, record.locationSearch],
-        searchTerms: [locationStrict, record.locationDescription, locationDisplay]
+      makeLookupSpec('Location', locationCode || locationCafmValue, {
+        locationCode,
+        locationCafmValue
       }),
       makeLookupSpec('System', systemDisplay || systemStrict, {
         strictCode: systemStrict,

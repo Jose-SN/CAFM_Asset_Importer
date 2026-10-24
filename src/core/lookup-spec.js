@@ -2,7 +2,7 @@
   'use strict';
 
   const root = globalThis.CAFMImporter;
-  const { clean, uniqueNonBlank, uniqueId } = root.core.text;
+  const { clean, norm, uniqueNonBlank, uniqueId } = root.core.text;
 
   function splitLookupValue(value) {
     const full = clean(value);
@@ -18,24 +18,56 @@
     return match ? String(Number(match[1])) : '';
   }
 
+  /** Building CAFM Value: split on hyphen, left segment, remove all spaces (e.g. "0 0 4 - X" -> "004"). */
+  function buildingCodeBeforeHyphen(value) {
+    const full = clean(value);
+    if (!full) return '';
+    const left = full.split(/\s*-\s*/)[0] || '';
+    return left.replace(/\s+/g, '');
+  }
+
   function makeLookupSpec(field, value, options = {}) {
     const parts = splitLookupValue(value);
     let strictCode = clean(options.strictCode || parts.code || '');
-    if (field === 'Building') strictCode = buildingNumber(options.strictCode || value) || strictCode;
     if (field === 'Condition' && !strictCode) strictCode = clean(value).match(/^([A-Za-z0-9_.]+)/)?.[1] || '';
+    let searchTerms = uniqueNonBlank(options.searchTerms || (strictCode ? [strictCode] : []));
+    let aliases = uniqueNonBlank([value, options.display, strictCode, options.description, ...(options.aliases || [])]);
+    let description = clean(options.description || parts.description);
+    let display = clean(options.display || value);
+
+    if (field === 'Building') {
+      strictCode = buildingCodeBeforeHyphen(value || options.display);
+      searchTerms = uniqueNonBlank(strictCode ? [strictCode] : []);
+      aliases = searchTerms;
+      description = '';
+      display = clean(options.display || value);
+    } else if (field === 'Location') {
+      const locationCode = clean(options.locationCode || strictCode);
+      const locationCafmValue = clean(options.locationCafmValue || '');
+      strictCode = locationCode;
+      display = locationCafmValue || locationCode;
+      searchTerms = uniqueNonBlank(
+        locationCode
+          ? (locationCafmValue && norm(locationCafmValue) !== norm(locationCode) ? [locationCode, locationCafmValue] : [locationCode])
+          : (locationCafmValue ? [locationCafmValue] : [])
+      );
+      aliases = searchTerms;
+      description = '';
+    }
+
     return {
       id: uniqueId('lookup'),
       field,
       tab: options.tab || 'Details',
       value: clean(value),
-      display: clean(options.display || value),
+      display,
       strictCode,
-      description: clean(options.description || parts.description),
-      aliases: uniqueNonBlank([value, options.display, strictCode, options.description, ...(options.aliases || [])]),
-      searchTerms: uniqueNonBlank([strictCode, options.description, value, options.display, ...(options.searchTerms || [])]),
-      buildingName: clean(options.buildingName || ''),
-      locationDescription: clean(options.locationDescription || ''),
-      floorName: clean(options.floorName || ''),
+      description,
+      aliases,
+      searchTerms,
+      buildingName: '',
+      locationDescription: '',
+      floorName: '',
       sourceCode: clean(options.sourceCode || strictCode),
       createdAt: Date.now(),
       openedAt: 0,
@@ -44,5 +76,10 @@
     };
   }
 
-  root.core.lookupSpec = Object.freeze({ splitLookupValue, buildingNumber, makeLookupSpec });
+  root.core.lookupSpec = Object.freeze({
+    splitLookupValue,
+    buildingNumber,
+    buildingCodeBeforeHyphen,
+    makeLookupSpec
+  });
 })();

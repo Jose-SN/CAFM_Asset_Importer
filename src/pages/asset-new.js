@@ -88,6 +88,15 @@
 
       for (const spec of tabSpecs) {
         try {
+          if (b.state.settings?.lookupStepDebug) {
+            console.log('[CAFM fill] lookup section start', {
+              tab,
+              field: spec.field,
+              cafmValue: spec.display || spec.value,
+              assetCode: record.assetCode
+            });
+            debugger;
+          }
           const result = await b.selectLookup(spec);
           lookupEvidence.push(result);
           b.state.session.currentLookupEvidence = lookupEvidence;
