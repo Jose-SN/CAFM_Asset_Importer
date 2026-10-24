@@ -4,7 +4,7 @@
   const root = globalThis.CAFMImporter;
   const { clean, norm, uniqueNonBlank } = root.core.text;
   const { wait, visible, isAssistantElement, elementValue, dispatchClick } = root.core.dom;
-  const { buildingCodeBeforeHyphen, SIMPLE_LOOKUP_FIELDS } = root.core.lookupSpec;
+  const { buildingCodeBeforeHyphen, typeLookupSearchTerm, SIMPLE_LOOKUP_FIELDS } = root.core.lookupSpec;
 
   function cafmPrimaryLookupField(field) {
     return ['System', 'Name', 'Supplier', 'Condition'].includes(field);
@@ -148,7 +148,15 @@ function lookupTextMatches(text, spec) {
     if (cc && ((cf && cc === cf) || (cd && (cc === cd || cc.includes(cd) || cd.includes(cc))))) return true;
   }
 
-  if ((spec.field === 'Building' || spec.field === 'Type') && code) {
+  if (spec.field === 'Type' && code) {
+    const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
+    if (re.test(candidate)) return true;
+    if (display && candidate.includes(display)) return true;
+    if (full && candidate.includes(full)) return true;
+    return false;
+  }
+  if (spec.field === 'Building' && code) {
     const collapsedCandidate = candidate.replace(/\s+/g, '').toLowerCase();
     const collapsedCode = code.replace(/\s+/g, '').toLowerCase();
     if (collapsedCandidate === collapsedCode || collapsedCandidate.startsWith(`${collapsedCode}-`)) return true;
@@ -191,7 +199,15 @@ function lookupScore(text, spec) {
     return score;
   }
 
-  if ((spec.field === 'Building' || spec.field === 'Type') && code) {
+  if (spec.field === 'Type' && code) {
+    const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
+    if (re.test(candidate)) score += 9000;
+    else if (candidate.includes(code)) score += 7000;
+    else return -Infinity;
+    if (display && candidate.includes(display)) score += 2500;
+    if (full && candidate === full) score += 12000;
+  } else if (spec.field === 'Building' && code) {
     const collapsedCandidate = candidate.replace(/\s+/g, '').toLowerCase();
     const collapsedCode = code.replace(/\s+/g, '').toLowerCase();
     if (collapsedCandidate === collapsedCode) score += 11000;
@@ -709,8 +725,10 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
   const simpleLookup = SIMPLE_LOOKUP_FIELDS.has(spec.field);
   const terms = spec.field === 'Instruction'
     ? uniqueNonBlank([...(spec.searchTerms || []), spec.strictCode, spec.sourceCode, spec.description, spec.value, spec.display])
-    : spec.field === 'Building' || spec.field === 'Type'
+    : spec.field === 'Building'
       ? uniqueNonBlank(spec.searchTerms?.length ? spec.searchTerms : [buildingCodeBeforeHyphen(spec.display || spec.value)])
+    : spec.field === 'Type'
+      ? uniqueNonBlank(spec.searchTerms?.length ? spec.searchTerms : [typeLookupSearchTerm(spec.display || spec.value)])
     : simpleLookup
       ? uniqueNonBlank(spec.searchTerms || [])
       : uniqueNonBlank([

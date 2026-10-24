@@ -122,13 +122,14 @@ background.js      → ASSET_CLOSE_EDITOR_TAB, PPM child close sweeps, tab focus
 - **Toolbar buttons**: `src/core/toolbar.js` for Close/Save; PPM Create New in `src/pages/ppm-register.js` (`a[title="Create New"][onclick*="Toolbar.New"]`, fallback `Toolbar.New()` for `.x-button-drop-menu-link` menu anchors).
 - **Logging**: `rt.addEvent(type, payload)` — every state transition and click should be traceable in diagnostic JSON.
 - **Timeouts**: `settings.lookupTimeoutMs` / `saveTimeoutMs` are **safety timeouts**, not pacing delays.
+- **Lookup search**: Building → `buildingCodeBeforeHyphen`; Type → `typeLookupSearchTerm` (left of first ` - ` in Excel Type cell, e.g. `Single door`), then select full CAFM dropdown line. See `.cursor/rules/cafm-lookup-search.mdc`.
 
 ## Before adding code — check these first
 
 | Need | Use existing file |
 |------|-------------------|
 | Page detection / URLs | `src/core/pages.js` |
-| Lookup dropdowns | `src/core/lookup.js`, `src/core/lookup-spec.js` |
+| Lookup dropdowns | `src/core/lookup.js`, `src/core/lookup-spec.js`, `.cursor/rules/cafm-lookup-search.mdc` |
 | Field mappings | `src/data/field-registry.js`, `src/pages/asset-mappings.js` |
 | PPM row data | `src/data/ppm.js`, workbook-linked by Asset Code |
 | Session / status | `src/data/workbook.js` |

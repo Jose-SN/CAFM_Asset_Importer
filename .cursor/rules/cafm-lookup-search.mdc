@@ -1,0 +1,81 @@
+---
+description: CAFM inline lookup search terms — Building vs Type hyphen rules, spec patterns, PPM
+globs: src/core/lookup*.js,src/pages/asset-mappings.js,src/pages/ppm*.js,src/pages/*mappings*.js
+alwaysApply: true
+---
+
+# CAFM lookup search conventions
+
+Applies to **asset** lookups (`src/pages/asset-mappings.js`, `src/core/lookup-spec.js`, `src/core/lookup.js`) and **future PPM** lookup specs. Do not invent parallel search/fallback chains.
+
+## Choose the right hyphen helper (one search term)
+
+Codes in CAFM cells often look like `CODE - description`. **Do not** use one split rule for every field — internal hyphens in the code matter (e.g. `SD-SS`).
+
+### A. Building — `buildingCodeBeforeHyphen(value)`
+
+Use for **Building CAFM Value** only.
+
+1. Split on **any** hyphen: `\s*-\s*`, take index `0`.
+2. **Remove all spaces** from that segment.
+3. Search with that string only.
+
+Example: `0 0 4 - Main Building` → `004`
+
+**Do not** use this for Type when the code itself contains hyphens (`SD-SS`); it would search `SD` only.
+
+### B. Type — `typeLookupSearchTerm(value)` + phrase match in dropdown
+
+Excel **Type** column is often a short description (not the full CAFM list line).
+
+1. From the Excel cell, if it contains **` - `**, take the text **before the first ` - `**, trim → **search term** (e.g. `Single door - single swing` → search `Single door`).
+2. If there is no ` - `, remove all spaces from the whole cell and search that.
+3. Type into the lookup; **select the dropdown row** whose text contains that phrase (e.g. CAFM shows `SD-SS - Single door - single swing`).
+
+Do **not** use `buildingCodeBeforeHyphen` for Type. Row matching is Type-specific in `lookup.js` (phrase in candidate, not collapsed Building rules).
+
+**PPM / similar:** use the same search term rule when the workbook gives a description fragment and CAFM returns a longer coded line.
+
+### Row matching
+
+Fields using Building or Type search terms: `lookup.js` `lookupTextMatches` / `lookupScore` treat **Building** and **Type** with collapsed (no-space) code matching.
+
+## Wire-up checklist (new lookup field)
+
+| Step | Where |
+|------|--------|
+| Workbook column → record | `xlsx_reader.js` or PPM reader |
+| Spec | `asset-mappings.js` / PPM mappings → `makeLookupSpec` |
+| Search term | Building → `buildingCodeBeforeHyphen`; Type-like codes → `typeLookupSearchTerm`; see table below |
+| Run lookup | `SIMPLE_LOOKUP_FIELDS`; `spec.searchTerms` only; click row to commit (`selectInlineComboLookup`) |
+
+## Current asset lookup patterns
+
+| Pattern | Fields | Search |
+|---------|--------|--------|
+| `buildingCodeBeforeHyphen` | Building | One term |
+| `typeLookupSearchTerm` + phrase row match | Type | One search term from Excel; pick full CAFM line from dropdown |
+| Code then CAFM value | Location | `locationCode`, then `locationCafmValue` if different |
+| CAFM then code fallback | System, Name, Supplier | `cafmThenFallbackSearchTerms` |
+| Full cell only | Condition | Excel **Condition** column only |
+| Legacy | Tag, Cost Centre, Classification, … | Extend existing; simplify when possible |
+
+## PPM (when (re-)enabled)
+
+- Reuse `makeLookupSpec`, `selectLookup`, `SIMPLE_LOOKUP_FIELDS` — no second lookup loop.
+- **Spaced numeric building-style codes** (`0 0 4 - …`): `buildingCodeBeforeHyphen`.
+- **Alphanumeric codes with internal hyphens** (`SD-SS - …`): `typeLookupSearchTerm` (first ` - ` only).
+- Instruction: keep existing `lookup.js` behaviour (short filter, click row).
+
+## Do NOT
+
+- Use `buildingCodeBeforeHyphen` for Type or for values like `SD-SS - description`.
+- Add extra search terms (typeCode, descriptions, `splitLookupValue` fallbacks) on Building/Type/Condition without explicit product ask.
+- Use `buildingCodeBeforeHyphen` for Condition or Location.
+- Re-type the same term on commit failure for `SIMPLE_LOOKUP_FIELDS` fields.
+
+## Reference
+
+- `src/core/lookup-spec.js` — `buildingCodeBeforeHyphen`, `typeLookupSearchTerm`, `makeLookupSpec`
+- `src/core/lookup.js` — `selectInlineComboLookup`, `selectLookup`
+- `src/pages/asset-mappings.js`

@@ -26,6 +26,15 @@
     return left.replace(/\s+/g, '');
   }
 
+  /** Type column: search with left of first " - " (e.g. "Single door - single swing" -> "Single door"). */
+  function typeLookupSearchTerm(value) {
+    const full = clean(value);
+    if (!full) return '';
+    const sep = full.indexOf(' - ');
+    if (sep > 0) return clean(full.slice(0, sep));
+    return full.replace(/\s+/g, '');
+  }
+
   /** CAFM / display value first, then fallback (e.g. code) when they differ. */
   function cafmThenFallbackSearchTerms(cafmValue, fallback) {
     const cafm = clean(cafmValue);
@@ -48,8 +57,14 @@
     let description = clean(options.description || parts.description);
     let display = clean(options.display || value);
 
-    if (field === 'Building' || field === 'Type') {
+    if (field === 'Building') {
       strictCode = buildingCodeBeforeHyphen(value || options.display);
+      searchTerms = uniqueNonBlank(strictCode ? [strictCode] : []);
+      aliases = searchTerms;
+      description = '';
+      display = clean(options.display || value);
+    } else if (field === 'Type') {
+      strictCode = typeLookupSearchTerm(value || options.display);
       searchTerms = uniqueNonBlank(strictCode ? [strictCode] : []);
       aliases = searchTerms;
       description = '';
@@ -108,6 +123,7 @@
     splitLookupValue,
     buildingNumber,
     buildingCodeBeforeHyphen,
+    typeLookupSearchTerm,
     cafmThenFallbackSearchTerms,
     SIMPLE_LOOKUP_FIELDS,
     makeLookupSpec
