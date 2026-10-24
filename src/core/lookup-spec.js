@@ -66,11 +66,18 @@
       );
       aliases = searchTerms;
       description = '';
-    } else if (field === 'System' || field === 'Type' || field === 'Name' || field === 'Supplier' || field === 'Condition') {
+    } else if (field === 'Condition') {
+      const conditionValue = clean(options.conditionValue ?? value);
+      display = conditionValue;
+      strictCode = conditionValue;
+      searchTerms = uniqueNonBlank(conditionValue ? [conditionValue] : []);
+      aliases = searchTerms;
+      description = '';
+    } else if (field === 'System' || field === 'Type' || field === 'Name' || field === 'Supplier') {
       const lookupCafmValue = clean(options.lookupCafmValue ?? options.display ?? value);
       const lookupFallback = clean(options.lookupFallback ?? options.lookupCode ?? strictCode);
       display = lookupCafmValue || lookupFallback;
-      strictCode = lookupFallback || lookupCafmValue;
+      strictCode = display;
       searchTerms = cafmThenFallbackSearchTerms(lookupCafmValue, lookupFallback);
       aliases = searchTerms;
       description = '';

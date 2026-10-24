@@ -5,6 +5,24 @@
   const { clean, norm, uniqueNonBlank } = root.core.text;
   const { wait, visible, isAssistantElement, elementValue, dispatchClick } = root.core.dom;
   const { buildingCodeBeforeHyphen, SIMPLE_LOOKUP_FIELDS } = root.core.lookupSpec;
+
+  function cafmPrimaryLookupField(field) {
+    return ['System', 'Type', 'Name', 'Supplier', 'Condition'].includes(field);
+  }
+
+  function matchesCafmPrimaryLookup(candidate, spec) {
+    const display = norm(spec.display);
+    const full = norm(spec.value);
+    if (display && candidate === display) return true;
+    if (full && candidate === full) return true;
+    for (const term of spec.searchTerms || []) {
+      const t = norm(term);
+      if (!t) continue;
+      if (candidate === t) return true;
+      if (t.length >= 3 && (candidate.includes(t) || t.includes(candidate))) return true;
+    }
+    return false;
+  }
   const { STORAGE } = root.core.constants;
   const { isAssetPage } = root.core.pages;
   const { storageGet, storageSet, runtimeMessage } = root.core.storage;
@@ -136,6 +154,7 @@ function lookupTextMatches(text, spec) {
     if (collapsedCandidate === collapsedCode || collapsedCandidate.startsWith(`${collapsedCode}-`)) return true;
     return false;
   }
+  if (cafmPrimaryLookupField(spec.field) && matchesCafmPrimaryLookup(candidate, spec)) return true;
   if (code) {
     const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
@@ -166,6 +185,11 @@ function lookupScore(text, spec) {
 
   if (candidate === full && full) score += 12000;
   if (candidate === display && display) score += 12000;
+
+  if (cafmPrimaryLookupField(spec.field) && matchesCafmPrimaryLookup(candidate, spec)) {
+    score += 13000;
+    return score;
+  }
 
   if (spec.field === 'Building' && code) {
     const collapsedCandidate = candidate.replace(/\s+/g, '').toLowerCase();

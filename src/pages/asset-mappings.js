@@ -10,7 +10,6 @@
     const tag = splitLookupValue(record.tag);
     const nameParts = splitLookupValue(record.name);
     const supplierParts = splitLookupValue(record.supplier);
-    const conditionParts = splitLookupValue(record.condition);
     const costCentre = splitLookupValue(record.costCentre);
     const buildingDisplay = clean(record.buildingCafmValue || record.buildingDisplay || record.buildingFull || record.buildingCode || record.buildingSearch);
     const locationCode = clean(record.locationCode);
@@ -24,8 +23,7 @@
     const nameFallback = clean(record.nameCode || nameParts.code);
     const supplierCafmValue = clean(record.supplier);
     const supplierFallback = clean(record.supplierCode || supplierParts.code);
-    const conditionCafmValue = clean(record.condition);
-    const conditionFallback = clean(record.conditionCode || conditionParts.code);
+    const conditionValue = clean(record.condition);
 
     return [
       makeLookupSpec('Building', buildingDisplay, { display: buildingDisplay }),
@@ -57,10 +55,9 @@
         lookupFallback: supplierFallback
       }),
       makeLookupSpec('Cost Centre', record.costCentre, { strictCode: costCentre.code, description: costCentre.description }),
-      makeLookupSpec('Condition', conditionCafmValue || conditionFallback, {
+      makeLookupSpec('Condition', conditionValue, {
         tab: 'Financial/Risk',
-        lookupCafmValue: conditionCafmValue,
-        lookupFallback: conditionFallback
+        conditionValue
       })
     ].filter((item) => clean(item.value));
   }
