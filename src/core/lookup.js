@@ -7,7 +7,7 @@
   const { buildingCodeBeforeHyphen, SIMPLE_LOOKUP_FIELDS } = root.core.lookupSpec;
 
   function cafmPrimaryLookupField(field) {
-    return ['System', 'Type', 'Name', 'Supplier', 'Condition'].includes(field);
+    return ['System', 'Name', 'Supplier', 'Condition'].includes(field);
   }
 
   function matchesCafmPrimaryLookup(candidate, spec) {
@@ -148,7 +148,7 @@ function lookupTextMatches(text, spec) {
     if (cc && ((cf && cc === cf) || (cd && (cc === cd || cc.includes(cd) || cd.includes(cc))))) return true;
   }
 
-  if (spec.field === 'Building' && code) {
+  if ((spec.field === 'Building' || spec.field === 'Type') && code) {
     const collapsedCandidate = candidate.replace(/\s+/g, '').toLowerCase();
     const collapsedCode = code.replace(/\s+/g, '').toLowerCase();
     if (collapsedCandidate === collapsedCode || collapsedCandidate.startsWith(`${collapsedCode}-`)) return true;
@@ -191,7 +191,7 @@ function lookupScore(text, spec) {
     return score;
   }
 
-  if (spec.field === 'Building' && code) {
+  if ((spec.field === 'Building' || spec.field === 'Type') && code) {
     const collapsedCandidate = candidate.replace(/\s+/g, '').toLowerCase();
     const collapsedCode = code.replace(/\s+/g, '').toLowerCase();
     if (collapsedCandidate === collapsedCode) score += 11000;
@@ -709,7 +709,7 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
   const simpleLookup = SIMPLE_LOOKUP_FIELDS.has(spec.field);
   const terms = spec.field === 'Instruction'
     ? uniqueNonBlank([...(spec.searchTerms || []), spec.strictCode, spec.sourceCode, spec.description, spec.value, spec.display])
-    : spec.field === 'Building'
+    : spec.field === 'Building' || spec.field === 'Type'
       ? uniqueNonBlank(spec.searchTerms?.length ? spec.searchTerms : [buildingCodeBeforeHyphen(spec.display || spec.value)])
     : simpleLookup
       ? uniqueNonBlank(spec.searchTerms || [])

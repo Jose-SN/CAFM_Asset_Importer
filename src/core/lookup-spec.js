@@ -48,7 +48,7 @@
     let description = clean(options.description || parts.description);
     let display = clean(options.display || value);
 
-    if (field === 'Building') {
+    if (field === 'Building' || field === 'Type') {
       strictCode = buildingCodeBeforeHyphen(value || options.display);
       searchTerms = uniqueNonBlank(strictCode ? [strictCode] : []);
       aliases = searchTerms;
@@ -73,7 +73,7 @@
       searchTerms = uniqueNonBlank(conditionValue ? [conditionValue] : []);
       aliases = searchTerms;
       description = '';
-    } else if (field === 'System' || field === 'Type' || field === 'Name' || field === 'Supplier') {
+    } else if (field === 'System' || field === 'Name' || field === 'Supplier') {
       const lookupCafmValue = clean(options.lookupCafmValue ?? options.display ?? value);
       const lookupFallback = clean(options.lookupFallback ?? options.lookupCode ?? strictCode);
       display = lookupCafmValue || lookupFallback;
