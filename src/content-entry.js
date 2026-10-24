@@ -42,14 +42,11 @@
   const {
     isAssetPage,
     entityIdFromUrl,
-    isHashPpmParentPage,
-    isPpmRegisterParentPage,
     isAssetListPage,
     isPanelPage,
     isWorkflowPage
   } = CI.core.pages;
   const { runtimeMessage, storageGet, storageSet, storageRemove } = CI.core.storage;
-  const ppmData = CI.data.ppm;
   const {
     configure: configureLookup,
     startLookupAgent,
@@ -70,7 +67,6 @@
   const handlePostReloadSaveState = (...args) => CI.workflow.postSave.handlePostReloadSaveState(...args);
   const fillExistingSavedAsset = (...args) => CI.pages.assetManual.fillExistingSavedAsset(...args);
   const saveExistingAssetChanges = (...args) => CI.pages.assetManual.saveExistingAssetChanges(...args);
-  const startPpmForCurrentPage = (...args) => CI.pages.ppmRegister.startPpmForCurrentPage(...args);
   const { configure: configurePanel, injectPanel, render, showToast, showActivity, showFieldFill, showWorkflowStatus } = CI.ui.panel;
   const { configure: configureToolbar } = CI.core.toolbar;
   const { configure: configureTeach, initTeachCapture } = CI.core.teach;
@@ -80,11 +76,10 @@
     currentRecord,
     assetCodeOnPage,
     workflowAssetCodeOnPage,
-    ppmRecordOnCurrentPage,
     workflowRecord,
     validateRecord
   } = CI.data.records;
-  const { currentAssetStatusText, currentPpmStatusText } = CI.core.toolbar;
+  const { currentAssetStatusText } = CI.core.toolbar;
 
   const PAGE_INSTANCE = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const TOP = window.top === window.self;
@@ -104,16 +99,12 @@
   startLookupAgent();
   if (!TOP) return;
 
-  function linkedPpms(record) {
-    return ppmData.linkedForAsset(record, state.ppms);
+  function linkedPpms() {
+    return [];
   }
 
-  function currentPpm(record = currentRecord()) {
-    return ppmData.currentFromList(record, state.ppms, state.session.auto?.ppmIndex);
-  }
-
-  function ppmSourceIssues(ppm) {
-    return ppmData.sourceIssues(ppm);
+  function currentPpm() {
+    return null;
   }
 
   CI.runtime.bind({
@@ -139,7 +130,6 @@
     fillByLabel: CI.core.dom.fillByLabel,
     setCheckboxByLabel: CI.core.dom.setCheckboxByLabel,
     setSelectByLabel: CI.core.dom.setSelectByLabel,
-    fillEstimatedTime: CI.pages.ppmEditor.fillEstimatedTime,
     setNativeValue: CI.core.dom.setNativeValue,
     selectLookup,
     nearestControl: CI.core.dom.nearestControl,
@@ -150,7 +140,6 @@
     clickSaveAndClose: CI.core.dom.clickSaveAndClose,
     clickSaveAndNew: CI.core.dom.clickSaveAndNew,
     validationMessage: CI.core.dom.validationMessage,
-    ppmSourceIssues,
     linkedPpms,
     setStatus: CI.data.workbook.setStatus,
     workflowRecord: CI.data.records.workflowRecord,
@@ -159,18 +148,10 @@
     observedAssetCode: CI.core.toolbar.observedAssetCode,
     currentAssetStatusText: CI.core.toolbar.currentAssetStatusText,
     assetIsActive: CI.core.toolbar.assetIsActive,
-    findAssetPpmNavLink: CI.core.toolbar.findAssetPpmNavLink,
     findChangeAssetStatusDialog: CI.core.toolbar.findChangeAssetStatusDialog,
     findConfirmButton: CI.core.toolbar.findConfirmButton,
     selectActiveFromStatusDropdown: CI.core.toolbar.selectActiveFromStatusDropdown,
     typeIntoInlineLookup,
-    processPpmStatusPage: CI.pages.ppmStatus.processPpmStatusPage,
-    ppmActivationTarget: CI.pages.ppmStatus.ppmActivationTarget,
-    recordPpmResult: CI.pages.ppmStatus.recordPpmResult,
-    ppmIsActive: CI.core.toolbar.ppmIsActive,
-    currentPpmStatusText: CI.core.toolbar.currentPpmStatusText,
-    findChangePpmStatusButton: CI.core.toolbar.findChangePpmStatusButton,
-    findChangePpmStatusDialog: CI.core.toolbar.findChangePpmStatusDialog,
     findChangeAssetStatusButton: CI.core.toolbar.findChangeAssetStatusButton,
     clickSaveTracked: CI.workflow.postSave.clickSaveTracked,
     tabContextReady: CI.core.dom.tabContextReady,
@@ -181,8 +162,7 @@
     showActivity: CI.ui.panel.showActivity,
     showWorkflowStatus: CI.ui.panel.showWorkflowStatus,
     showFieldFill: CI.ui.panel.showFieldFill,
-    downloadAssetTimeline: CI.data.workbook.downloadAssetTimeline,
-    sweepPpmChildren: CI.pages.ppmRegister.sweepPpmChildren
+    downloadAssetTimeline: CI.data.workbook.downloadAssetTimeline
   });
 
   function reportInitFailure(error) {
@@ -195,18 +175,16 @@
     configureRecords({ state, nearestControl });
     configureWorkbook({
       state, render, showToast, showActivity, validateRecord, currentRecord, linkedPpms, workflowRecord,
-      currentPpm, currentAssetStatusText, currentPpmStatusText, validationMessage, addEvent
+      currentPpm, currentAssetStatusText, validationMessage, addEvent
     });
     configureEvents({ state, workflowRecord, currentRecord, persistSession, showToast });
     configureMessages({
       state, addEvent, storageGet, persistSession, render, scheduleAuto, runAutomatic,
-      isPpmRegisterParentPage, isPpmItemPage: CI.core.pages.isPpmItemPage, isAssetPage,
+      isAssetPage,
       assetEntityUrl: CI.core.pages.assetEntityUrl,
       entityIdFromUrl: CI.core.pages.entityIdFromUrl,
       isSavedAssetPage: CI.core.pages.isSavedAssetPage,
       workflowRecord: CI.data.records.workflowRecord,
-      currentPpm,
-      recordPpmResult: CI.pages.ppmStatus.recordPpmResult,
       showActivity: CI.ui.panel.showActivity
     });
     initMessageListeners();
@@ -232,13 +210,12 @@
     }
 
     configurePanel({
-      state, counts, validateRecord, currentRecord, statusOf, linkedPpms, nextPendingIndex,
-      assetCodeOnPage, ppmRecordOnCurrentPage, workflowAssetCodeOnPage,
-      workflowRecord, currentPpm, validationMessage,
+      state, counts, validateRecord, currentRecord, statusOf, linkedPpms, currentPpm, nextPendingIndex,
+      assetCodeOnPage, workflowAssetCodeOnPage, ppmRecordOnCurrentPage: () => null,
+      workflowRecord, validationMessage,
       loadWorkbookFile, fillCurrentRecord, clickSaveTracked, fillExistingSavedAsset,
       saveExistingAssetChanges, move, jumpToIndex, skipCurrent, markSavedAndNext,
-      persistSession, storageSet, startPpmForCurrentPage,
-      clickPpmNewToolbar: CI.pages.ppmRegister.clickPpmNewToolbar,
+      persistSession, storageSet,
       startAutomatic, pauseAutomatic, resumeAutomatic, downloadLog, clearSession, downloadDiagnostic
     });
     injectPanel();

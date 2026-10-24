@@ -70,7 +70,7 @@ function render() {
   const editPool = C().state.allAssets.length ? C().state.allAssets : C().state.assets;
   const savedMatch = pageAssetCode ? editPool.find((item) => norm(item.assetCode) === norm(pageAssetCode)) : null;
 
-  C().state.els.fileName.textContent = C().state.cache?.fileName ? `${C().state.cache.fileName} | ${C().state.assets.length} NEW row(s) | ${C().state.allAssets.length} editable asset row(s) | ${C().state.ppms.length} enabled PPM row(s)` : 'No workbook loaded';
+  C().state.els.fileName.textContent = C().state.cache?.fileName ? `${C().state.cache.fileName} | ${C().state.assets.length} NEW row(s) | ${C().state.allAssets.length} editable asset row(s)` : 'No workbook loaded';
   C().state.els.total.textContent = String(c.total);
   C().state.els.saved.textContent = String(c.saved);
   C().state.els.remaining.textContent = String(c.remaining);
@@ -80,7 +80,7 @@ function render() {
       const report = root.data.preflight.summarize(C().state);
       C().state.els.preflightReport.hidden = false;
       C().state.els.preflightReport.textContent = root.data.preflight.formatPanelReport(report);
-      C().state.els.preflightReport.className = `validation ${report.blocking.length || report.orphanPpms.length ? 'badtext' : 'goodtext'}`;
+      C().state.els.preflightReport.className = `validation ${report.blocking.length ? 'badtext' : 'goodtext'}`;
     } else {
       C().state.els.preflightReport.hidden = true;
     }
@@ -111,16 +111,6 @@ function render() {
       C().state.els.row.textContent = `Saved asset | Excel row ${savedMatch.workbookRow}`;
       C().state.els.assetCode.textContent = savedMatch.assetCode;
     }
-  } else if (ppmRegisterPage && loaded) {
-    const linkedCount = ppmPageMatch ? C().linkedPpms(ppmPageMatch).length : 0;
-    C().state.els.validation.textContent = ppmPageAssetCode
-      ? (ppmPageMatch ? `PPM register for ${ppmPageAssetCode}: ${linkedCount} enabled workbook PPM row(s) ready.` : `${ppmPageAssetCode} is not present in the loaded CAFM Import rows.`)
-      : 'PPM register detected, but the Asset Code could not be read.';
-    C().state.els.validation.className = ppmPageMatch && linkedCount ? 'validation goodtext' : 'validation badtext';
-    if (ppmPageMatch) {
-      C().state.els.row.textContent = `PPM register | Excel row ${ppmPageMatch.workbookRow}`;
-      C().state.els.assetCode.textContent = ppmPageMatch.assetCode;
-    }
   } else if (isAssetListPage() && loaded) {
     C().state.els.validation.textContent = 'Workbook loaded. Click + New, then Start automatic on the New Entity form.';
     C().state.els.validation.className = 'validation goodtext';
@@ -139,10 +129,8 @@ function render() {
     : '<div class="muted">No current row.</div>';
 
   const activeRecord = auto?.active ? (C().workflowRecord(auto) || C().currentRecord()) : null;
-  const ppmTotal = activeRecord ? C().linkedPpms(activeRecord).length : 0;
-  const ppmProgress = auto?.active && ppmTotal ? ` | PPM ${Math.max(0, Number(auto.ppmIndex) || 0) + 1}/${ppmTotal}` : '';
   C().state.els.autoState.textContent = auto?.active
-    ? `Automatic import: ${String(auto.phase || 'running').replace(/_/g, ' ')} | asset ${(Number(auto.index ?? C().state.session.index) || 0) + 1}/${C().state.assets.length}${ppmProgress} | cycle ${Number(auto.processedThisRun || 0)}/${Number(auto.maxIterations || 1)}`
+    ? `Automatic import: ${String(auto.phase || 'running').replace(/_/g, ' ')} | asset ${(Number(auto.index ?? C().state.session.index) || 0) + 1}/${C().state.assets.length} | cycle ${Number(auto.processedThisRun || 0)}/${Number(auto.maxIterations || 1)}`
     : auto?.phase === 'complete'
       ? `Automatic import complete${auto?.processedThisRun != null ? ` | ${Number(auto.processedThisRun || 0)}/${Number(auto.maxIterations || auto.processedThisRun || 1)} asset cycle(s)` : ''}`
       : auto?.phase === 'error' ? `Stopped: ${auto.error || 'error'}` : 'Automatic import stopped';
@@ -172,15 +160,10 @@ function render() {
     if (showProgress) {
       const assetIndex = Math.max(0, Number(auto.index ?? C().state.session.index) || 0);
       const assetTotal = Math.max(1, C().state.assets.length);
-      const ppmIdx = Math.max(0, Number(auto.ppmIndex) || 0);
-      const ppmPart = ppmTotal > 0 ? (ppmIdx / Math.max(1, ppmTotal)) * (100 / assetTotal) : 0;
-      const assetPart = (assetIndex / assetTotal) * 100;
-      const pct = Math.min(100, Math.max(0, Math.round(assetPart + ppmPart * 0.25)));
+      const pct = Math.min(100, Math.max(0, Math.round((assetIndex / assetTotal) * 100)));
       C().state.els.progressFill.style.width = `${pct}%`;
       if (C().state.els.progressLabel) {
-        C().state.els.progressLabel.textContent = ppmTotal
-          ? `Progress ~${pct}% | asset ${assetIndex + 1}/${assetTotal} | PPM ${ppmIdx + 1}/${ppmTotal}`
-          : `Progress ~${pct}% | asset ${assetIndex + 1}/${assetTotal}`;
+        C().state.els.progressLabel.textContent = `Progress ~${pct}% | asset ${assetIndex + 1}/${assetTotal}`;
       }
     }
   }
@@ -205,32 +188,9 @@ function render() {
     C().state.els.resumeRowInput.value = String(C().state.session.index + 1);
   }
   C().state.els.startAuto.disabled = !C().state.assets.length || Boolean(auto?.active) || !assetEntryPage;
-  const ppmQueue = ppmPageMatch ? C().linkedPpms(ppmPageMatch) : [];
-  const ppmReadyCount = ppmQueue.length;
-  C().state.els.startPpmHere.hidden = !ppmRegisterPage;
-  // Do not let an old failed Asset-status workflow block manual PPM entry.
-  // Only disable while a live workflow is actually running.
-  C().state.els.startPpmHere.disabled = !loaded || !ppmRegisterPage || !ppmPageMatch || !ppmReadyCount || Boolean(auto?.active);
-  C().state.els.startPpmHere.textContent = ppmPageMatch ? `START PPM FOR THIS ASSET (${ppmReadyCount})` : 'START PPM FOR THIS ASSET';
-  C().state.els.openPpmNew.hidden = !ppmRegisterPage;
-  C().state.els.openPpmNew.disabled = !ppmRegisterPage;
-  if (C().state.els.ppmQueuePreview) {
-    C().state.els.ppmQueuePreview.hidden = !ppmRegisterPage;
-    if (!loaded) {
-      C().state.els.ppmQueuePreview.textContent = 'Load the import workbook to start PPM entry.';
-      C().state.els.ppmQueuePreview.className = 'validation badtext';
-    } else if (!ppmPageMatch) {
-      C().state.els.ppmQueuePreview.textContent = 'PPM page detected, but the Asset Code could not be matched to the workbook.';
-      C().state.els.ppmQueuePreview.className = 'validation badtext';
-    } else if (!ppmReadyCount) {
-      C().state.els.ppmQueuePreview.textContent = `No enabled CAFM PPM Import rows are linked to ${ppmPageMatch.assetCode}.`;
-      C().state.els.ppmQueuePreview.className = 'validation badtext';
-    } else {
-      const rows = ppmQueue.map((ppm, i) => `${i + 1}. ${clean(ppm.instruction) || clean(ppm.ppmKey) || 'PPM'}${clean(ppm.lastService) ? ` | Last Service ${clean(ppm.lastService)}` : ''}`);
-      C().state.els.ppmQueuePreview.textContent = `${ppmReadyCount} PPM row(s) ready: ${rows.join('  |  ')}`;
-      C().state.els.ppmQueuePreview.className = 'validation goodtext';
-    }
-  }
+  if (C().state.els.startPpmHere) C().state.els.startPpmHere.hidden = true;
+  if (C().state.els.openPpmNew) C().state.els.openPpmNew.hidden = true;
+  if (C().state.els.ppmQueuePreview) C().state.els.ppmQueuePreview.hidden = true;
   C().state.els.fileInput.value = '';
 
   if (C().state.els.contextSub) {
@@ -370,7 +330,7 @@ function injectPanel() {
     <div id="panel">
       <div id="head">
         <img src="${logo}" alt="Engineering Efficiency Ltd">
-        <div class="titles"><h2>CAFM Asset Importer</h2><div id="contextSub" class="sub">Engineering Efficiency Ltd | v${VERSION} | Asset -> ACTIVE -> data-driven linked PPMs</div></div>
+        <div class="titles"><h2>CAFM Asset Importer</h2><div id="contextSub" class="sub">Engineering Efficiency Ltd | v${VERSION} | Asset save, activate, next row</div></div>
         <button id="collapse" title="Collapse">-</button>
       </div>
       <div id="body">
@@ -398,7 +358,7 @@ function injectPanel() {
           <h3>Manual control</h3>
           <div class="buttons">
             <button id="fill" class="action primary wide">Fill current NEW record</button>
-            <button id="saveCurrent" class="action primary wide">Save NEW -> ACTIVE -> linked PPMs -> next</button>
+            <button id="saveCurrent" class="action primary wide">Save NEW → ACTIVE → next asset</button>
             <button id="editExisting" class="action wide">Fill saved asset from workbook</button>
             <button id="saveExisting" class="action wide">Save existing changes only</button>
             <button id="prev" class="action">Previous</button>
@@ -408,7 +368,7 @@ function injectPanel() {
           </div>
         </div>
         <div id="autoSection" class="section">
-          <h3>Automatic Asset + PPM import</h3>
+          <h3>Automatic asset import</h3>
           <div class="buttons">
             <button id="startPpmHere" class="action primary wide" hidden>START PPM FOR THIS ASSET</button>
             <button id="openPpmNew" class="action wide" hidden>OPEN + NEW PPM WINDOW</button>
@@ -433,12 +393,12 @@ function injectPanel() {
           <div id="progressLabel" class="muted" hidden style="margin-top:4px;font-size:10px"></div>
           <label class="option"><input id="iterateBatch" type="checkbox"> Enable multiple asset iterations</label>
           <label class="option">Asset iteration count <input id="iterationCount" type="number" min="1" max="10000" step="1" value="1" style="width:90px"></label>
-          <div class="muted" style="margin:4px 0 8px">Unchecked = exactly one complete Asset + linked PPM cycle, then stop. Checked = continue until the asset iteration count is reached.</div>
+          <div class="muted" style="margin:4px 0 8px">Unchecked = one complete asset cycle (save + ACTIVE), then stop. Checked = continue until the asset iteration count is reached.</div>
           <label class="option"><input id="includeNotes" type="checkbox"> Include Notes tab only when workbook data is populated</label>
           <label class="option"><input id="includeSpatial" type="checkbox"> Include Spatial / GIS tab only when workbook data is populated</label>
           <label class="option"><input id="skipInvalid" type="checkbox"> Skip invalid workbook rows instead of stopping</label>
           <label class="option"><input id="autoDownloadTimeline" type="checkbox"> Auto-download timeline JSON when each asset cycle completes</label>
-          <label class="option"><input id="autoContinueNext" type="checkbox"> Auto-continue to next asset after PPM cycle</label>
+          <label class="option"><input id="autoContinueNext" type="checkbox"> Auto-continue to next asset after activation</label>
           <label class="option"><input id="useSaveAndNew" type="checkbox"> Legacy: use Save and New instead of Save and Close between assets</label>
           <div class="muted">Proceeds when CAFM state is verified. Safety timeouts default to 20s (PPM child wait 15s). Reload the extension at chrome://extensions after code updates.</div>
         </div>
@@ -525,21 +485,6 @@ function injectPanel() {
   C().state.els.next.addEventListener('click', () => C().move(1));
   C().state.els.skip.addEventListener('click', () => C().skipCurrent());
   C().state.els.markSaved.addEventListener('click', () => C().markSavedAndNext('Manually confirmed by user'));
-  C().state.els.startPpmHere.addEventListener('click', async () => {
-    if (C().state.busy) return;
-    try { await C().startPpmForCurrentPage(); }
-    catch (error) { showToast(error.message || String(error), 'error', 14000); }
-  });
-  C().state.els.openPpmNew.addEventListener('click', () => {
-    try {
-      const record = C().ppmRecordOnCurrentPage() || C().currentRecord();
-      const idx = Number(C().state.session.auto?.ppmIndex || 0);
-      C().clickPpmNewToolbar(`manual-open:${record?.assetCode || 'asset'}:${idx}`);
-      showToast('Clicked CAFM + New ONCE. Waiting for the New PPM window; do not click again.', 'success', 8000);
-    } catch (error) {
-      showToast(error.message || String(error), 'error', 12000);
-    }
-  });
   C().state.els.startAuto.addEventListener('click', () => C().startAutomatic());
   C().state.els.pauseAuto.addEventListener('click', () => C().pauseAutomatic());
   C().state.els.resumeAuto.addEventListener('click', () => C().resumeAutomatic());

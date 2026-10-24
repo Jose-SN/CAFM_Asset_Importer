@@ -24,9 +24,6 @@ const requiredNamespaces = [
   ['src/pages/registry.js', 'PAGE_HANDLERS'],
   ['src/pages/asset-new.js', 'fillCurrentRecord'],
   ['src/pages/asset-saved.js', 'processActivationPage'],
-  ['src/pages/ppm-register.js', 'processPpmListPage'],
-  ['src/pages/ppm-editor.js', 'processPpmItemPage'],
-  ['src/pages/ppm-status.js', 'processPpmStatusPage'],
   ['src/workflow/engine.js', 'runAutomatic'],
   ['src/data/field-registry.js', 'ASSET_DIRECT_FIELDS'],
   ['src/data/preflight.js', 'summarize'],
@@ -42,10 +39,8 @@ for (const [file, needle] of requiredNamespaces) {
 const knownPhases = new Set([
   'navigate', 'fill', 'filling', 'saving', 'await_save', 'asset_close_child', 'asset_close_wait',
   'activate_open', 'activate_select',
-  'activate_confirm', 'activate_wait', 'activate_wait_user', 'ppm_open_list', 'ppm_wait_new',
-  'ppm_wait_user_new', 'ppm_fill', 'ppm_await_save', 'ppm_status_open', 'ppm_status_select',
-  'ppm_status_confirm', 'ppm_status_wait', 'ppm_status_wait_user', 'ppm_child_closing',
-  'ppm_parent_refresh_wait', 'ppm_parent_refresh', 'ppm_next', 'ppm_cycle_complete_parent',
+  'activate_confirm', 'activate_wait', 'activate_wait_user',
+  'asset_save_and_new', 'asset_save_and_close', 'asset_save_and_close_wait',
   'complete', 'paused', 'error'
 ]);
 
@@ -53,13 +48,13 @@ const phaseMatches = read('src/workflow/engine.js')
   .match(/phase:\s*'([^']+)'|phase === '([^']+)'/g) || [];
 for (const match of phaseMatches) {
   const phase = match.replace(/.*'([^']+)'.*/, '$1');
-  if (phase && !knownPhases.has(phase) && !phase.startsWith('ppm_') && !phase.startsWith('activate_')) {
+  if (phase && !knownPhases.has(phase) && !phase.startsWith('activate_')) {
     warnings.push(`Unlisted phase reference in engine.js: ${phase}`);
   }
 }
 
 const registry = read('src/pages/registry.js');
-const handlers = ['processActivationPage', 'processPpmListPage', 'processPpmItemPage', 'processPpmStatusPage', 'fillCurrentRecord'];
+const handlers = ['processActivationPage', 'fillCurrentRecord'];
 for (const handler of handlers) {
   if (!registry.includes(handler)) errors.push(`registry.js missing handler reference: ${handler}`);
 }

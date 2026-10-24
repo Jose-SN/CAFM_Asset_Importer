@@ -22,41 +22,13 @@
     'asset_save_and_close_wait'
   ]);
 
-  const PPM_PHASES = Object.freeze([
-    'ppm_open_list',
-    'ppm_wait_new',
-    'ppm_wait_user_new',
-    'ppm_fill',
-    'ppm_await_save',
-    'ppm_status_open',
-    'ppm_status_select',
-    'ppm_status_confirm',
-    'ppm_status_wait',
-    'ppm_status_wait_user',
-    'ppm_child_closing',
-    'ppm_parent_refresh',
-    'ppm_parent_refresh_wait',
-    'ppm_cycle_complete_parent',
-    'ppm_cycle_general_wait',
-    'ppm_next'
-  ]);
-
   const WAITING_PHASES = new Set([
     'await_save',
     'asset_close_wait',
     'activate_wait',
     'activate_wait_user',
-    'ppm_wait_new',
-    'ppm_wait_user_new',
-    'ppm_await_save',
-    'ppm_child_closing',
-    'ppm_parent_refresh',
-    'ppm_parent_refresh_wait',
-    'ppm_cycle_general_wait',
     'navigate',
-    'asset_save_and_close_wait',
-    'ppm_status_wait',
-    'ppm_status_wait_user'
+    'asset_save_and_close_wait'
   ]);
 
   function phasePrefix(phase, prefix) {
@@ -65,11 +37,8 @@
 
   root.workflow.phases = Object.freeze({
     ASSET_PHASES,
-    PPM_PHASES,
     WAITING_PHASES,
     phasePrefix,
-    isActivationPhase: (phase) => phasePrefix(phase, 'activate_'),
-    isPpmPhase: (phase) => phasePrefix(phase, 'ppm_'),
-    isPpmStatusPhase: (phase) => phasePrefix(phase, 'ppm_status_')
+    isActivationPhase: (phase) => phasePrefix(phase, 'activate_')
   });
 })();

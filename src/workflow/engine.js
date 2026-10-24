@@ -8,13 +8,8 @@
     isNewEntityPage,
     isAssetListPage,
     isSavedAssetPage,
-    isPpmListPage,
-    isPpmItemPage,
-    isSavedPpmPage,
     entityIdFromUrl,
     assetEntityUrl,
-    ppmListUrl,
-    ppmEntityUrl,
     deriveNewEntityUrl
   } = root.core.pages;
   const { WAITING_PHASES } = root.workflow.phases;
@@ -43,8 +38,6 @@
         b.showWorkflowStatus({
           auto,
           record,
-          currentPpm: b.currentPpm(record),
-          linkedPpms: record ? b.linkedPpms(record) : [],
           statuses: b.state.session.statuses || {},
           statusOf: (row) => b.statusOf(row)
         }, {
@@ -55,14 +48,12 @@
           type: 'info'
         });
       } else if (b.showActivity) {
-        const ppm = b.currentPpm(record);
         const meta = record?.assetCode ? `Asset ${record.assetCode}` : '';
-        const ppmNote = ppm?.ppmKey ? ` · PPM ${(Number(auto.ppmIndex) || 0) + 1}` : '';
         b.showActivity(
           waiting ? 'Waiting' : 'Next step',
           root.ui.progressToast.phaseLabel(phase),
           waitSec > 0 ? `Checking again in ${waitSec}s` : 'Running next workflow step',
-          { wait: true, type: 'info', meta: `${meta}${ppmNote}`.trim(), tick: true }
+          { wait: true, type: 'info', meta, tick: true }
         );
       }
       b.render?.();
@@ -82,12 +73,11 @@
       b.state.session.auto.error = message;
     }
     const record = b.workflowRecord(b.state.session.auto);
-    if (record && b.state.session.auto?.mode !== 'ppm-current-page' && !['saved', 'skipped'].includes(b.statusOf(record))) {
+    if (record && !['saved', 'skipped'].includes(b.statusOf(record))) {
       await b.setStatus(record, 'failed', message, {
         cafmEntityId: b.state.session.auto?.assetEntityId || b.state.session.statuses?.[record.assetCode]?.cafmEntityId || '',
         assetActivated: Boolean(b.state.session.statuses?.[record.assetCode]?.assetActivated),
-        assetStatusEvidence: b.state.session.statuses?.[record.assetCode]?.assetStatusEvidence || '',
-        ppmResults: b.state.session.auto?.ppmResults || b.state.session.statuses?.[record.assetCode]?.ppmResults || []
+        assetStatusEvidence: b.state.session.statuses?.[record.assetCode]?.assetStatusEvidence || ''
       });
     }
     await b.persistSession();
@@ -120,7 +110,7 @@
       : 1;
     b.state.session.auto = {
       active: true, mode: 'automatic', phase: 'fill', index: b.state.session.index,
-      assetCode: record.assetCode, startedAt: Date.now(), ppmIndex: 0, ppmResults: [],
+      assetCode: record.assetCode, startedAt: Date.now(),
       processedThisRun: 0, maxIterations
     };
     b.addEvent('run-start', { maxIterations, iterationEnabled: Boolean(b.state.settings.iterationEnabled) });
@@ -178,11 +168,10 @@
       const waitingPhase = WAITING_PHASES.has(clean(auto.phase || ''));
       if (b.showActivity && !(b.showWorkflowStatus && waitingPhase)) {
         const recordPreview = b.workflowRecord(auto);
-        const ppmPreview = b.currentPpm(recordPreview);
         b.showActivity(
           'Running',
           root.ui.progressToast.phaseLabel(auto.phase),
-          ppmPreview?.instruction || recordPreview?.assetCode || '',
+          recordPreview?.assetCode || '',
           {
             wait: false,
             type: 'info',
@@ -193,7 +182,7 @@
         );
       }
       const index = Math.max(0, Number(auto.index ?? b.state.session.index) || 0);
-      if (auto.mode !== 'ppm-current-page' && b.state.assets[index]) b.state.session.index = index;
+      if (b.state.assets[index]) b.state.session.index = index;
       const record = b.workflowRecord(auto);
       if (!record) throw new Error('No asset row is available for the active workflow.');
 
@@ -219,45 +208,6 @@
         return;
       }
 
-      if (String(auto.phase || '').startsWith('ppm_status_')) {
-        if (!root.pages.ppmStatus.isPpmActivationEnabled()) {
-          await b.finishPostSave(record, auto.ppmResults || []);
-          return;
-        }
-        const target = b.ppmActivationTarget(auto);
-        if (!target) { await b.finishPostSave(record, auto.ppmResults || []); return; }
-        if (!isSavedPpmPage() || entityIdFromUrl() !== String(target.ppmEntityId || '')) {
-          location.href = ppmEntityUrl(target.ppmEntityId);
-          return;
-        }
-        await b.processPpmStatusPage(record);
-        return;
-      }
-
-      if (String(auto.phase || '').startsWith('ppm_')) {
-        if (auto.phase === 'ppm_cycle_general_wait' || auto.phase === 'ppm_cycle_complete_parent') {
-          if (isSavedAssetPage()) {
-            if (auto.phase === 'ppm_cycle_general_wait') {
-              await root.pages.ppmRegister.processPpmCycleGeneralWaitPage(record);
-            } else {
-              await root.pages.ppmRegister.processPpmListPage(record);
-            }
-            return;
-          }
-          if (auto.assetEntityId) {
-            location.href = assetEntityUrl(auto.assetEntityId);
-            return;
-          }
-        }
-        if (isPpmListPage()) { await root.pages.ppmRegister.processPpmListPage(record); return; }
-        if (isPpmItemPage()) { await root.pages.ppmEditor.processPpmItemPage(record); return; }
-        if (auto.assetEntityId) {
-          location.href = ppmListUrl(auto.assetEntityId);
-          return;
-        }
-        throw new Error(`Saved asset ID is missing before PPM creation for ${record.assetCode}.`);
-      }
-
       if (auto.phase === 'await_save') {
         if (isSavedAssetPage()) {
           await beginPostSave(record, entityIdFromUrl(), auto.mode || 'automatic', 'CAFM asset save confirmed');
@@ -276,14 +226,14 @@
           const elapsed = Date.now() - Number(auto.saveAndCloseStartedAt || Date.now());
           const leftSavedPage = !isSavedAssetPage() || (entityId && entityIdFromUrl() !== entityId);
           if (leftSavedPage || elapsed > b.state.settings.saveTimeoutMs) {
-            await b.finishPostSave(record, auto.ppmResults || []);
+            await b.finishPostSave(record);
             return;
           }
           scheduleAuto(350);
           return;
         }
         if (!entityId) {
-          await b.finishPostSave(record, auto.ppmResults || []);
+          await b.finishPostSave(record);
           return;
         }
         if (!isSavedAssetPage() || entityIdFromUrl() !== entityId) {
@@ -303,9 +253,7 @@
           await b.persistSession();
           auto = b.state.session.auto || {};
         }
-        const saveClose = auto.afterPpmAssetSaveAndClose
-          ? (root.core.dom.clickAssetToolbarSaveAndClose?.() || { ok: false })
-          : (b.clickSaveAndClose?.() || { ok: false });
+        const saveClose = b.clickSaveAndClose?.() || { ok: false };
         b.addEvent('asset-save-and-close-click', {
           ok: saveClose.ok,
           method: saveClose.method || '',
@@ -368,9 +316,7 @@
           await b.persistSession();
           autoNow = b.state.session.auto || autoNow;
         }
-        let saveAndNew = autoNow.afterPpmHandoff
-          ? (root.core.dom.clickAssetToolbarSaveAndNew?.() || { ok: false })
-          : (b.clickSaveAndNew?.() || { ok: false });
+        let saveAndNew = b.clickSaveAndNew?.() || { ok: false };
         if (!saveAndNew.ok && !saveAndNew.pending) {
           saveAndNew = b.clickSaveAndNew?.() || saveAndNew;
         }
@@ -379,8 +325,7 @@
           method: saveAndNew.method || '',
           reason: saveAndNew.reason || '',
           pending: Boolean(saveAndNew.pending),
-          nextAssetCode: autoNow.assetCode || '',
-          afterPpmHandoff: Boolean(autoNow.afterPpmHandoff)
+          nextAssetCode: autoNow.assetCode || ''
         });
         if (!saveAndNew.ok) {
           if (saveAndNew.pending && Date.now() - menuStarted < b.state.settings.lookupTimeoutMs) {
@@ -405,8 +350,7 @@
           ...autoNow,
           phase: 'navigate',
           saveAndNewStartedAt: Date.now(),
-          assetSaveAndNewMenuStartedAt: 0,
-          afterPpmHandoff: false
+          assetSaveAndNewMenuStartedAt: 0
         };
         await b.persistSession();
         scheduleAuto(400);
@@ -483,7 +427,7 @@
           b.state.session.auto = { active: false, mode: auto.mode || 'automatic', phase: 'complete', completedAt: Date.now() };
           await b.persistSession();
           b.render();
-          b.showToast('Automatic Asset + Activation + PPM import completed.', 'success', 10000);
+          b.showToast('Automatic asset import completed.', 'success', 10000);
           return;
         }
         b.state.session.index = next;

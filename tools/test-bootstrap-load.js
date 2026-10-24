@@ -66,9 +66,6 @@ const namespaces = [
   ['pages.registry.PAGE_HANDLERS', Array.isArray(CI?.pages?.registry?.PAGE_HANDLERS)],
   ['pages.assetNew.fillCurrentRecord', typeof CI?.pages?.assetNew?.fillCurrentRecord === 'function'],
   ['pages.assetSaved.processActivationPage', typeof CI?.pages?.assetSaved?.processActivationPage === 'function'],
-  ['pages.ppmRegister.processPpmListPage', typeof CI?.pages?.ppmRegister?.processPpmListPage === 'function'],
-  ['pages.ppmEditor.processPpmItemPage', typeof CI?.pages?.ppmEditor?.processPpmItemPage === 'function'],
-  ['pages.ppmStatus.processPpmStatusPage', typeof CI?.pages?.ppmStatus?.processPpmStatusPage === 'function'],
   ['workflow.engine.runAutomatic', typeof CI?.workflow?.engine?.runAutomatic === 'function'],
   ['workflow.postSave.beginPostSave', typeof CI?.workflow?.postSave?.beginPostSave === 'function'],
   ['ui.panel.injectPanel', typeof CI?.ui?.panel?.injectPanel === 'function'],
@@ -84,10 +81,7 @@ assert(globalThis.CAFMAssetRules?.validateRecord, 'CAFMAssetRules.validateRecord
 
 const handlerMap = {
   fillCurrentRecord: CI?.pages?.assetNew,
-  processActivationPage: CI?.pages?.assetSaved,
-  processPpmListPage: CI?.pages?.ppmRegister,
-  processPpmItemPage: CI?.pages?.ppmEditor,
-  processPpmStatusPage: CI?.pages?.ppmStatus
+  processActivationPage: CI?.pages?.assetSaved
 };
 
 for (const entry of CI?.pages?.registry?.PAGE_HANDLERS || []) {

@@ -18,27 +18,6 @@
       test: () => pages.isAssetPage() && pages.isSavedAssetPage(),
       phases: ['asset_close_child', 'asset_close_wait', 'activate_open', 'activate_select', 'activate_confirm', 'activate_wait', 'activate_wait_user', 'asset_save_and_new', 'asset_save_and_close', 'asset_save_and_close_wait'],
       handler: 'processActivationPage'
-    },
-    {
-      id: 'ppm-register',
-      label: 'PPM Register (parent)',
-      test: () => pages.isPpmRegisterParentPage(),
-      phases: ['ppm_open_list', 'ppm_wait_new', 'ppm_wait_user_new', 'ppm_next', 'ppm_parent_refresh', 'ppm_parent_refresh_wait', 'ppm_cycle_complete_parent', 'ppm_cycle_general_wait'],
-      handler: 'processPpmListPage'
-    },
-    {
-      id: 'ppm-editor',
-      label: 'PPM Editor',
-      test: () => pages.isPpmItemPage(),
-      phases: ['ppm_fill', 'ppm_await_save'],
-      handler: 'processPpmItemPage'
-    },
-    {
-      id: 'ppm-status',
-      label: 'PPM Saved (activation)',
-      test: () => pages.isSavedPpmPage(),
-      phases: ['ppm_status_open', 'ppm_status_select', 'ppm_status_confirm', 'ppm_status_wait', 'ppm_status_wait_user'],
-      handler: 'processPpmStatusPage'
     }
   ]);
 

@@ -33,12 +33,8 @@ async function readSessionAndSettings() {
   };
 }
 
-async function collectWorkflowTabIds(session, parent) {
+async function collectWorkflowTabIds(session) {
   const tabIds = new Set();
-  if (parent?.tabId) tabIds.add(parent.tabId);
-  for (const child of parent?.children || []) {
-    if (typeof child?.tabId === 'number') tabIds.add(child.tabId);
-  }
   try {
     const assetStored = await chrome.storage.local.get(ASSET_TAB_KEY);
     if (typeof assetStored[ASSET_TAB_KEY]?.tabId === 'number') tabIds.add(assetStored[ASSET_TAB_KEY].tabId);
@@ -57,8 +53,7 @@ async function collectWorkflowTabIds(session, parent) {
 
 async function dispatchAutoSteps(session) {
   if (!session?.auto?.active) return { dispatched: 0 };
-  const parent = await getStoredPpmParent();
-  const tabIds = await collectWorkflowTabIds(session, parent);
+  const tabIds = await collectWorkflowTabIds(session);
   let dispatched = 0;
   for (const tabId of tabIds) {
     try {
