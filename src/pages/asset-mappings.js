@@ -15,8 +15,25 @@
     const costCentre = splitLookupValue(record.costCentre);
     const buildingDisplay = clean(record.buildingCafmValue || record.buildingDisplay || record.buildingFull || record.buildingCode || record.buildingSearch);
     const buildingStrict = clean(record.buildingListCode || record.buildingCode || record.buildingSearch || buildingNumber(buildingDisplay));
-    const locationDisplay = clean(record.locationCafmValue || record.locationDisplay || record.locationFull || record.locationCode || record.locationSearch);
+    const locationDisplay = clean(record.locationCode || record.locationCafmValue || record.locationDisplay || record.locationFull || record.locationSearch);
     const locationStrict = clean(record.locationCode || record.locationSearch);
+    const systemDisplay = clean(record.system);
+    const systemStrict = clean(
+      record.systemCode || system.code || (/^[A-Z0-9_&/+.-]+$/.test(clean(record.system)) ? clean(record.system) : '')
+    );
+    const systemDescription = record.systemDescription && norm(record.systemDescription) !== norm(record.system)
+      ? record.systemDescription
+      : system.description;
+    const typeDisplay = clean(record.type);
+    const typeStrict = clean(record.typeCode || type.code);
+    const typeDescription = record.typeDescription || type.description;
+    const supplierDisplay = clean(record.supplier);
+    const supplierStrict = clean(supplier.code);
+    const supplierDescription = supplier.description;
+    const condition = splitLookupValue(record.condition);
+    const conditionDisplay = clean(record.condition);
+    const conditionStrict = clean(condition.code) || clean(record.condition).match(/^([A-Za-z0-9_.]+)/)?.[1] || '';
+    const conditionDescription = condition.description;
 
     return [
       makeLookupSpec('Building', buildingDisplay || buildingStrict, {
@@ -24,7 +41,7 @@
         display: buildingDisplay,
         buildingName: record.buildingName,
         aliases: [record.buildingFull, record.buildingCode, record.buildingSearch, record.buildingName],
-        searchTerms: [buildingNumber(buildingDisplay || buildingStrict), buildingStrict, record.buildingName, buildingDisplay]
+        searchTerms: [buildingDisplay, buildingStrict, record.buildingName, buildingNumber(buildingDisplay || buildingStrict)]
       }),
       makeLookupSpec('Floor', record.floorName, { display: record.floorName, aliases: [record.floorName], searchTerms: [record.floorName] }),
       makeLookupSpec('Location', locationDisplay || locationStrict, {
@@ -36,15 +53,40 @@
         aliases: [record.locationFull, record.locationDescription, record.locationSearch],
         searchTerms: [locationStrict, record.locationDescription, locationDisplay]
       }),
-      makeLookupSpec('System', record.system, { strictCode: record.systemCode || system.code || (/^[A-Z0-9_&/+.-]+$/.test(clean(record.system)) ? clean(record.system) : ''), description: record.systemDescription && norm(record.systemDescription) !== norm(record.system) ? record.systemDescription : system.description }),
+      makeLookupSpec('System', systemDisplay || systemStrict, {
+        strictCode: systemStrict,
+        display: systemDisplay,
+        description: systemDescription,
+        aliases: [record.system, system.full, systemStrict, systemDescription],
+        searchTerms: [systemDisplay, systemStrict, systemDescription, system.code]
+      }),
       makeLookupSpec('Tag', record.tag, { strictCode: record.tagCode || tag.code || (/^[A-Z0-9_&/+.-]+$/.test(clean(record.tag)) ? clean(record.tag) : ''), description: record.tagDescription && norm(record.tagDescription) !== norm(record.tag) ? record.tagDescription : tag.description }),
-      makeLookupSpec('Type', record.type, { strictCode: record.typeCode || type.code, description: record.typeDescription || type.description }),
+      makeLookupSpec('Type', typeDisplay || typeStrict, {
+        strictCode: typeStrict,
+        display: typeDisplay,
+        description: typeDescription,
+        aliases: [record.type, type.full, typeStrict, typeDescription],
+        searchTerms: [typeDisplay, typeStrict, typeDescription, type.code]
+      }),
       makeLookupSpec('Name', record.name, { strictCode: record.nameCode || name.code, description: record.nameDescription || name.description }),
       makeLookupSpec('Classification', record.classification, { display: record.classification, aliases: [record.classification], searchTerms: [record.classification] }),
       makeLookupSpec('Parent Asset', record.parentAssetCode, { strictCode: record.parentAssetCode, searchTerms: [record.parentAssetCode] }),
-      makeLookupSpec('Supplier', record.supplier, { strictCode: supplier.code, description: supplier.description }),
+      makeLookupSpec('Supplier', supplierDisplay || supplierStrict, {
+        strictCode: supplierStrict,
+        display: supplierDisplay,
+        description: supplierDescription,
+        aliases: [record.supplier, supplier.full, supplierStrict, supplierDescription],
+        searchTerms: [supplierDisplay, supplierStrict, supplierDescription]
+      }),
       makeLookupSpec('Cost Centre', record.costCentre, { strictCode: costCentre.code, description: costCentre.description }),
-      makeLookupSpec('Condition', record.condition, { tab: 'Financial/Risk' })
+      makeLookupSpec('Condition', conditionDisplay || conditionStrict, {
+        tab: 'Financial/Risk',
+        strictCode: conditionStrict,
+        display: conditionDisplay,
+        description: conditionDescription,
+        aliases: [record.condition, condition.full, conditionStrict, conditionDescription],
+        searchTerms: [conditionDisplay, conditionStrict, conditionDescription]
+      })
     ].filter((item) => clean(item.value));
   }
 

@@ -670,15 +670,24 @@ async function waitForCommittedLookup(spec, beforeFingerprint, timeoutMs = C().s
 
 async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden) {
   // Searchable Evolution combo boxes often return no rows when a long lookup
-  // description is typed verbatim. For PPM Instruction, type a short filter
-  // first (for fire-door PPMs: "fire doors") and then choose the exact full
-  // workbook instruction from the filtered dropdown. The workbook remains the
-  // source of truth for which option is selected.
+  // description is typed verbatim. Building tries Building CAFM Value first,
+  // then workbook fallbacks (code, name, short building number). System/Type
+  // try CAFM Value first, then code/description fallbacks. Instruction uses
+  // a short filter first, then the exact workbook row from the dropdown.
   const buildingShort = spec.field === 'Building' ? buildingNumber(spec.value || spec.display || spec.strictCode) : '';
+  const cafmValueFirst = ['Building', 'System', 'Type', 'Supplier', 'Condition'].includes(spec.field);
   const terms = spec.field === 'Instruction'
     ? uniqueNonBlank([...(spec.searchTerms || []), spec.strictCode, spec.sourceCode, spec.description, spec.value, spec.display])
-    : spec.field === 'Building'
-      ? uniqueNonBlank([buildingShort, ...(spec.searchTerms || []), spec.strictCode, spec.sourceCode, spec.description, spec.value, spec.display])
+    : cafmValueFirst
+      ? uniqueNonBlank([
+          spec.display,
+          spec.value,
+          ...(spec.searchTerms || []),
+          spec.strictCode,
+          spec.sourceCode,
+          spec.description,
+          ...(spec.field === 'Building' ? [buildingShort] : [])
+        ])
       : uniqueNonBlank([
           spec.strictCode,
           spec.sourceCode,
