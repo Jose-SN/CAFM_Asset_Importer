@@ -185,7 +185,8 @@
       entityIdFromUrl: CI.core.pages.entityIdFromUrl,
       isSavedAssetPage: CI.core.pages.isSavedAssetPage,
       workflowRecord: CI.data.records.workflowRecord,
-      showActivity: CI.ui.panel.showActivity
+      showActivity: CI.ui.panel.showActivity,
+      showToast: CI.ui.panel.showToast
     });
     initMessageListeners();
     document.addEventListener('visibilitychange', () => {

@@ -3,6 +3,13 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 Push-Location $Root
 
+Write-Host "`n>> node tools/sync-version-from-manifest.js" -ForegroundColor Cyan
+node tools/sync-version-from-manifest.js
+if ($LASTEXITCODE -ne 0) {
+  Pop-Location
+  exit $LASTEXITCODE
+}
+
 $checks = @(
   'tools/verify-modules.js',
   'tools/verify-load-order.js',

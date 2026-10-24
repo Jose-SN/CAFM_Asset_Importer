@@ -12,6 +12,15 @@ function read(rel) {
 }
 
 const manifest = JSON.parse(read('manifest.json'));
+const manifestVersion = String(manifest.version || '').trim();
+const constantsVersion = read('src/core/constants.js').match(/VERSION:\s*'([^']+)'/)?.[1] || '';
+if (constantsVersion !== manifestVersion) {
+  errors.push(`Version mismatch: manifest.json is ${manifestVersion} but src/core/constants.js VERSION is ${constantsVersion}. Run: node tools/sync-version-from-manifest.js`);
+}
+const versionTxt = read('VERSION.txt').trim();
+if (versionTxt !== manifestVersion) {
+  errors.push(`Version mismatch: manifest.json is ${manifestVersion} but VERSION.txt is ${versionTxt}. Run: node tools/sync-version-from-manifest.js`);
+}
 const scripts = manifest.content_scripts?.[0]?.js || [];
 
 for (const rel of scripts) {

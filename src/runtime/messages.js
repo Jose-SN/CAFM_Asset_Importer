@@ -2,7 +2,7 @@
   'use strict';
 
   const root = globalThis.CAFMImporter;
-  const { STORAGE } = root.core.constants;
+  const { STORAGE, DEFAULT_SETTINGS } = root.core.constants;
 
   /** @type {null | Record<string, unknown>} */
   let cfg = null;
@@ -17,8 +17,42 @@
       if (!message || typeof message !== 'object') return;
       const {
         state, addEvent, storageGet, persistSession, render, scheduleAuto, runAutomatic,
-        isAssetPage, assetEntityUrl, entityIdFromUrl, isSavedAssetPage
+        isAssetPage, assetEntityUrl, entityIdFromUrl, isSavedAssetPage, showToast
       } = C();
+
+      if (message.type === 'EE_EXTENSION_VERSION_RESET') {
+        try { sessionStorage.clear(); localStorage.clear(); } catch (_) {}
+        state.assets = [];
+        state.allAssets = [];
+        state.ppms = [];
+        state.cache = null;
+        state.learnedStatus = null;
+        state.learnedNew = null;
+        state.busy = false;
+        state.lookupAgentBusy = false;
+        state.lastLoggedPhase = '';
+        state.settings = { ...DEFAULT_SETTINGS };
+        state.session = {
+          fileName: '',
+          fileSize: 0,
+          fileModified: 0,
+          index: 0,
+          statuses: {},
+          newEntityUrl: root.core.pages.deriveNewEntityUrl(),
+          auto: null,
+          manualAwaitSave: null,
+          currentLookupEvidence: [],
+          events: []
+        };
+        clearTimeout(state.autoTimer);
+        clearTimeout(state.lookupTimer);
+        state.autoTimer = null;
+        state.lookupTimer = null;
+        render?.();
+        root.ui.progressToast.stopTick?.();
+        showToast?.(`Extension updated to v${message.version || 'new'}. Importer cache and session were cleared — reload your workbook.`, 'info', 12000);
+        return;
+      }
 
       if (message.type === 'RUN_AUTO_STEP') {
         storageGet([STORAGE.session]).then(async (stored) => {

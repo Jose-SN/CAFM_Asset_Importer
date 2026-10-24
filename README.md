@@ -89,3 +89,7 @@ See [ISSUE_TRACKING.md](ISSUE_TRACKING.md) for phase-based error isolation and t
 Before live CAFM testing, run `powershell -File tools/dev.ps1` (or the individual `node tools/*.js` checks listed in [SMOKE_TEST.md](SMOKE_TEST.md)). Generate smoke workbooks with `node tools/generate-smoke-workbook.js`, then follow [SMOKE_TEST.md](SMOKE_TEST.md) for regression scenarios.
 
 **Dev reload loop:** Chrome does not auto-reload unpacked extensions. After code changes: `chrome://extensions` → **Reload** → **F5** on CAFM tabs. Optional: `powershell -File tools/watch-dev.ps1` prints reload reminders when you save files.
+
+**Versioning:** Bump only `manifest.json` `"version"`, then run `node tools/sync-version-from-manifest.js` (or `tools/dev.ps1`, which runs sync first). That updates `src/core/constants.js`, `VERSION.txt`, extension name/title, `popup.html`, and `log.json` template.
+
+**Extension updates:** When `manifest.json` version changes, install/update clears `chrome.storage.local`, `chrome.storage.session`, IndexedDB workbook cache, background tab/orchestrator state, and page `localStorage` / `sessionStorage` on CAFM tabs, then resets in-memory importer state. Reload the workbook after updating.

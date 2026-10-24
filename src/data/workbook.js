@@ -14,7 +14,8 @@
     storageRemove,
     saveLargeWorkbook,
     loadLargeWorkbook,
-    clearLargeWorkbook
+    clearLargeWorkbook,
+    ensureStorageVersion
   } = root.core.storage;
   const ppmData = root.data.ppm;
 
@@ -63,7 +64,32 @@ async function persistSession() {
 }
 
 async function restoreState() {
+  const resetForVersion = await ensureStorageVersion();
   const stored = await storageGet([STORAGE.session, STORAGE.settings, STORAGE.learnedStatus, STORAGE.learnedNew]);
+  if (resetForVersion) {
+    C().state.assets = [];
+    C().state.allAssets = [];
+    C().state.ppms = [];
+    C().state.cache = null;
+    C().state.learnedStatus = null;
+    C().state.learnedNew = null;
+    C().state.settings = { ...DEFAULT_SETTINGS };
+    C().state.session = {
+      fileName: '',
+      fileSize: 0,
+      fileModified: 0,
+      index: 0,
+      statuses: {},
+      newEntityUrl: deriveNewEntityUrl(),
+      auto: null,
+      manualAwaitSave: null,
+      currentLookupEvidence: [],
+      events: []
+    };
+    C().state.lastLoggedPhase = '';
+    C().showToast?.('Extension version changed — importer cache, session, and settings were reset. Load your workbook again.', 'info', 12000);
+    return;
+  }
   if (stored[STORAGE.settings]) {
     const previousSettings = stored[STORAGE.settings];
     C().state.settings = { ...DEFAULT_SETTINGS, ...previousSettings };

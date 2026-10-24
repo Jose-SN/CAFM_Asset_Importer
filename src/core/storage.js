@@ -2,7 +2,7 @@
   'use strict';
 
   const root = globalThis.CAFMImporter;
-  const { LARGE_KEY } = root.core.constants;
+  const { LARGE_KEY, STORAGE } = root.core.constants;
 
   function runtimeMessage(message) {
     return new Promise((resolve) => {
@@ -45,6 +45,26 @@
     await runtimeMessage({ type: 'LARGE_STORAGE_REMOVE', key: LARGE_KEY });
   }
 
+  async function ensureStorageVersion() {
+    let manifestVersion = '';
+    try {
+      manifestVersion = String(chrome.runtime.getManifest().version || '').trim();
+    } catch (_) {
+      return false;
+    }
+    if (!manifestVersion) return false;
+    const stored = await storageGet([STORAGE.installedVersion]);
+    if (stored[STORAGE.installedVersion] === manifestVersion) return false;
+    await runtimeMessage({ type: 'EXTENSION_STORAGE_RESET', version: manifestVersion });
+    try {
+      if (window.top === window.self) {
+        sessionStorage.clear();
+        localStorage.clear();
+      }
+    } catch (_) {}
+    return true;
+  }
+
   root.core.storage = Object.freeze({
     runtimeMessage,
     storageGet,
@@ -52,6 +72,7 @@
     storageRemove,
     saveLargeWorkbook,
     loadLargeWorkbook,
-    clearLargeWorkbook
+    clearLargeWorkbook,
+    ensureStorageVersion
   });
 })();

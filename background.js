@@ -12,6 +12,7 @@ const ASSET_EDITOR_URL = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItem\.a
 
 const SESSION_KEY = 'eeAssetImporterV80Session';
 const SETTINGS_KEY = 'eeAssetImporterV80Settings';
+const INSTALLED_VERSION_KEY = 'eeAssetImporterInstalledVersion';
 const AUTO_ALARM = 'cafm-auto-orchestrator';
 const DEFAULT_ORCHESTRATOR_MS = 2500;
 const ppmSaveUrlNotified = new Map();
@@ -501,6 +502,66 @@ async function largeRemove(key) {
   db.close();
 }
 
+async function wipeIndexedDb() {
+  return new Promise((resolve) => {
+    try {
+      const request = indexedDB.deleteDatabase(DB_NAME);
+      request.onsuccess = () => resolve(true);
+      request.onerror = () => resolve(false);
+      request.onblocked = () => resolve(false);
+    } catch (_) {
+      resolve(false);
+    }
+  });
+}
+
+async function clearAllExtensionStorage() {
+  lookupClaims.clear();
+  ppmSaveUrlNotified.clear();
+  try { await chrome.alarms.clearAll(); } catch (_) {}
+  try {
+    if (chrome.storage?.session?.clear) await chrome.storage.session.clear();
+  } catch (_) {}
+  try { await chrome.storage.local.clear(); } catch (_) {}
+  await wipeIndexedDb();
+}
+
+async function notifyConceptTabsVersionReset(version) {
+  let tabs = [];
+  try { tabs = await chrome.tabs.query({}); } catch (_) { return; }
+  for (const tab of tabs) {
+    if (typeof tab.id !== 'number' || !isConceptUrl(tab.url)) continue;
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: 'EE_EXTENSION_VERSION_RESET', version });
+    } catch (_) {}
+  }
+}
+
+async function applyExtensionVersionReset(version) {
+  const manifestVersion = chrome.runtime.getManifest().version;
+  const target = String(version || manifestVersion || '').trim();
+  if (!target || target !== manifestVersion) return { ok: false, reason: 'version-mismatch' };
+  await clearAllExtensionStorage();
+  await chrome.storage.local.set({ [INSTALLED_VERSION_KEY]: manifestVersion });
+  await notifyConceptTabsVersionReset(manifestVersion);
+  return { ok: true, version: manifestVersion };
+}
+
+chrome.runtime.onInstalled.addListener((details) => {
+  if (!['install', 'update'].includes(details.reason)) return;
+  (async () => {
+    const manifestVersion = chrome.runtime.getManifest().version;
+    let prior = '';
+    try {
+      const data = await chrome.storage.local.get(INSTALLED_VERSION_KEY);
+      prior = String(data[INSTALLED_VERSION_KEY] || '').trim();
+    } catch (_) {}
+    if (details.reason === 'install' || prior !== manifestVersion) {
+      await applyExtensionVersionReset(manifestVersion);
+    }
+  })().catch(() => {});
+});
+
 async function largeStats() {
   const db = await openLargeDb();
   const records = await new Promise((resolve, reject) => {
@@ -532,6 +593,13 @@ async function largeStats() {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== 'object') return false;
+
+  if (message.type === 'EXTENSION_STORAGE_RESET') {
+    applyExtensionVersionReset(message.version)
+      .then((result) => sendResponseSafe(sendResponse, result))
+      .catch((error) => sendResponseSafe(sendResponse, { ok: false, error: String(error?.message || error) }));
+    return true;
+  }
 
   if (message.type === 'LARGE_STORAGE_PUT') {
     largePut(String(message.key || ''), message.value)
