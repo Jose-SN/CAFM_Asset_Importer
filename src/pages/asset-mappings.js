@@ -7,32 +7,25 @@
   const { directMappingsFromRegistry } = root.data.fieldRegistry;
 
   function lookupMapping(record) {
-    const system = splitLookupValue(record.system);
     const tag = splitLookupValue(record.tag);
-    const type = splitLookupValue(record.type);
-    const name = splitLookupValue(record.name);
-    const supplier = splitLookupValue(record.supplier);
+    const nameParts = splitLookupValue(record.name);
+    const supplierParts = splitLookupValue(record.supplier);
+    const conditionParts = splitLookupValue(record.condition);
     const costCentre = splitLookupValue(record.costCentre);
     const buildingDisplay = clean(record.buildingCafmValue || record.buildingDisplay || record.buildingFull || record.buildingCode || record.buildingSearch);
     const locationCode = clean(record.locationCode);
     const locationCafmValue = clean(record.locationCafmValue);
-    const systemDisplay = clean(record.system);
-    const systemStrict = clean(
-      record.systemCode || system.code || (/^[A-Z0-9_&/+.-]+$/.test(clean(record.system)) ? clean(record.system) : '')
-    );
-    const systemDescription = record.systemDescription && norm(record.systemDescription) !== norm(record.system)
-      ? record.systemDescription
-      : system.description;
-    const typeDisplay = clean(record.type);
-    const typeStrict = clean(record.typeCode || type.code);
-    const typeDescription = record.typeDescription || type.description;
-    const supplierDisplay = clean(record.supplier);
-    const supplierStrict = clean(supplier.code);
-    const supplierDescription = supplier.description;
-    const condition = splitLookupValue(record.condition);
-    const conditionDisplay = clean(record.condition);
-    const conditionStrict = clean(condition.code) || clean(record.condition).match(/^([A-Za-z0-9_.]+)/)?.[1] || '';
-    const conditionDescription = condition.description;
+
+    const systemCafmValue = clean(record.system);
+    const systemFallback = clean(record.systemCode || splitLookupValue(record.system).code);
+    const typeCafmValue = clean(record.type);
+    const typeFallback = clean(record.typeCode || splitLookupValue(record.type).code);
+    const nameCafmValue = clean(record.name);
+    const nameFallback = clean(record.nameCode || nameParts.code);
+    const supplierCafmValue = clean(record.supplier);
+    const supplierFallback = clean(record.supplierCode || supplierParts.code);
+    const conditionCafmValue = clean(record.condition);
+    const conditionFallback = clean(record.conditionCode || conditionParts.code);
 
     return [
       makeLookupSpec('Building', buildingDisplay, { display: buildingDisplay }),
@@ -41,39 +34,33 @@
         locationCode,
         locationCafmValue
       }),
-      makeLookupSpec('System', systemDisplay || systemStrict, {
-        strictCode: systemStrict,
-        display: systemDisplay,
-        description: systemDescription,
-        aliases: [record.system, system.full, systemStrict, systemDescription],
-        searchTerms: [systemDisplay, systemStrict, systemDescription, system.code]
+      makeLookupSpec('System', systemCafmValue || systemFallback, {
+        lookupCafmValue: systemCafmValue,
+        lookupFallback: systemFallback
       }),
-      makeLookupSpec('Tag', record.tag, { strictCode: record.tagCode || tag.code || (/^[A-Z0-9_&/+.-]+$/.test(clean(record.tag)) ? clean(record.tag) : ''), description: record.tagDescription && norm(record.tagDescription) !== norm(record.tag) ? record.tagDescription : tag.description }),
-      makeLookupSpec('Type', typeDisplay || typeStrict, {
-        strictCode: typeStrict,
-        display: typeDisplay,
-        description: typeDescription,
-        aliases: [record.type, type.full, typeStrict, typeDescription],
-        searchTerms: [typeDisplay, typeStrict, typeDescription, type.code]
+      makeLookupSpec('Tag', record.tag, {
+        strictCode: record.tagCode || tag.code || (/^[A-Z0-9_&/+.-]+$/.test(clean(record.tag)) ? clean(record.tag) : ''),
+        description: record.tagDescription && norm(record.tagDescription) !== norm(record.tag) ? record.tagDescription : tag.description
       }),
-      makeLookupSpec('Name', record.name, { strictCode: record.nameCode || name.code, description: record.nameDescription || name.description }),
+      makeLookupSpec('Type', typeCafmValue || typeFallback, {
+        lookupCafmValue: typeCafmValue,
+        lookupFallback: typeFallback
+      }),
+      makeLookupSpec('Name', nameCafmValue || nameFallback, {
+        lookupCafmValue: nameCafmValue,
+        lookupFallback: nameFallback
+      }),
       makeLookupSpec('Classification', record.classification, { display: record.classification, aliases: [record.classification], searchTerms: [record.classification] }),
       makeLookupSpec('Parent Asset', record.parentAssetCode, { strictCode: record.parentAssetCode, searchTerms: [record.parentAssetCode] }),
-      makeLookupSpec('Supplier', supplierDisplay || supplierStrict, {
-        strictCode: supplierStrict,
-        display: supplierDisplay,
-        description: supplierDescription,
-        aliases: [record.supplier, supplier.full, supplierStrict, supplierDescription],
-        searchTerms: [supplierDisplay, supplierStrict, supplierDescription]
+      makeLookupSpec('Supplier', supplierCafmValue || supplierFallback, {
+        lookupCafmValue: supplierCafmValue,
+        lookupFallback: supplierFallback
       }),
       makeLookupSpec('Cost Centre', record.costCentre, { strictCode: costCentre.code, description: costCentre.description }),
-      makeLookupSpec('Condition', conditionDisplay || conditionStrict, {
+      makeLookupSpec('Condition', conditionCafmValue || conditionFallback, {
         tab: 'Financial/Risk',
-        strictCode: conditionStrict,
-        display: conditionDisplay,
-        description: conditionDescription,
-        aliases: [record.condition, condition.full, conditionStrict, conditionDescription],
-        searchTerms: [conditionDisplay, conditionStrict, conditionDescription]
+        lookupCafmValue: conditionCafmValue,
+        lookupFallback: conditionFallback
       })
     ].filter((item) => clean(item.value));
   }

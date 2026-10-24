@@ -5,7 +5,7 @@
   root.core = root.core || {};
 
   root.core.constants = Object.freeze({
-    VERSION: '8.0.58',
+    VERSION: '8.0.60',
     HOST_ID: 'ee-cafm-asset-importer-host',
     STORAGE: Object.freeze({
       installedVersion: 'eeAssetImporterInstalledVersion',

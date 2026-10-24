@@ -4,7 +4,7 @@
   const root = globalThis.CAFMImporter;
   const { clean, norm, uniqueNonBlank } = root.core.text;
   const { wait, visible, isAssistantElement, elementValue, dispatchClick } = root.core.dom;
-  const { buildingCodeBeforeHyphen } = root.core.lookupSpec;
+  const { buildingCodeBeforeHyphen, SIMPLE_LOOKUP_FIELDS } = root.core.lookupSpec;
   const { STORAGE } = root.core.constants;
   const { isAssetPage } = root.core.pages;
   const { storageGet, storageSet, runtimeMessage } = root.core.storage;
@@ -681,24 +681,14 @@ async function waitForCommittedLookup(spec, beforeFingerprint, timeoutMs = C().s
 
 async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden) {
   // Searchable Evolution combo boxes often return no rows when a long lookup
-  // Building / Location: one or two search terms only; click row to commit (no same-term retry).
-  // Other CAFM-value-first fields try display then fallbacks. Instruction uses short filter first.
-  const cafmValueFirst = ['System', 'Type', 'Supplier', 'Condition'].includes(spec.field);
+  // Simple lookups: searchTerms only (one or two terms); click row to commit (no same-term retry).
+  const simpleLookup = SIMPLE_LOOKUP_FIELDS.has(spec.field);
   const terms = spec.field === 'Instruction'
     ? uniqueNonBlank([...(spec.searchTerms || []), spec.strictCode, spec.sourceCode, spec.description, spec.value, spec.display])
     : spec.field === 'Building'
       ? uniqueNonBlank(spec.searchTerms?.length ? spec.searchTerms : [buildingCodeBeforeHyphen(spec.display || spec.value)])
-    : spec.field === 'Location'
+    : simpleLookup
       ? uniqueNonBlank(spec.searchTerms || [])
-    : cafmValueFirst
-      ? uniqueNonBlank([
-          spec.display,
-          spec.value,
-          ...(spec.searchTerms || []),
-          spec.strictCode,
-          spec.sourceCode,
-          spec.description
-        ])
       : uniqueNonBlank([
           spec.strictCode,
           spec.sourceCode,
@@ -708,8 +698,8 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
           ...(spec.searchTerms || [])
         ]);
   const commitTimeoutMs = Number(C().state.settings.lookupCommitTimeoutMs) || 8000;
-  const clickFirstField = spec.field === 'Instruction' || spec.field === 'Building' || spec.field === 'Location';
-  const clickFirstNoSameTermRetry = spec.field === 'Building' || spec.field === 'Location';
+  const clickFirstField = spec.field === 'Instruction' || simpleLookup;
+  const clickFirstNoSameTermRetry = simpleLookup;
 
   lookupStepDebug('inline-lookup-start', {
     field: spec.field,

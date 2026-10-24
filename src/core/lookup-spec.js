@@ -26,10 +26,23 @@
     return left.replace(/\s+/g, '');
   }
 
+  /** CAFM / display value first, then fallback (e.g. code) when they differ. */
+  function cafmThenFallbackSearchTerms(cafmValue, fallback) {
+    const cafm = clean(cafmValue);
+    const fb = clean(fallback);
+    if (cafm) {
+      return uniqueNonBlank(fb && norm(fb) !== norm(cafm) ? [cafm, fb] : [cafm]);
+    }
+    return uniqueNonBlank(fb ? [fb] : []);
+  }
+
+  const SIMPLE_LOOKUP_FIELDS = new Set([
+    'Building', 'Location', 'System', 'Type', 'Name', 'Supplier', 'Condition'
+  ]);
+
   function makeLookupSpec(field, value, options = {}) {
     const parts = splitLookupValue(value);
     let strictCode = clean(options.strictCode || parts.code || '');
-    if (field === 'Condition' && !strictCode) strictCode = clean(value).match(/^([A-Za-z0-9_.]+)/)?.[1] || '';
     let searchTerms = uniqueNonBlank(options.searchTerms || (strictCode ? [strictCode] : []));
     let aliases = uniqueNonBlank([value, options.display, strictCode, options.description, ...(options.aliases || [])]);
     let description = clean(options.description || parts.description);
@@ -51,6 +64,14 @@
           ? (locationCafmValue && norm(locationCafmValue) !== norm(locationCode) ? [locationCode, locationCafmValue] : [locationCode])
           : (locationCafmValue ? [locationCafmValue] : [])
       );
+      aliases = searchTerms;
+      description = '';
+    } else if (field === 'System' || field === 'Type' || field === 'Name' || field === 'Supplier' || field === 'Condition') {
+      const lookupCafmValue = clean(options.lookupCafmValue ?? options.display ?? value);
+      const lookupFallback = clean(options.lookupFallback ?? options.lookupCode ?? strictCode);
+      display = lookupCafmValue || lookupFallback;
+      strictCode = lookupFallback || lookupCafmValue;
+      searchTerms = cafmThenFallbackSearchTerms(lookupCafmValue, lookupFallback);
       aliases = searchTerms;
       description = '';
     }
@@ -80,6 +101,8 @@
     splitLookupValue,
     buildingNumber,
     buildingCodeBeforeHyphen,
+    cafmThenFallbackSearchTerms,
+    SIMPLE_LOOKUP_FIELDS,
     makeLookupSpec
   });
 })();
