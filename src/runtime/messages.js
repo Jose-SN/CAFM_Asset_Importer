@@ -79,6 +79,7 @@
         storageGet([STORAGE.session]).then(async (stored) => {
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
           const currentAuto = state.session.auto || {};
+          if (!currentAuto.active) return;
           const entityId = String(message.assetEntityId || currentAuto.assetEntityId || '').trim();
           state.session.auto = {
             ...currentAuto,

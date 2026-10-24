@@ -636,6 +636,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'AUTO_ORCHESTRATOR_STOP') {
+    chrome.alarms.clear(AUTO_ALARM)
+      .then(() => sendResponseSafe(sendResponse, { ok: true, stopped: true }))
+      .catch((error) => sendResponseSafe(sendResponse, { ok: false, error: String(error?.message || error) }));
+    return true;
+  }
+
   if (message.type === 'AUTO_ORCHESTRATOR_SYNC') {
     syncAutoOrchestrator()
       .then((info) => sendResponseSafe(sendResponse, { ok: true, ...info }))

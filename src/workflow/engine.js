@@ -18,15 +18,27 @@
   const $ = () => root.runtime.b;
 
   function syncAutoOrchestrator() {
+    const active = Boolean($().state.session.auto?.active);
     try {
-      chrome.runtime.sendMessage({ type: 'AUTO_ORCHESTRATOR_SYNC' }).catch(() => {});
+      chrome.runtime.sendMessage({ type: active ? 'AUTO_ORCHESTRATOR_SYNC' : 'AUTO_ORCHESTRATOR_STOP' }).catch(() => {});
     } catch (_) {}
+  }
+
+  function cancelAutoWorkflowTimers() {
+    const b = $();
+    clearTimeout(b.state.autoTimer);
+    b.state.autoTimer = null;
+    clearTimeout(b.state.lookupTimer);
+    b.state.lookupTimer = null;
+    root.ui.progressToast.stopTick();
   }
 
   function scheduleAuto(delay = 0) {
     const b = $();
     clearTimeout(b.state.autoTimer);
+    b.state.autoTimer = null;
     const auto = b.state.session.auto || {};
+    if (!auto.active) return;
     const phase = clean(auto.phase || '');
     const waitMs = Math.max(0, Number(delay) || 0);
     const watchdogMs = WAITING_PHASES.has(phase) ? Math.max(waitMs, 750) : waitMs;
@@ -89,7 +101,7 @@
       { wait: false, type: 'error', meta: record?.assetCode || '', duration: 0, tick: false }
     );
     b.showToast(message, 'error', 12000);
-    root.ui.progressToast.stopTick();
+    cancelAutoWorkflowTimers();
     syncAutoOrchestrator();
   }
 
@@ -111,7 +123,8 @@
     b.state.session.auto = {
       active: true, mode: 'automatic', phase: 'fill', index: b.state.session.index,
       assetCode: record.assetCode, startedAt: Date.now(),
-      processedThisRun: 0, maxIterations
+      processedThisRun: 0, maxIterations,
+      fillPlanStep: 0, fillPlanAssetCode: ''
     };
     b.addEvent('run-start', { maxIterations, iterationEnabled: Boolean(b.state.settings.iterationEnabled) });
     await b.persistSession();
@@ -128,7 +141,14 @@
     }
     const record = b.currentRecord();
     if (!record) return b.showToast('Use Previous/Next to select the workbook row to resume, then click Resume.', 'warn', 9000);
-    const resumePhase = clean(auto.failedPhase || 'fill') || 'fill';
+    let resumePhase = clean(auto.failedPhase || 'fill') || 'fill';
+    if (
+      resumePhase === 'fill'
+      && Number(auto.fillPlanStep) > 0
+      && clean(auto.fillPlanAssetCode) === clean(record.assetCode)
+    ) {
+      resumePhase = 'filling';
+    }
     b.state.session.index = Math.max(0, Number(b.state.session.index) || 0);
     b.state.session.auto = {
       ...auto,
@@ -141,20 +161,27 @@
     b.addEvent('run-resume', { resumePhase, assetCode: record.assetCode, index: b.state.session.index });
     await b.persistSession();
     b.render();
-    b.showToast(`Resuming ${record.assetCode} at phase "${resumePhase.replace(/_/g, ' ')}".`, 'info', 9000);
+    const fillStep = Number(auto.fillPlanStep) || 0;
+    const fillHint = resumePhase === 'filling' && fillStep > 0 ? ` (fill step ${fillStep})` : '';
+    b.showToast(`Resuming ${record.assetCode} at phase "${resumePhase.replace(/_/g, ' ')}"${fillHint}.`, 'info', 9000);
     scheduleAuto(150);
   }
 
   async function pauseAutomatic() {
     const b = $();
+    cancelAutoWorkflowTimers();
     if (!b.state.session.auto) b.state.session.auto = {};
     b.state.session.auto.failedPhase = b.state.session.auto.phase;
     b.state.session.auto.active = false;
     b.state.session.auto.phase = 'paused';
+    b.addEvent('run-pause', {
+      failedPhase: b.state.session.auto.failedPhase || '',
+      fillPlanStep: Number(b.state.session.auto.fillPlanStep) || 0,
+      fillPlanAssetCode: clean(b.state.session.auto.fillPlanAssetCode || '')
+    });
     await b.persistSession();
     b.render();
     b.showToast('Automatic import paused.', 'info');
-    root.ui.progressToast.stopTick();
     syncAutoOrchestrator();
   }
 
@@ -431,7 +458,14 @@
           return;
         }
         b.state.session.index = next;
-        b.state.session.auto = { ...auto, phase: 'fill', index: next, assetCode: b.state.assets[next].assetCode };
+        b.state.session.auto = {
+          ...auto,
+          phase: 'fill',
+          index: next,
+          assetCode: b.state.assets[next].assetCode,
+          fillPlanStep: 0,
+          fillPlanAssetCode: ''
+        };
         await b.persistSession();
         b.render();
       }
@@ -459,7 +493,8 @@
       b.state.session.auto = { ...b.state.session.auto, active: true, mode: auto.mode || 'automatic', phase: 'filling', index: b.state.session.index, assetCode: b.currentRecord().assetCode };
       await b.persistSession();
       b.render();
-      await root.pages.assetNew.fillCurrentRecord();
+      const filled = await root.pages.assetNew.fillCurrentRecord({ respectAutoPause: true });
+      if (filled?.cancelled || !b.state.session.auto?.active) return;
       b.state.session.manualAwaitSave = null;
       b.state.session.auto = { ...b.state.session.auto, phase: 'saving', index: b.state.session.index, assetCode: b.currentRecord().assetCode };
       await b.persistSession();

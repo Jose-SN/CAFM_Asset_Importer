@@ -723,6 +723,9 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
 
   let lastTyped = '';
   for (let termIndex = 0; termIndex < terms.length; termIndex += 1) {
+    if (C().state.session.auto?.mode === 'automatic' && !C().state.session.auto?.active) {
+      throw new Error('Automatic import paused.');
+    }
     const term = terms[termIndex];
     lastTyped = term;
     const isCafmValueTerm = norm(term) === norm(spec.display) || norm(term) === norm(spec.value);
@@ -893,6 +896,10 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
 }
 
 async function selectLookup(spec) {
+  const auto = C().state.session.auto;
+  if (auto?.mode === 'automatic' && !auto?.active) {
+    throw new Error('Automatic import paused.');
+  }
   lookupStepDebug('lookup-field-start', {
     field: spec.field,
     tab: spec.tab,
