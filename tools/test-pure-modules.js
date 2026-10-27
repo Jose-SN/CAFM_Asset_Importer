@@ -66,7 +66,8 @@ const typeSpec = makeLookupSpec('Type', 'ELT - Emergency Light test', {
   lookupCafmValue: 'ELT - Emergency Light test',
   lookupFallback: 'ELT'
 });
-assert(systemSpec.searchTerms[0] === 'MECH - Mechanical', 'System search prefers CAFM value');
+assert(systemSpec.searchTerms[0] === 'MECH', 'System search prefers System Code first');
+assert(systemSpec.searchTerms[1] === 'MECH - Mechanical', 'System search then System CAFM value');
 assert(typeSpec.searchTerms[0] === 'ELT - Emergency Light test', 'Type search prefers Type CAFM value like System');
 assert(typeSpec.searchTerms.includes('ELT'), 'Type search includes code fallback like System');
 assert(typeSpec.strictCode === typeSpec.display && systemSpec.strictCode === systemSpec.display, 'Type uses same CAFM-primary strictCode rule as System');

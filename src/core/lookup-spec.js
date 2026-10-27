@@ -45,6 +45,14 @@
     return uniqueNonBlank(fb ? [fb] : []);
   }
 
+  /** System: code first, then full System CAFM Value when they differ. */
+  function fallbackThenCafmSearchTerms(cafmValue, fallback) {
+    const cafm = clean(cafmValue);
+    const fb = clean(fallback);
+    if (fb && cafm && norm(fb) !== norm(cafm)) return uniqueNonBlank([fb, cafm]);
+    return uniqueNonBlank(cafm ? [cafm] : fb ? [fb] : []);
+  }
+
   const SIMPLE_LOOKUP_FIELDS = new Set([
     'Building', 'Location', 'System', 'Type', 'Name', 'Supplier', 'Condition'
   ]);
@@ -82,7 +90,15 @@
       searchTerms = uniqueNonBlank(conditionValue ? [conditionValue] : []);
       aliases = searchTerms;
       description = '';
-    } else if (field === 'System' || field === 'Type' || field === 'Name' || field === 'Supplier') {
+    } else if (field === 'System') {
+      const lookupCafmValue = clean(options.lookupCafmValue ?? options.display ?? value);
+      const lookupFallback = clean(options.lookupFallback ?? options.lookupCode ?? strictCode);
+      display = lookupCafmValue || lookupFallback;
+      strictCode = display;
+      searchTerms = fallbackThenCafmSearchTerms(lookupCafmValue, lookupFallback);
+      aliases = searchTerms;
+      description = '';
+    } else if (field === 'Type' || field === 'Name' || field === 'Supplier') {
       const lookupCafmValue = clean(options.lookupCafmValue ?? options.display ?? value);
       const lookupFallback = clean(options.lookupFallback ?? options.lookupCode ?? strictCode);
       display = lookupCafmValue || lookupFallback;
@@ -119,6 +135,7 @@
     buildingCodeBeforeHyphen,
     typeLookupSearchTerm,
     cafmThenFallbackSearchTerms,
+    fallbackThenCafmSearchTerms,
     SIMPLE_LOOKUP_FIELDS,
     makeLookupSpec
   });
