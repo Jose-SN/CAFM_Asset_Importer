@@ -56,6 +56,14 @@ assert(validateRecord({ assetCode: 'WCH-OK-001' }).length === 0, 'minimal valid 
 assert(validateRecord({ assetCode: 'WCH-OK-001', quantity: '-1' }).length > 0, 'invalid quantity rejected');
 assert(lookupValue('System', 'CODE - Description').code === 'CODE', 'lookupValue splits code/description');
 
+load('src/core/lookup-spec.js');
+const { makeLookupSpec } = globalThis.CAFMImporter.core.lookupSpec;
+const eltType = makeLookupSpec('Type', 'ELT - Emergency Light test', { display: 'ELT - Emergency Light test' });
+assert(eltType.searchTerms[0] === 'ELT - Emergency Light test', 'Type search prefers full CAFM label');
+assert(eltType.searchTerms.includes('Emergency Light test'), 'Type search includes description segment');
+assert(eltType.searchTerms.includes('ELT'), 'Type search retains code fallback');
+assert(eltType.description === 'Emergency Light test', 'Type spec keeps description for matching');
+
 // --- field-registry.js ---
 const record = { assetCode: 'WCH-REG-001', description: 'Test', spatial: { latitude: '51.5' } };
 const maps = directMappingsFromRegistry(record);

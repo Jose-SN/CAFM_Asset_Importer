@@ -64,11 +64,15 @@
       description = '';
       display = clean(options.display || value);
     } else if (field === 'Type') {
-      strictCode = typeLookupSearchTerm(value || options.display);
-      searchTerms = uniqueNonBlank(strictCode ? [strictCode] : []);
-      aliases = searchTerms;
-      description = '';
       display = clean(options.display || value);
+      strictCode = typeLookupSearchTerm(display);
+      const descPart = clean(parts.description);
+      description = descPart && norm(descPart) !== norm(strictCode) ? descPart : '';
+      const compoundLabel = display.includes(' - ');
+      searchTerms = compoundLabel
+        ? uniqueNonBlank([display, description, strictCode])
+        : uniqueNonBlank(strictCode ? [strictCode, display] : [display]);
+      aliases = uniqueNonBlank([display, strictCode, description]);
     } else if (field === 'Location') {
       const locationCode = clean(options.locationCode || strictCode);
       const locationCafmValue = clean(options.locationCafmValue || '');

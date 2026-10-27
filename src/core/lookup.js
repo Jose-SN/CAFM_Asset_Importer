@@ -148,12 +148,23 @@ function lookupTextMatches(text, spec) {
     if (cc && ((cf && cc === cf) || (cd && (cc === cd || cc.includes(cd) || cd.includes(cc))))) return true;
   }
 
-  if (spec.field === 'Type' && code) {
-    const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
-    if (re.test(candidate)) return true;
-    if (display && candidate.includes(display)) return true;
-    if (full && candidate.includes(full)) return true;
+  if (spec.field === 'Type') {
+    const collapse = (text) => norm(text).replace(/\s+/g, '');
+    if (display && (candidate === display || collapse(text) === collapse(spec.display))) return true;
+    if (full && (candidate === full || collapse(text) === collapse(spec.value))) return true;
+    if (display.includes(' - ')) {
+      if (description.length >= 3 && (candidate === description || candidate.includes(description))) return true;
+      if (display && candidate.includes(display)) return true;
+      if (code && description && candidate.startsWith(`${code} -`) && candidate.includes(description)) return true;
+      return false;
+    }
+    if (code) {
+      const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
+      if (re.test(candidate)) return true;
+      if (display && candidate.includes(display)) return true;
+      if (full && candidate.includes(full)) return true;
+    }
     return false;
   }
   if (spec.field === 'Building' && code) {
@@ -199,14 +210,23 @@ function lookupScore(text, spec) {
     return score;
   }
 
-  if (spec.field === 'Type' && code) {
-    const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
-    if (re.test(candidate)) score += 9000;
-    else if (candidate.includes(code)) score += 7000;
-    else return -Infinity;
-    if (display && candidate.includes(display)) score += 2500;
-    if (full && candidate === full) score += 12000;
+  if (spec.field === 'Type') {
+    const collapse = (text) => norm(text).replace(/\s+/g, '');
+    if (display && (candidate === display || collapse(text) === collapse(spec.display))) score += 15000;
+    else if (full && (candidate === full || collapse(text) === collapse(spec.value))) score += 15000;
+    else if (display.includes(' - ')) {
+      if (description.length >= 3 && (candidate === description || candidate.includes(description))) score += 12000;
+      else if (display && candidate.includes(display)) score += 11000;
+      else if (code && description && candidate.startsWith(`${code} -`) && candidate.includes(description)) score += 10500;
+      else return -Infinity;
+    } else if (code) {
+      const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
+      if (re.test(candidate)) score += 9000;
+      else if (candidate.includes(code)) score += 7000;
+      else return -Infinity;
+      if (display && candidate.includes(display)) score += 2500;
+    } else return -Infinity;
   } else if (spec.field === 'Building' && code) {
     const collapsedCandidate = candidate.replace(/\s+/g, '').toLowerCase();
     const collapsedCode = code.replace(/\s+/g, '').toLowerCase();
