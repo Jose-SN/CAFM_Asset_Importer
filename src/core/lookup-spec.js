@@ -63,12 +63,6 @@
       aliases = searchTerms;
       description = '';
       display = clean(options.display || value);
-    } else if (field === 'Type') {
-      strictCode = typeLookupSearchTerm(value || options.display);
-      searchTerms = uniqueNonBlank(strictCode ? [strictCode] : []);
-      aliases = searchTerms;
-      description = '';
-      display = clean(options.display || value);
     } else if (field === 'Location') {
       const locationCode = clean(options.locationCode || strictCode);
       const locationCafmValue = clean(options.locationCafmValue || '');
@@ -88,7 +82,7 @@
       searchTerms = uniqueNonBlank(conditionValue ? [conditionValue] : []);
       aliases = searchTerms;
       description = '';
-    } else if (field === 'System' || field === 'Name' || field === 'Supplier') {
+    } else if (field === 'System' || field === 'Type' || field === 'Name' || field === 'Supplier') {
       const lookupCafmValue = clean(options.lookupCafmValue ?? options.display ?? value);
       const lookupFallback = clean(options.lookupFallback ?? options.lookupCode ?? strictCode);
       display = lookupCafmValue || lookupFallback;

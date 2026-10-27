@@ -17,7 +17,9 @@
 
     const systemCafmValue = clean(record.system);
     const systemFallback = clean(record.systemCode || splitLookupValue(record.system).code);
-    const typeDisplay = clean(record.type);
+    const typeParts = splitLookupValue(record.type);
+    const typeCafmValue = clean(record.type);
+    const typeFallback = clean(record.typeCode || typeParts.code);
     const nameCafmValue = clean(record.name);
     const nameFallback = clean(record.nameCode || nameParts.code);
     const supplierCafmValue = clean(record.supplier);
@@ -39,7 +41,10 @@
         strictCode: record.tagCode || tag.code || (/^[A-Z0-9_&/+.-]+$/.test(clean(record.tag)) ? clean(record.tag) : ''),
         description: record.tagDescription && norm(record.tagDescription) !== norm(record.tag) ? record.tagDescription : tag.description
       }),
-      makeLookupSpec('Type', typeDisplay, { display: typeDisplay }),
+      makeLookupSpec('Type', typeCafmValue || typeFallback, {
+        lookupCafmValue: typeCafmValue,
+        lookupFallback: typeFallback
+      }),
       makeLookupSpec('Name', nameCafmValue || nameFallback, {
         lookupCafmValue: nameCafmValue,
         lookupFallback: nameFallback
