@@ -91,8 +91,12 @@ function workflowAssetCodeOnPage() {
 function recordByAssetCode(assetCode) {
   const code = clean(assetCode);
   if (!code) return null;
-  const pool = C().state.allAssets.length ? C().state.allAssets : C().state.assets;
-  return pool.find((record) => norm(record?.assetCode) === norm(code)) || null;
+  const pools = [C().state.assets, C().state.allAssets].filter((list) => Array.isArray(list) && list.length);
+  for (const pool of pools) {
+    const hit = pool.find((record) => norm(record?.assetCode) === norm(code));
+    if (hit) return hit;
+  }
+  return null;
 }
 
 function ppmRecordOnCurrentPage() {

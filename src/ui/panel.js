@@ -61,7 +61,7 @@ function render() {
   const status = record ? C().statusOf(record) : 'pending';
   const validation = record ? C().validateRecord(record) : [];
   const auto = C().state.session.auto;
-  const loaded = C().state.assets.length > 0 || C().state.allAssets.length > 0;
+  const loaded = C().state.ppms.length > 0 || C().state.assets.length > 0 || C().state.allAssets.length > 0;
   const savedAssetPage = isSavedAssetPage();
   const ppmRegisterPage = isPpmListPage();
   const pageAssetCode = savedAssetPage ? C().assetCodeOnPage() : '';
@@ -70,7 +70,9 @@ function render() {
   const editPool = C().state.allAssets.length ? C().state.allAssets : C().state.assets;
   const savedMatch = pageAssetCode ? editPool.find((item) => norm(item.assetCode) === norm(pageAssetCode)) : null;
 
-  C().state.els.fileName.textContent = C().state.cache?.fileName ? `${C().state.cache.fileName} | ${C().state.assets.length} saved-asset row(s)` : 'No workbook loaded';
+  C().state.els.fileName.textContent = C().state.cache?.fileName
+    ? `${C().state.cache.fileName} | ${(C().state.ppms || []).length} PPM row(s) on CAFM PPM Import | ${C().state.assets.length} asset code(s) queued`
+    : 'No workbook loaded';
   C().state.els.total.textContent = String(c.total);
   C().state.els.saved.textContent = String(c.saved);
   C().state.els.remaining.textContent = String(c.remaining);
@@ -112,10 +114,10 @@ function render() {
       C().state.els.assetCode.textContent = savedMatch.assetCode;
     }
   } else if (isAssetListPage() && loaded) {
-    C().state.els.validation.textContent = 'Upload only workbooks for assets already saved in CAFM. Start automatic searches each Asset Code on this register.';
+    C().state.els.validation.textContent = 'Automatic run uses CAFM PPM Import only: search each Asset Code on this register, open PPM, and save missing PPM rows from that sheet.';
     C().state.els.validation.className = 'validation goodtext';
   } else if (isAssetListPage()) {
-    C().state.els.validation.textContent = 'Upload only workbooks for assets already saved in CAFM. This branch does not create new assets.';
+    C().state.els.validation.textContent = 'Load a workbook with a CAFM PPM Import tab (Import? = YES). Optional CAFM Import rows can enrich Asset Code metadata.';
     C().state.els.validation.className = 'validation goodtext';
   } else {
     C().state.els.validation.textContent = validation.length ? validation.join(' | ') : 'Workbook row passed local validation.';
@@ -189,7 +191,7 @@ function render() {
     C().state.els.resumeRowInput.max = String(C().state.assets.length);
     C().state.els.resumeRowInput.value = String(C().state.session.index + 1);
   }
-  C().state.els.startAuto.disabled = !C().state.assets.length || Boolean(auto?.active) || !isAssetListPage();
+  C().state.els.startAuto.disabled = !C().state.ppms.length || !C().state.assets.length || Boolean(auto?.active) || !isAssetListPage();
   const missingCodes = root.pages.assetSearch?.missingAssetCodes?.() || [];
   if (C().state.els.missingAssetWrap) {
     C().state.els.missingAssetWrap.hidden = !missingCodes.length;
@@ -328,13 +330,13 @@ function injectPanel() {
     <div id="panel">
       <div id="head">
         <img src="${logo}" alt="Engineering Efficiency Ltd">
-        <div class="titles"><h2>CAFM Asset Importer</h2><div id="contextSub" class="sub">Engineering Efficiency Ltd | v${VERSION} | Search saved assets by Asset Code</div></div>
+        <div class="titles"><h2>CAFM Asset Importer</h2><div id="contextSub" class="sub">Engineering Efficiency Ltd | v${VERSION} | PPM save from CAFM PPM Import</div></div>
         <button id="collapse" title="Collapse">-</button>
       </div>
       <div id="body">
         <div id="workbookSection" class="section">
           <h3>Workbook</h3>
-          <div class="muted" style="margin-bottom:7px">Upload only a workbook for assets already saved in CAFM. This branch searches existing Asset Codes. It does not create new assets.</div>
+          <div class="muted" style="margin-bottom:7px">Primary data: <b>CAFM PPM Import</b> (PPM rows with Import? = YES, linked by Asset Code). The run searches each distinct Asset Code on the register and saves PPMs from that sheet. This branch does not create new assets.</div>
           <div class="file"><input id="fileInput" type="file" accept=".xlsx"></div>
           <div id="fileName" class="muted" style="margin-top:5px"></div>
           <div class="kpis">
@@ -371,7 +373,7 @@ function injectPanel() {
           </div>
         </div>
         <div id="autoSection" class="section">
-          <h3>Automatic saved-asset search</h3>
+          <h3>Automatic PPM import</h3>
           <div class="buttons">
             <button id="startAuto" class="action primary">Start automatic</button>
             <button id="pauseAuto" class="action danger">Pause / Stop</button>

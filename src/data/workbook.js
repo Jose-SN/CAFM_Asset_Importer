@@ -31,6 +31,16 @@
     return cfg;
   }
 
+  function assetQueueFromCache(cache) {
+    const ppms = cache?.ppms || [];
+    const allAssets = cache?.allAssets || cache?.assets || [];
+    if (ppms.length) {
+      return ppmData.assetQueueFromPpmImport(ppms, allAssets);
+    }
+    const coded = allAssets.filter((row) => clean(row?.assetCode));
+    return coded.length ? coded : (cache?.assets || []);
+  }
+
 async function persistSession() {
   const phase = clean(C().state.session.auto?.phase || '');
   if (phase && phase !== C().state.lastLoggedPhase) {
@@ -112,9 +122,9 @@ async function restoreState() {
   const cache = await loadLargeWorkbook();
   if (cache?.allAssets?.length || cache?.assets?.length || cache?.ppms?.length) {
     C().state.cache = cache;
-    C().state.assets = cache.assets || [];
     C().state.allAssets = cache.allAssets || cache.assets || [];
     C().state.ppms = cache.ppms || [];
+    C().state.assets = assetQueueFromCache(cache);
     if (C().state.assets.length) C().state.session.index = Math.max(0, Math.min(Number(C().state.session.index) || 0, C().state.assets.length - 1));
   }
   const missingLog = stored[STORAGE.missingAssetCodes] || C().state.session.missingAssetLog || null;
@@ -133,6 +143,9 @@ async function restoreState() {
 async function loadWorkbookFile(file) {
   if (!globalThis.CAFMXlsx?.readWorkbook) throw new Error('Workbook reader is unavailable. Reload the extension.');
   const parsed = await globalThis.CAFMXlsx.readWorkbook(file);
+  if (!parsed.ppms?.length) {
+    throw new Error("No PPM rows with Import? = YES were found on the 'CAFM PPM Import' sheet. This branch saves PPMs from that tab only.");
+  }
   if (!parsed.allAssets?.length && !parsed.ppms?.length) throw new Error('No CAFM asset or PPM rows were found in this workbook.');
   const cache = {
     assets: parsed.assets || [],
@@ -151,9 +164,9 @@ async function loadWorkbookFile(file) {
   };
   await saveLargeWorkbook(cache);
   C().state.cache = cache;
-  C().state.assets = cache.assets || [];
   C().state.allAssets = cache.allAssets || cache.assets || [];
   C().state.ppms = cache.ppms || [];
+  C().state.assets = assetQueueFromCache(cache);
   const keepMissingLog = C().state.session.missingAssetLog || null;
   const keepMissingCodes = Array.isArray(C().state.session.missingAssetCodes) ? C().state.session.missingAssetCodes : [];
   C().state.session = {
@@ -173,7 +186,11 @@ async function loadWorkbookFile(file) {
   };
   await persistSession();
   C().render();
-  C().showToast(`Loaded ${C().state.assets.length} asset row(s) from ${cache.fileName}. Use only workbooks for assets already saved in CAFM.`, 'success', 12000);
+  C().showToast(
+    `Loaded ${C().state.ppms.length} PPM row(s) from CAFM PPM Import (${C().state.assets.length} asset code(s) to process).`,
+    'success',
+    12000
+  );
 }
 
 async function jumpToIndex(index) {

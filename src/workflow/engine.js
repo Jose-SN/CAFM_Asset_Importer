@@ -114,7 +114,12 @@
 
   async function startAutomatic() {
     const b = $();
-    if (!b.state.assets.length) return b.showToast('Load a workbook of already-saved assets first.', 'warn');
+    if (!b.state.ppms?.length) {
+      return b.showToast("Load a workbook with PPM rows on the 'CAFM PPM Import' sheet first.", 'warn', 10000);
+    }
+    if (!b.state.assets.length) {
+      return b.showToast('No Asset Codes were found on CAFM PPM Import (check Import? = YES).', 'warn', 10000);
+    }
     if (!isAssetListPage()) {
       return b.showToast('Open the Asset register (ViewFASSETItems.aspx), then start automatic.', 'warn', 8000);
     }
@@ -139,7 +144,7 @@
     b.addEvent('run-start', { mode: 'ppm', assetCode: record.assetCode, rows: b.state.assets.length });
     await b.persistSession();
     b.render();
-    b.showToast(`Searching ${b.state.assets.length} saved asset(s) by Asset Code.`, 'info', 7000);
+    b.showToast(`PPM import: searching ${b.state.assets.length} asset code(s) from CAFM PPM Import.`, 'info', 7000);
     scheduleAuto(100);
     syncAutoOrchestrator();
   }

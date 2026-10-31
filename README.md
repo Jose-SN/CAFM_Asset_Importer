@@ -42,7 +42,9 @@ Header row must include at least: **Asset Code**, **Building CAFM Value** (or **
 
 Rows with `Asset Code = END` are ignored.
 
-A **CAFM PPM Import** sheet may still be present in older workbooks; this branch ignores PPM rows and does not run PPM automation.
+A **CAFM PPM Import** sheet is **required** on this branch. PPM rows (`Import? = YES`) drive the automatic run: Contract, Instruction, Last Service, Notes, Frequency, etc. are read from that tab only. The tab name must be exactly **CAFM PPM Import**.
+
+Optional **CAFM Import** rows can supply extra Asset Code metadata; the queue is built from **distinct Asset Codes on CAFM PPM Import**, in sheet order.
 
 ## Operator runbook
 

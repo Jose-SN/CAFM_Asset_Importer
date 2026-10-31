@@ -8,6 +8,7 @@
   function summarize(state) {
     const assets = state.assets || [];
     const allAssets = state.allAssets || assets;
+    const ppms = state.ppms || [];
     const invalidAssets = [];
 
     for (const record of assets) {
@@ -24,10 +25,12 @@
     }
 
     const blocking = [];
-    if (invalidAssets.length) blocking.push(`${invalidAssets.length} NEW asset row(s) failed validation`);
+    if (!ppms.length) blocking.push("No PPM rows on 'CAFM PPM Import' (Import? = YES)");
+    if (invalidAssets.length) blocking.push(`${invalidAssets.length} asset queue row(s) failed validation`);
 
     return {
       assetCount: assets.length,
+      ppmCount: ppms.length,
       editableAssetCount: allAssets.length,
       invalidAssets,
       schema,
@@ -37,8 +40,8 @@
   }
 
   function formatSummary(report) {
-    const parts = [`${report.assetCount} NEW asset(s)`];
-    if (report.invalidAssets.length) parts.push(`${report.invalidAssets.length} invalid asset row(s)`);
+    const parts = [`${report.ppmCount || 0} PPM row(s) on CAFM PPM Import`, `${report.assetCount} asset code(s) to process`];
+    if (report.invalidAssets.length) parts.push(`${report.invalidAssets.length} invalid queue row(s)`);
     if (report.schema) parts.push(`schema ${report.schema}`);
     return parts.join(' | ');
   }

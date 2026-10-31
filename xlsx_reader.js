@@ -1,6 +1,9 @@
 (() => {
   'use strict';
 
+  const SHEET_CAFM_IMPORT = 'CAFM Import';
+  const SHEET_CAFM_PPM_IMPORT = 'CAFM PPM Import';
+
   const textDecoder = new TextDecoder('utf-8');
 
   function readUInt16(view, offset) {
@@ -397,7 +400,7 @@
       const values = [...row.cells.values()].map(normalizeHeader);
       if (values.includes('asset code') && values.includes('instruction') && values.includes('import?')) return row;
     }
-    throw new Error("The 'CAFM PPM Import' sheet headers were not recognised. Keep the supplied header names unchanged.");
+    throw new Error(`The '${SHEET_CAFM_PPM_IMPORT}' sheet headers were not recognised. Keep the supplied header names unchanged.`);
   }
 
   function parsePpmRows(rows, assetByWorkbookRow = new Map()) {
@@ -474,12 +477,12 @@
       ? parseSharedStrings(await zip.getText('xl/sharedStrings.xml'))
       : [];
 
-    const importXml = await sheetXml(zip, workbookXml, relsXml, 'CAFM Import');
+    const importXml = await sheetXml(zip, workbookXml, relsXml, SHEET_CAFM_IMPORT);
     const rows = parseWorksheet(importXml, sharedStrings, null);
     const schemaFromWorkbook = readSchemaVersionRow(rows);
     const headerRow = findImportHeaderRow(rows);
     const headers = headerRow.cells;
-    const ppmXml = await optionalSheetXml(zip, workbookXml, relsXml, 'CAFM PPM Import');
+    const ppmXml = await optionalSheetXml(zip, workbookXml, relsXml, SHEET_CAFM_PPM_IMPORT);
     const ppmRows = ppmXml ? parseWorksheet(ppmXml, sharedStrings, null) : [];
 
     const assets = [];

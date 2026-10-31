@@ -11,6 +11,32 @@
       .sort((a, b) => Number(a.workbookRow || 0) - Number(b.workbookRow || 0));
   }
 
+  /** One queue row per Asset Code on CAFM PPM Import (Import? = YES rows), in sheet order. */
+  function assetQueueFromPpmImport(ppms = [], allAssets = []) {
+    const importByCode = new Map();
+    for (const row of allAssets || []) {
+      const code = clean(row?.assetCode);
+      if (code && !importByCode.has(norm(code))) importByCode.set(norm(code), row);
+    }
+    const seen = new Set();
+    const queue = [];
+    for (const ppm of ppms || []) {
+      const code = clean(ppm?.assetCode);
+      if (!code) continue;
+      const key = norm(code);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const fromImport = importByCode.get(key);
+      queue.push(fromImport ? { ...fromImport, assetCode: code } : {
+        assetCode: code,
+        workbookRow: Number(ppm.workbookRow) || 0,
+        description: '',
+        ppmQueueSource: 'CAFM PPM Import'
+      });
+    }
+    return queue;
+  }
+
   function currentFromList(record, ppms, ppmIndex = 0) {
     const list = linkedForAsset(record, ppms);
     const index = Math.max(0, Number(ppmIndex) || 0);
@@ -43,5 +69,12 @@
   }
 
   root.data = root.data || {};
-  root.data.ppm = Object.freeze({ linkedForAsset, currentFromList, sourceIssues, instructionCanon, alreadyProcessed });
+  root.data.ppm = Object.freeze({
+    linkedForAsset,
+    assetQueueFromPpmImport,
+    currentFromList,
+    sourceIssues,
+    instructionCanon,
+    alreadyProcessed
+  });
 })();
