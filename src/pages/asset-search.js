@@ -186,7 +186,7 @@
     };
     await b.persistSession();
     b.render();
-    b.showToast(`${record.assetCode} opened. Waiting on the asset details window.`, 'success', 8000);
+    b.showToast(`${record.assetCode} opened. Waiting on the asset details window — PPM side nav will run there.`, 'success', 8000);
   }
 
   async function completeRun(processed) {

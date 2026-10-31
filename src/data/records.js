@@ -127,8 +127,27 @@ function ppmRecordOnCurrentPage() {
 }
 
 function workflowRecord(auto = C().state.session.auto) {
-  const byCode = recordByAssetCode(auto?.assetCode);
-  return byCode || currentRecord();
+  const session = C().state.session;
+  const code = clean(auto?.assetCode);
+  if (code) {
+    const byCode = recordByAssetCode(code);
+    if (byCode) return byCode;
+    const hasPpm = (C().state.ppms || []).some((ppm) => norm(ppm.assetCode) === norm(code));
+    if (hasPpm) {
+      return { assetCode: code, workbookRow: 0, ppmQueueSource: 'CAFM PPM Import' };
+    }
+  }
+  const index = Math.max(0, Number(auto?.index ?? session.index) || 0);
+  if (C().state.assets[index]) return C().state.assets[index];
+  if (auto?.mode === 'ppm' && isPpmListPage()) {
+    const fromPpm = ppmRecordOnCurrentPage();
+    if (fromPpm) return fromPpm;
+  }
+  if (auto?.mode === 'ppm' && isSavedAssetPage()) {
+    const pageCode = workflowAssetCodeOnPage();
+    if (pageCode) return recordByAssetCode(pageCode) || { assetCode: pageCode, workbookRow: 0, ppmQueueSource: 'CAFM PPM Import' };
+  }
+  return currentRecord();
 }
 
 function recordForCurrentSavedAsset() {

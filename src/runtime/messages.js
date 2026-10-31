@@ -60,6 +60,10 @@
         storageGet([STORAGE.session]).then(async (stored) => {
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
           if (!state.session.auto?.active) return;
+          const { ensureWorkbookLoaded } = root.data.workbook;
+          if (typeof ensureWorkbookLoaded === 'function') {
+            await ensureWorkbookLoaded();
+          }
           try {
             await runAutomatic();
           } catch (_) {

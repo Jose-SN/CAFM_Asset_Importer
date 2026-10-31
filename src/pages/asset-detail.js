@@ -54,6 +54,7 @@
     dispatchClick(link, false, 'PPM');
     b.render();
     b.showToast(`${record.assetCode}: opened PPM from the asset side navigation.`, 'success', 8000);
+    b.scheduleAuto(400);
   }
 
   root.pages = root.pages || {};

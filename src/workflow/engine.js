@@ -201,16 +201,42 @@
     syncAutoOrchestrator();
   }
 
+  async function resolveWorkflowRecord(auto) {
+    const b = $();
+    if (typeof b.ensureWorkbookLoaded === 'function') {
+      await b.ensureWorkbookLoaded();
+    }
+    let record = b.workflowRecord(auto);
+    const code = clean(auto?.assetCode);
+    if (!record && code && (b.state.assets || []).length) {
+      const idx = b.state.assets.findIndex((row) => norm(row?.assetCode) === norm(code));
+      if (idx >= 0) {
+        b.state.session.index = idx;
+        b.state.session.auto = { ...auto, index: idx, assetCode: b.state.assets[idx].assetCode };
+        record = b.state.assets[idx];
+      }
+    }
+    return record;
+  }
+
   async function runAutomatic() {
     const b = $();
     if (b.state.busy) return;
     const auto = b.state.session.auto;
     if (!auto?.active) return;
+    const phase = clean(auto.phase || '');
+    if (
+      auto.mode === 'ppm'
+      && isAssetListPage()
+      && ['wait_asset', 'wait_ppm', 'wait_ppm_new', 'ppm_fill', 'ppm_saving', 'ppm_await_save'].includes(phase)
+    ) {
+      return;
+    }
     b.state.busy = true;
     try {
-      const waitingPhase = WAITING_PHASES.has(clean(auto.phase || ''));
+      const waitingPhase = WAITING_PHASES.has(phase);
       if (b.showActivity && !(b.showWorkflowStatus && waitingPhase)) {
-        const recordPreview = b.workflowRecord(auto);
+        const recordPreview = await resolveWorkflowRecord(auto);
         b.showActivity(
           'Running',
           root.ui.progressToast.phaseLabel(auto.phase),
@@ -226,7 +252,14 @@
       }
       const index = Math.max(0, Number(auto.index ?? b.state.session.index) || 0);
       if (b.state.assets[index]) b.state.session.index = index;
-      const record = b.workflowRecord(auto);
+      let record = await resolveWorkflowRecord(auto);
+      if (!record && !(b.state.assets || []).length && !(b.state.ppms || []).length) {
+        b.showToast('Automatic import paused: reload your workbook on the Asset register, then Resume.', 'warn', 12000);
+        b.state.session.auto = { ...auto, active: false, phase: 'paused', failedPhase: phase, error: 'Workbook not loaded in this tab.' };
+        await b.persistSession();
+        cancelAutoWorkflowTimers();
+        return;
+      }
       if (!record) throw new Error('No asset row is available for the active workflow.');
 
       if (auto.mode === 'ppm') {

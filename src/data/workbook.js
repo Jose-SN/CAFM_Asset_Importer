@@ -140,6 +140,23 @@ async function restoreState() {
   }
 }
 
+async function ensureWorkbookLoaded() {
+  if ((C().state.ppms || []).length && (C().state.assets || []).length) return true;
+  const cache = await loadLargeWorkbook();
+  if (!cache?.ppms?.length && !cache?.allAssets?.length && !cache?.assets?.length) return false;
+  C().state.cache = cache;
+  C().state.allAssets = cache.allAssets || cache.assets || [];
+  C().state.ppms = cache.ppms || [];
+  C().state.assets = assetQueueFromCache(cache);
+  if (C().state.assets.length) {
+    C().state.session.index = Math.max(
+      0,
+      Math.min(Number(C().state.session.index) || 0, C().state.assets.length - 1)
+    );
+  }
+  return Boolean(C().state.assets.length || C().state.ppms.length);
+}
+
 async function loadWorkbookFile(file) {
   if (!globalThis.CAFMXlsx?.readWorkbook) throw new Error('Workbook reader is unavailable. Reload the extension.');
   const parsed = await globalThis.CAFMXlsx.readWorkbook(file);
@@ -407,6 +424,7 @@ function nextPendingIndex(start = C().state.session.index + 1) {
     configure,
     persistSession,
     restoreState,
+    ensureWorkbookLoaded,
     loadWorkbookFile,
     counts,
     move,
