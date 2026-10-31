@@ -240,9 +240,6 @@
       else if (isSavedAssetPage() || isPpmListPage() || isPpmItemPage()) {
         await runtimeMessage({ type: 'REGISTER_ASSET_TAB', role: 'editor' });
       }
-      if (isPpmItemPage() && state.session.auto?.active && state.session.auto.mode === 'ppm') {
-        await runtimeMessage({ type: 'REGISTER_PPM_EDITOR_TAB', reason: 'content-init', url: location.href });
-      }
     }
     if (isAssetPage()) await handlePostReloadSaveState();
     let autoDomTimer = null;

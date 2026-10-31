@@ -15,7 +15,12 @@ const AUTO_ALARM = 'cafm-auto-orchestrator';
 const DEFAULT_ORCHESTRATOR_MS = 2500;
 
 const PPM_ITEM_URL = /\/Evolution\/!System\/PPMs\/FPPM\/ViewFPPMItem\.aspx/i;
-const ASSET_EDITOR_URL = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItem/i;
+const ASSET_EDITOR_URL = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItem\.aspx/i;
+const ASSET_LIST_URL = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItems\.aspx/i;
+const ASSET_PPM_LIST_URL = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItemPPMs\.aspx/i;
+const PPM_ACTION_LOCK_KEY = 'cafmPpmWorkflowActionLock';
+const ppmCreateNewTokens = new Map();
+const ppmSaveRowTokens = new Map();
 const PPM_EDITOR_PHASES = new Set([
   'wait_ppm_new',
   'ppm_fill',
@@ -49,7 +54,27 @@ function isPpmItemTabUrl(url) {
 }
 
 function isAssetEditorTabUrl(url) {
-  return ASSET_EDITOR_URL.test(String(url || ''));
+  return ASSET_EDITOR_URL.test(String(url || '')) && !ASSET_LIST_URL.test(String(url || ''));
+}
+
+function isAssetListTabUrl(url) {
+  return ASSET_LIST_URL.test(String(url || ''));
+}
+
+function isAssetParentTabUrl(url) {
+  const u = String(url || '');
+  return isAssetEditorTabUrl(u) || ASSET_PPM_LIST_URL.test(u);
+}
+
+async function readRegisteredAssetEditorTab() {
+  const data = await chrome.storage.local.get(ASSET_EDITOR_TAB_KEY);
+  return data[ASSET_EDITOR_TAB_KEY] || null;
+}
+
+async function listConceptTabsMatching(matcher) {
+  let tabs = [];
+  try { tabs = await chrome.tabs.query({}); } catch (_) { return []; }
+  return tabs.filter((tab) => typeof tab.id === 'number' && isConceptUrl(tab.url) && matcher(tab.url));
 }
 
 async function readRegisteredListTab() {
@@ -91,20 +116,140 @@ async function clearRegisteredPpmEditorTab() {
 }
 
 async function listConceptPpmTabs() {
-  let tabs = [];
-  try { tabs = await chrome.tabs.query({}); } catch (_) { return []; }
-  return tabs.filter((tab) => typeof tab.id === 'number' && isConceptUrl(tab.url) && isPpmItemTabUrl(tab.url));
+  return listConceptTabsMatching((url) => isPpmItemTabUrl(url));
 }
 
+/** Close every FPPM tab except the canonical editor (saved or id=-1). */
 async function closePpmEditorTabsExcept(keepTabId) {
+  if (typeof keepTabId !== 'number') return 0;
   const ppmTabs = await listConceptPpmTabs();
+  let closed = 0;
   for (const tab of ppmTabs) {
     if (tab.id === keepTabId) continue;
-    const id = assetIdFromTabUrl(tab.url);
-    if (id === '-1') {
-      try { await chrome.tabs.remove(tab.id); } catch (_) {}
-    }
+    try {
+      await chrome.tabs.remove(tab.id);
+      closed += 1;
+    } catch (_) {}
   }
+  return closed;
+}
+
+async function closeAssetListTabsExcept(keepTabId) {
+  if (typeof keepTabId !== 'number') return 0;
+  const tabs = await listConceptTabsMatching((url) => isAssetListTabUrl(url));
+  let closed = 0;
+  for (const tab of tabs) {
+    if (tab.id === keepTabId) continue;
+    try {
+      await chrome.tabs.remove(tab.id);
+      closed += 1;
+    } catch (_) {}
+  }
+  return closed;
+}
+
+async function closeAssetParentTabsExcept(keepTabId) {
+  if (typeof keepTabId !== 'number') return 0;
+  const tabs = await listConceptTabsMatching((url) => isAssetParentTabUrl(url));
+  let closed = 0;
+  for (const tab of tabs) {
+    if (tab.id === keepTabId) continue;
+    try {
+      await chrome.tabs.remove(tab.id);
+      closed += 1;
+    } catch (_) {}
+  }
+  return closed;
+}
+
+function ppmRowSaveKey(session) {
+  const auto = session?.auto || {};
+  return `${String(auto.assetCode || '').trim()}|${Number(auto.ppmIndex) || 0}`;
+}
+
+function clearPpmRowTokensForAsset(assetCode) {
+  const prefix = `${String(assetCode || '').trim()}|`;
+  for (const key of [...ppmSaveRowTokens.keys()]) {
+    if (key.startsWith(prefix)) ppmSaveRowTokens.delete(key);
+  }
+}
+
+async function readPpmActionLock() {
+  const data = await chrome.storage.local.get(PPM_ACTION_LOCK_KEY);
+  return data[PPM_ACTION_LOCK_KEY] || null;
+}
+
+async function tryAcquirePpmActionLock(kind, tabId, ttlMs = 90000) {
+  const now = Date.now();
+  const existing = await readPpmActionLock();
+  if (existing && existing.tabId !== tabId && now - Number(existing.at || 0) < ttlMs) {
+    return { ok: false, reason: 'action-lock-held', heldBy: existing.tabId, kind: existing.kind };
+  }
+  await chrome.storage.local.set({
+    [PPM_ACTION_LOCK_KEY]: { kind: String(kind || ''), tabId, at: now }
+  });
+  return { ok: true };
+}
+
+async function releasePpmActionLock(tabId) {
+  const existing = await readPpmActionLock();
+  if (!existing || existing.tabId !== tabId) return;
+  await chrome.storage.local.remove(PPM_ACTION_LOCK_KEY);
+}
+
+/** One register tab, one asset/PPM-parent tab, one FPPM editor tab during PPM auto. */
+async function enforceSingletonWorkflowTabs(session) {
+  if (!session?.auto?.active || session.auto.mode !== 'ppm') {
+    return { closed: 0 };
+  }
+  const entityId = String(session.auto.assetEntityId || '').trim();
+  let closed = 0;
+
+  const listReg = await readRegisteredListTab();
+  let keepList = listReg?.tabId;
+  if (keepList && !(await tabExists(keepList))) keepList = null;
+  const listTabs = await listConceptTabsMatching((url) => isAssetListTabUrl(url));
+  if (!keepList && listTabs.length) keepList = listTabs[0].id;
+  if (typeof keepList === 'number') {
+    closed += await closeAssetListTabsExcept(keepList);
+    await chrome.storage.local.set({
+      [ASSET_LIST_TAB_KEY]: {
+        tabId: keepList,
+        windowId: listTabs.find((t) => t.id === keepList)?.windowId ?? listReg?.windowId,
+        registeredAt: Date.now(),
+        role: 'register'
+      }
+    });
+  }
+
+  const editorReg = await readRegisteredAssetEditorTab();
+  let keepParent = editorReg?.tabId;
+  if (keepParent && !(await tabExists(keepParent))) keepParent = null;
+  const parentTabs = await listConceptTabsMatching((url) => isAssetParentTabUrl(url));
+  if (entityId) {
+    const byEntity = parentTabs.find((t) => assetIdFromTabUrl(t.url) === entityId);
+    if (byEntity) keepParent = byEntity.id;
+  }
+  if (!keepParent && parentTabs.length) keepParent = parentTabs[parentTabs.length - 1].id;
+  if (typeof keepParent === 'number') {
+    closed += await closeAssetParentTabsExcept(keepParent);
+    const keepTab = parentTabs.find((t) => t.id === keepParent);
+    await chrome.storage.local.set({
+      [ASSET_EDITOR_TAB_KEY]: {
+        tabId: keepParent,
+        windowId: keepTab?.windowId ?? editorReg?.windowId,
+        registeredAt: Date.now(),
+        role: 'editor'
+      }
+    });
+  }
+
+  const keepPpm = await resolvePpmEditorTabId(session);
+  if (typeof keepPpm === 'number') {
+    closed += await closePpmEditorTabsExcept(keepPpm);
+  }
+
+  return { closed, keepList, keepParent, keepPpm };
 }
 
 /** Pick one FPPM editor tab (prefer registered, then newest id=-1). */
@@ -246,6 +391,9 @@ async function syncAutoOrchestrator() {
     await chrome.alarms.clear(AUTO_ALARM);
     return { active: false };
   }
+  if (session.auto.mode === 'ppm') {
+    await enforceSingletonWorkflowTabs(session);
+  }
   const delayMs = Math.max(500, Number(settings.backgroundOrchestratorMs) || DEFAULT_ORCHESTRATOR_MS);
   await scheduleOrchestratorAlarm(delayMs);
   const result = await dispatchAutoSteps(session);
@@ -261,9 +409,11 @@ async function wakeWorkflowForPpmTab(tabId, url) {
 
   const tab = { id: tabId, url, windowId: null };
   if (assetIdFromTabUrl(url) === '-1') {
-    await writeRegisteredPpmEditorTab(tab, 'tab-updated-new-entity');
+    await writeRegisteredPpmEditorTab({ id: tabId, url, windowId: tab?.windowId }, 'tab-updated-new-entity');
     await closePpmEditorTabsExcept(tabId);
   }
+
+  await enforceSingletonWorkflowTabs(session);
 
   const editorId = await resolvePpmEditorTabId(session);
   if (editorId !== tabId) return;
@@ -560,8 +710,100 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           ppmCreateNewParentTabId: tab.id
         });
       }
+      const { session } = await readSessionAndSettings();
+      if (session?.auto?.mode === 'ppm') {
+        await enforceSingletonWorkflowTabs(session);
+      }
       const info = await syncAutoOrchestrator();
       sendResponseSafe(sendResponse, { ok: true, ...info });
+    })().catch((error) => sendResponseSafe(sendResponse, { ok: false, error: String(error?.message || error) }));
+    return true;
+  }
+
+  if (message.type === 'PPM_REQUEST_CREATE_NEW') {
+    (async () => {
+      const tabId = sender.tab?.id;
+      const { session } = await readSessionAndSettings();
+      if (!session?.auto?.active || session.auto.mode !== 'ppm') {
+        sendResponseSafe(sendResponse, { ok: false, reason: 'ppm-not-active' });
+        return;
+      }
+      const auto = session.auto || {};
+      const key = `${String(message.assetCode || auto.assetCode || '').trim()}|create|${Number(message.ppmIndex ?? auto.ppmIndex) || 0}`;
+      const prior = ppmCreateNewTokens.get(key);
+      if (prior && Date.now() - prior < 120000) {
+        sendResponseSafe(sendResponse, { ok: false, reason: 'create-already-sent', key });
+        return;
+      }
+      if (typeof tabId === 'number') {
+        const lock = await tryAcquirePpmActionLock('create-new', tabId, 120000);
+        if (!lock.ok) {
+          sendResponseSafe(sendResponse, { ok: false, ...lock });
+          return;
+        }
+      }
+      ppmCreateNewTokens.set(key, Date.now());
+      await enforceSingletonWorkflowTabs(session);
+      sendResponseSafe(sendResponse, { ok: true, key });
+    })().catch((error) => sendResponseSafe(sendResponse, { ok: false, error: String(error?.message || error) }));
+    return true;
+  }
+
+  if (message.type === 'PPM_REQUEST_PPM_SAVE') {
+    (async () => {
+      const tabId = sender.tab?.id;
+      const { session } = await readSessionAndSettings();
+      if (!session?.auto?.active || session.auto.mode !== 'ppm') {
+        sendResponseSafe(sendResponse, { ok: false, reason: 'ppm-not-active' });
+        return;
+      }
+      if (typeof tabId !== 'number' || !isPpmItemTabUrl(sender.tab?.url)) {
+        sendResponseSafe(sendResponse, { ok: false, reason: 'not-ppm-tab' });
+        return;
+      }
+      const registered = await readRegisteredPpmEditorTab();
+      if (registered?.tabId && registered.tabId !== tabId && await tabExists(registered.tabId)) {
+        sendResponseSafe(sendResponse, { ok: false, reason: 'not-canonical-editor', editorTabId: registered.tabId });
+        return;
+      }
+      const key = ppmRowSaveKey(session);
+      if (ppmSaveRowTokens.has(key)) {
+        sendResponseSafe(sendResponse, { ok: false, reason: 'save-already-requested', key });
+        return;
+      }
+      if (Number(session.auto?.ppmSaveDispatchedAt || 0) > 0) {
+        sendResponseSafe(sendResponse, { ok: false, reason: 'save-already-dispatched' });
+        return;
+      }
+      const lock = await tryAcquirePpmActionLock('save', tabId, 120000);
+      if (!lock.ok) {
+        sendResponseSafe(sendResponse, { ok: false, ...lock });
+        return;
+      }
+      ppmSaveRowTokens.set(key, Date.now());
+      sendResponseSafe(sendResponse, { ok: true, key });
+    })().catch((error) => sendResponseSafe(sendResponse, { ok: false, error: String(error?.message || error) }));
+    return true;
+  }
+
+  if (message.type === 'PPM_RELEASE_ACTION_LOCK') {
+    (async () => {
+      const tabId = sender.tab?.id;
+      const key = String(message.saveKey || '');
+      if (key) ppmSaveRowTokens.delete(key);
+      if (typeof tabId === 'number') await releasePpmActionLock(tabId);
+      sendResponseSafe(sendResponse, { ok: true });
+    })().catch((error) => sendResponseSafe(sendResponse, { ok: false, error: String(error?.message || error) }));
+    return true;
+  }
+
+  if (message.type === 'PPM_CLEAR_ROW_SAVE_TOKEN') {
+    (async () => {
+      const key = String(message.key || '');
+      if (key) ppmSaveRowTokens.delete(key);
+      const assetCode = String(message.assetCode || '');
+      if (assetCode) clearPpmRowTokensForAsset(assetCode);
+      sendResponseSafe(sendResponse, { ok: true });
     })().catch((error) => sendResponseSafe(sendResponse, { ok: false, error: String(error?.message || error) }));
     return true;
   }
@@ -608,6 +850,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (editorPhase && senderIsNew && (!regIsNew || registered.tabId !== tabId)) {
           await writeRegisteredPpmEditorTab(tab, 'claim-replace-new-editor');
           await closePpmEditorTabsExcept(tabId);
+          await enforceSingletonWorkflowTabs(session);
           sendResponseSafe(sendResponse, { ok: true, isEditor: true, editorTabId: tabId, replaced: true });
           return;
         }
@@ -630,6 +873,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const { session } = await readSessionAndSettings();
       const result = await adoptPpmEditorAfterSave(sender.tab?.id, session);
       if (result.ready && typeof result.editorTabId === 'number') {
+        await enforceSingletonWorkflowTabs(session);
         await dispatchRunAutoToTab(result.editorTabId, session, 'ppm-adopt-after-save');
       }
       sendResponseSafe(sendResponse, { ok: true, ...result });
@@ -647,7 +891,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const storageKey = role === 'editor' ? ASSET_EDITOR_TAB_KEY : ASSET_LIST_TAB_KEY;
     chrome.storage.local.set({
       [storageKey]: { tabId: tab.id, windowId: tab.windowId, registeredAt: Date.now(), role }
-    }).then(() => sendResponseSafe(sendResponse, { ok: true, tabId: tab.id, role, storageKey }));
+    }).then(async () => {
+      const { session } = await readSessionAndSettings();
+      if (session?.auto?.active && session.auto.mode === 'ppm') {
+        await enforceSingletonWorkflowTabs(session);
+      }
+      sendResponseSafe(sendResponse, { ok: true, tabId: tab.id, role, storageKey });
+    });
     return true;
   }
 
