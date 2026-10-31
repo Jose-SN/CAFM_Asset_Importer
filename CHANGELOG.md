@@ -1,3 +1,6 @@
+# v9.1.30 (PPM-from-existing-assets branch)
+- **Three-window tab policy**: during PPM automatic run, background `enforceSingletonWorkflowTabs()` keeps exactly one Concept tab per surface — asset register (`ViewFASSETItems.aspx`), asset/PPM parent (`ViewFASSETItem.aspx` or `ViewFASSETItemPPMs.aspx` for the active `assetEntityId`), and FPPM editor (`ViewFPPMItem.aspx`). Extra matching tabs are closed on register, orchestrator sync, Create New, and page load.
+
 # v9.1.9 (PPM-from-existing-assets branch)
 - Step-by-step snackbar messages for PPM workflow (register wait, PPM tab, grid check, match, close, next asset) via `workflow-steps.js`.
 - Register tab re-schedules automation every 2s while waiting on child windows.
