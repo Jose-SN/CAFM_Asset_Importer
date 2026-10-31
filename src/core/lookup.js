@@ -628,6 +628,11 @@ async function pasteIntoRadComboInput(control, term, options = {}) {
     keyboardEvent(control, 'keyup', 'ArrowDown');
     await wait(150);
   }
+  if (options.commitWithEnter) {
+    keyboardEvent(control, 'keydown', 'Enter', { keyCode: 13, code: 'Enter' });
+    keyboardEvent(control, 'keyup', 'Enter', { keyCode: 13, code: 'Enter' });
+    await wait(200);
+  }
   return true;
 }
 

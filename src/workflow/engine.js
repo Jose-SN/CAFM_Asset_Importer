@@ -221,7 +221,10 @@
 
   async function runAutomatic() {
     const b = $();
-    if (b.state.busy) return;
+    if (b.state.busy) {
+      scheduleAuto(400);
+      return;
+    }
     const auto = b.state.session.auto;
     if (!auto?.active) return;
     const phase = clean(auto.phase || '');

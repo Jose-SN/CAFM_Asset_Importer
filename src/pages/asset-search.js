@@ -12,7 +12,7 @@
   const FILTER_INPUT = 'input.rcbInput[id*="listFASSET_AR_CODE_3_Input"]';
   const FILTER_DROPDOWN = '[id*="listFASSET_AR_CODE_3_DropDown"]';
   const OPEN_LINK = 'a.gridImageColumn[title="Open dialog to edit the selected entity"]';
-  const SEARCH_WAIT_MS = 5000;
+  const SEARCH_WAIT_MS = 8000;
   const SEARCH_SETTLE_MS = 450;
   const SEARCH_POLL_MS = 100;
   const OPTION_WAIT_MS = 4000;
@@ -37,17 +37,20 @@
     return !t || /^(no (records|matches|items|data)|no selection)$/i.test(t);
   }
 
-  function dropdownItems() {
+  function dropdownItems(includeHidden = false) {
     const drop = document.querySelector(FILTER_DROPDOWN);
     if (!drop) return [];
-    return [...drop.querySelectorAll('ul.rcbList li')]
-      .filter((li) => visible(li) && !isAssistantElement(li) && !isEmptyDropdownText(li.textContent));
+    return [...drop.querySelectorAll('ul.rcbList li')].filter((li) => {
+      if (isAssistantElement(li)) return false;
+      if (isEmptyDropdownText(li.textContent)) return false;
+      if (!includeHidden && !visible(li)) return false;
+      return true;
+    });
   }
 
-  function findDropdownOption(code) {
+  function matchDropdownOption(items, code) {
     const wanted = norm(code);
-    if (!wanted) return null;
-    const items = dropdownItems();
+    if (!wanted || !items.length) return null;
     return items.find((li) => norm(li.textContent) === wanted)
       || items.find((li) => {
         const text = norm(li.textContent);
@@ -56,21 +59,68 @@
       || null;
   }
 
-  async function waitForDropdownOption(code, timeoutMs = SEARCH_WAIT_MS) {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      const option = findDropdownOption(code);
-      if (option) return option;
-      await wait(SEARCH_POLL_MS);
-    }
-    return findDropdownOption(code);
+  function findDropdownOption(code) {
+    return matchDropdownOption(dropdownItems(false), code)
+      || matchDropdownOption(dropdownItems(true), code);
+  }
+
+  function registerMatchForCode(code) {
+    const option = findDropdownOption(code);
+    if (option) return { kind: 'option', option };
+    const row = findGridRow(code);
+    const openLink = findOpenLink(row);
+    if (row && openLink) return { kind: 'grid', row, openLink };
+    return null;
+  }
+
+  async function waitForRegisterMatch(code, timeoutMs = SEARCH_WAIT_MS) {
+    const immediate = registerMatchForCode(code);
+    if (immediate) return immediate;
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        try { observer.disconnect(); } catch (_) {}
+        clearInterval(pollTimer);
+        resolve(value || null);
+      };
+
+      const observer = new MutationObserver(() => {
+        const hit = registerMatchForCode(code);
+        if (hit) finish(hit);
+      });
+      try {
+        observer.observe(document.documentElement || document.body, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          characterData: true
+        });
+      } catch (_) {}
+
+      const deadline = Date.now() + timeoutMs;
+      const pollTimer = setInterval(() => {
+        const hit = registerMatchForCode(code);
+        if (hit) {
+          finish(hit);
+          return;
+        }
+        if (Date.now() >= deadline) finish(registerMatchForCode(code));
+      }, SEARCH_POLL_MS);
+    });
   }
 
   async function focusAndSearch(input, term) {
     dispatchClick(input, false);
     try { input.focus(); } catch (_) {}
     await wait(0);
-    await pasteIntoRadComboInput(input, term, { settleMs: SEARCH_SETTLE_MS, openDropdown: true });
+    await pasteIntoRadComboInput(input, term, {
+      settleMs: SEARCH_SETTLE_MS,
+      openDropdown: true,
+      commitWithEnter: true
+    });
   }
 
   function missingAssetCodes() {
@@ -289,32 +339,43 @@
     await focusAndSearch(input, code);
     b.addEvent('asset-search-type', { assetCode: code, workbookRow: record.workbookRow, term: code, method: 'paste' });
 
-    let option = await waitForDropdownOption(code, SEARCH_WAIT_MS);
+    let match = await waitForRegisterMatch(code, SEARCH_WAIT_MS);
     let usedTerm = code;
-    if (!option) {
+    if (!match) {
       const shorter = withoutLastHyphenSegment(code);
       if (shorter && norm(shorter) !== norm(code)) {
         b.addEvent('asset-search-retry', { assetCode: code, term: shorter });
         b.showActivity?.('Searching', 'Asset Code filter', shorter, { wait: true, meta: code, tick: true });
         await focusAndSearch(input, shorter);
-        option = await waitForDropdownOption(code, SEARCH_WAIT_MS);
+        match = await waitForRegisterMatch(code, SEARCH_WAIT_MS);
         usedTerm = shorter;
       }
     }
-    if (!option) {
+    if (!match) {
       await recordMissingAsset(record, code);
       return;
     }
 
-    dispatchClick(option, false);
-    b.addEvent('asset-search-select', {
-      assetCode: code,
-      selected: clean(option.textContent),
-      typed: usedTerm
-    });
-
-    const row = await waitForGridRow(code);
-    const openLink = findOpenLink(row);
+    let row = match.row || null;
+    let openLink = match.openLink || null;
+    if (match.kind === 'option') {
+      dispatchClick(match.option, false);
+      b.addEvent('asset-search-select', {
+        assetCode: code,
+        selected: clean(match.option.textContent),
+        typed: usedTerm,
+        via: 'dropdown'
+      });
+      row = await waitForGridRow(code);
+      openLink = findOpenLink(row);
+    } else {
+      b.addEvent('asset-search-select', {
+        assetCode: code,
+        selected: code,
+        typed: usedTerm,
+        via: 'grid'
+      });
+    }
     if (!openLink) {
       b.showToast(`Asset Code ${code} was selected, but the register row open button was not found.`, 'warn', 10000);
       await recordMissingAsset(record, code);

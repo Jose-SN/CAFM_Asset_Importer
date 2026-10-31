@@ -177,7 +177,7 @@
     configureRecords({ state, nearestControl });
     configureWorkbook({
       state, render, showToast, showActivity, validateRecord, currentRecord, linkedPpms, workflowRecord,
-      currentPpm, currentAssetStatusText, validationMessage, addEvent
+      currentPpm, currentAssetStatusText, validationMessage, addEvent, scheduleAuto
     });
     configureEvents({ state, workflowRecord, currentRecord, persistSession, showToast });
     configureMessages({
@@ -229,8 +229,11 @@
 
     if (isAssetPage() || isAssetListPage()) await runtimeMessage({ type: 'REGISTER_ASSET_TAB' });
     if (isAssetPage()) await handlePostReloadSaveState();
+    let autoDomTimer = null;
     const autoObserver = new MutationObserver(() => {
-      if (state.session.auto?.active) scheduleAuto();
+      if (!state.session.auto?.active) return;
+      clearTimeout(autoDomTimer);
+      autoDomTimer = setTimeout(() => scheduleAuto(200), 300);
     });
     try {
       autoObserver.observe(document.documentElement, {

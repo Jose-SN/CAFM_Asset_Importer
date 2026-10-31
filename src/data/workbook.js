@@ -186,6 +186,7 @@ async function loadWorkbookFile(file) {
   C().state.assets = assetQueueFromCache(cache);
   const keepMissingLog = C().state.session.missingAssetLog || null;
   const keepMissingCodes = Array.isArray(C().state.session.missingAssetCodes) ? C().state.session.missingAssetCodes : [];
+  const keepAuto = C().state.session.auto?.active ? { ...C().state.session.auto } : null;
   C().state.session = {
     fileName: cache.fileName,
     fileSize: cache.fileSize,
@@ -201,6 +202,15 @@ async function loadWorkbookFile(file) {
     missingAssetLog: keepMissingLog,
     savedAssetCodes: []
   };
+  if (keepAuto?.active && C().state.assets.length) {
+    const idx = Math.max(0, Math.min(Number(keepAuto.index) || 0, C().state.assets.length - 1));
+    C().state.session.index = idx;
+    C().state.session.auto = {
+      ...keepAuto,
+      index: idx,
+      assetCode: C().state.assets[idx]?.assetCode || keepAuto.assetCode || ''
+    };
+  }
   await persistSession();
   C().render();
   C().showToast(
@@ -208,6 +218,9 @@ async function loadWorkbookFile(file) {
     'success',
     12000
   );
+  if (C().state.session.auto?.active && typeof C().scheduleAuto === 'function') {
+    C().scheduleAuto(500);
+  }
 }
 
 async function jumpToIndex(index) {

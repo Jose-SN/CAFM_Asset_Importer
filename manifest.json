@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Engineering Efficiency Ltd - CAFM Asset Importer v9.1.5",
-  "version": "9.1.5",
+  "name": "Engineering Efficiency Ltd - CAFM Asset Importer v9.1.6",
+  "version": "9.1.6",
   "description": "Save PPMs for existing CAFM assets using the CAFM PPM Import workbook sheet.",
   "permissions": [
     "storage",
@@ -70,7 +70,7 @@
     }
   ],
   "action": {
-    "default_title": "Engineering Efficiency Ltd - CAFM Asset Importer v9.1.5",
+    "default_title": "Engineering Efficiency Ltd - CAFM Asset Importer v9.1.6",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
