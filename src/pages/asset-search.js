@@ -212,10 +212,10 @@
       return;
     }
 
+    await stayOnOpenedAsset(record);
     dispatchClick(openLink, false);
     b.addEvent('asset-search-open', { assetCode: code, workbookRow: record.workbookRow });
     await wait(AFTER_CLICK_MS);
-    await stayOnOpenedAsset(record);
   }
 
   root.pages = root.pages || {};

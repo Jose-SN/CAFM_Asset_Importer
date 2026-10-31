@@ -7,6 +7,7 @@
   const ASSET_PHASES = Object.freeze([
     'search',
     'wait_asset',
+    'wait_ppm',
     'navigate',
     'fill',
     'filling',

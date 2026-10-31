@@ -6,7 +6,8 @@
 
   const NEXT_HINT = Object.freeze({
     search: 'Type Asset Code in the register filter and select the matching row',
-    wait_asset: 'Asset details window is open',
+    wait_asset: 'Click PPM in the asset side navigation',
+    wait_ppm: 'PPM register is open',
     navigate: 'Fill asset fields from Excel',
     fill: 'Validate and fill all asset tabs',
     filling: 'Complete remaining asset fields',

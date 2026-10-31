@@ -13,6 +13,13 @@
       handler: 'processSearch'
     },
     {
+      id: 'asset-detail',
+      label: 'Asset details PPM nav',
+      test: () => pages.isSavedAssetPage(),
+      phases: ['wait_asset', 'wait_ppm'],
+      handler: 'processOpenPpm'
+    },
+    {
       id: 'asset-new',
       label: 'Asset New Entity',
       test: () => pages.isAssetPage() && pages.isNewEntityPage(),

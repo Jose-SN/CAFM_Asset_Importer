@@ -8,6 +8,7 @@
     isNewEntityPage,
     isAssetListPage,
     isSavedAssetPage,
+    isPpmListPage,
     entityIdFromUrl,
     assetEntityUrl,
     deriveNewEntityUrl
@@ -218,7 +219,22 @@
       if (!record) throw new Error('No asset row is available for the active workflow.');
 
       if (auto.mode === 'ppm') {
-        if (auto.phase === 'wait_asset') return;
+        if (auto.phase === 'wait_ppm') return;
+        if (auto.phase === 'wait_asset') {
+          if (isSavedAssetPage()) {
+            await root.pages.assetDetail.processOpenPpm(record);
+            return;
+          }
+          if (isPpmListPage()) {
+            b.state.session.auto = {
+              ...auto,
+              phase: 'wait_ppm',
+              assetEntityId: entityIdFromUrl() || auto.assetEntityId || ''
+            };
+            await b.persistSession();
+          }
+          return;
+        }
         if (auto.phase !== 'search') throw new Error(`Unsupported saved-asset phase: ${auto.phase || 'none'}.`);
         if (!isAssetListPage()) throw new Error('Open the Asset register (ViewFASSETItems.aspx) to continue the search.');
         if (Number(auto.processedThisRun || 0) >= b.state.assets.length) {
