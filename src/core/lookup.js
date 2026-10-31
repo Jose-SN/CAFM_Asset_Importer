@@ -584,6 +584,53 @@ async function typeIntoInlineLookup(control, term) {
   return true;
 }
 
+/** RadCombo register filters (Telerik + Sys.Net.WebRequest): set full filter text like paste, not per-char typing. */
+async function pasteIntoRadComboInput(control, term, options = {}) {
+  if (!(control instanceof HTMLInputElement) && !(control instanceof HTMLTextAreaElement)) return false;
+  const settleMs = Math.max(0, Number(options.settleMs) || 450);
+  try { control.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (_) {}
+  try { control.focus(); } catch (_) {}
+  dispatchClick(control, false);
+  await wait(0);
+
+  keyboardEvent(control, 'keydown', 'a', { ctrlKey: true, keyCode: 65, code: 'KeyA' });
+  keyboardEvent(control, 'keyup', 'a', { ctrlKey: true, keyCode: 65, code: 'KeyA' });
+  keyboardEvent(control, 'keydown', 'Backspace');
+  setFocusedInputValue(control, '', null);
+  keyboardEvent(control, 'keyup', 'Backspace');
+  await wait(50);
+
+  const text = String(term ?? '');
+  if (!text) return true;
+
+  setFocusedInputValue(control, text, text);
+  try {
+    if (typeof InputEvent !== 'undefined') {
+      control.dispatchEvent(new InputEvent('input', {
+        data: text,
+        inputType: 'insertFromPaste',
+        bubbles: true,
+        cancelable: false
+      }));
+    } else {
+      control.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  } catch (_) {
+    control.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  keyboardEvent(control, 'keypress', text.slice(-1) || '', { keyCode: text.slice(-1).toUpperCase().charCodeAt(0) || 0 });
+  keyboardEvent(control, 'keyup', text.slice(-1) || '');
+  try { control.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+  await wait(settleMs);
+
+  if (options.openDropdown !== false) {
+    keyboardEvent(control, 'keydown', 'ArrowDown');
+    keyboardEvent(control, 'keyup', 'ArrowDown');
+    await wait(150);
+  }
+  return true;
+}
+
 function inlineOptionCandidates(spec, control) {
   if (!control) return [];
   const cr = control.getBoundingClientRect();
@@ -992,6 +1039,7 @@ async function selectLookup(spec) {
     nearbyHiddenValues,
     hiddenCommitted,
     typeIntoInlineLookup,
+    pasteIntoRadComboInput,
     clickableLookupNode,
     ppmInstructionCanon
   });

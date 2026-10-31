@@ -4,7 +4,7 @@
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
   const { wait, visible, isAssistantElement, dispatchClick } = root.core.dom;
-  const { typeIntoInlineLookup } = root.core.lookup;
+  const { pasteIntoRadComboInput } = root.core.lookup;
   const { isAssetListPage } = root.core.pages;
   const { VERSION } = root.core.constants;
   const $ = () => root.runtime.b;
@@ -13,6 +13,7 @@
   const FILTER_DROPDOWN = '[id*="listFASSET_AR_CODE_3_DropDown"]';
   const OPEN_LINK = 'a.gridImageColumn[title="Open dialog to edit the selected entity"]';
   const SEARCH_WAIT_MS = 5000;
+  const SEARCH_SETTLE_MS = 450;
   const SEARCH_POLL_MS = 100;
   const OPTION_WAIT_MS = 4000;
   const OPTION_POLL_MS = 150;
@@ -38,7 +39,7 @@
 
   function dropdownItems() {
     const drop = document.querySelector(FILTER_DROPDOWN);
-    if (!drop || !visible(drop)) return [];
+    if (!drop) return [];
     return [...drop.querySelectorAll('ul.rcbList li')]
       .filter((li) => visible(li) && !isAssistantElement(li) && !isEmptyDropdownText(li.textContent));
   }
@@ -69,7 +70,7 @@
     dispatchClick(input, false);
     try { input.focus(); } catch (_) {}
     await wait(0);
-    await typeIntoInlineLookup(input, term);
+    await pasteIntoRadComboInput(input, term, { settleMs: SEARCH_SETTLE_MS, openDropdown: true });
   }
 
   function missingAssetCodes() {
@@ -286,7 +287,7 @@
     b.showActivity?.('Searching', 'Asset Code filter', code, { wait: true, meta: code, tick: true });
     b.addEvent('asset-search-focus', { assetCode: code, previous: clean(input.value) });
     await focusAndSearch(input, code);
-    b.addEvent('asset-search-type', { assetCode: code, workbookRow: record.workbookRow, term: code });
+    b.addEvent('asset-search-type', { assetCode: code, workbookRow: record.workbookRow, term: code, method: 'paste' });
 
     let option = await waitForDropdownOption(code, SEARCH_WAIT_MS);
     let usedTerm = code;
