@@ -116,7 +116,6 @@ transformed = transformed
   .replace(/\bworkflowRecord\(/g, 'C().workflowRecord(')
   .replace(/\bcurrentPpm\(/g, 'C().currentPpm(')
   .replace(/\bcurrentAssetStatusText\(/g, 'C().currentAssetStatusText(')
-  .replace(/\bcurrentPpmStatusText\(/g, 'C().currentPpmStatusText(')
   .replace(/\bvalidationMessage\(/g, 'C().validationMessage(')
   .replace(/\baddEvent\(/g, 'C().addEvent(')
   .replace(/\bglobalThis\.CAFMXlsx/g, 'globalThis.CAFMXlsx');

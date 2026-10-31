@@ -109,32 +109,16 @@ function initTeachCapture() {
       }).catch(() => {});
       return;
     }
-    if (topFrame && state?.teachNewArmed) {
-      state.teachNewArmed = false;
-      storageRemove([STORAGE.newLearnRequest]).catch(() => {});
-      storageSet({ [STORAGE.learnedNew]: payload }).then(() => {
-        state.learnedNew = payload;
-        runtimeMessage({ type: 'PPM_NEW_BUTTON_LEARNED', payload });
-      }).catch(() => {});
-      return;
-    }
 
     // Cross-frame fallback. The request is removed before saving the learned
     // element so rapid follow-up clicks cannot replace it.
-    storageGet([STORAGE.statusLearnRequest, STORAGE.newLearnRequest]).then(async (stored) => {
+    storageGet([STORAGE.statusLearnRequest]).then(async (stored) => {
       const now = Date.now();
       const statusRequest = stored?.[STORAGE.statusLearnRequest];
-      const newRequest = stored?.[STORAGE.newLearnRequest];
       if (statusRequest?.active && Number(statusRequest.expiresAt || 0) >= now) {
         await storageRemove([STORAGE.statusLearnRequest]);
         await storageSet({ [STORAGE.learnedStatus]: payload });
         runtimeMessage({ type: 'STATUS_BUTTON_LEARNED', payload });
-        return;
-      }
-      if (newRequest?.active && Number(newRequest.expiresAt || 0) >= now) {
-        await storageRemove([STORAGE.newLearnRequest]);
-        await storageSet({ [STORAGE.learnedNew]: payload });
-        runtimeMessage({ type: 'PPM_NEW_BUTTON_LEARNED', payload });
       }
     }).catch(() => {});
   }, true);

@@ -65,14 +65,13 @@ async function persistSession() {
 
 async function restoreState() {
   const resetForVersion = await ensureStorageVersion();
-  const stored = await storageGet([STORAGE.session, STORAGE.settings, STORAGE.learnedStatus, STORAGE.learnedNew]);
+  const stored = await storageGet([STORAGE.session, STORAGE.settings, STORAGE.learnedStatus]);
   if (resetForVersion) {
     C().state.assets = [];
     C().state.allAssets = [];
     C().state.ppms = [];
     C().state.cache = null;
     C().state.learnedStatus = null;
-    C().state.learnedNew = null;
     C().state.settings = { ...DEFAULT_SETTINGS };
     C().state.session = {
       fileName: '',
@@ -95,7 +94,6 @@ async function restoreState() {
     C().state.settings = { ...DEFAULT_SETTINGS, ...previousSettings };
   }
   C().state.learnedStatus = stored[STORAGE.learnedStatus] || null;
-  C().state.learnedNew = stored[STORAGE.learnedNew] || null;
   if (stored[STORAGE.session]) {
     C().state.session = {
       ...C().state.session,
@@ -293,8 +291,7 @@ function buildDiagnosticPayload(record) {
       phase: auto?.phase || '',
       ppmIndex: auto?.ppmIndex ?? null,
       ppmKey: C().currentPpm(resolved)?.ppmKey || '',
-      currentAssetStatus: C().currentAssetStatusText(),
-      currentPpmStatus: C().currentPpmStatusText()
+      currentAssetStatus: C().currentAssetStatusText()
     },
     iteration: {
       enabled: Boolean(C().state.settings.iterationEnabled),
@@ -308,7 +305,7 @@ function buildDiagnosticPayload(record) {
     recentEvents,
     timingSummary: summarizeEvents(recentEvents),
     validationMessage: C().validationMessage() || '',
-    learnedControls: { status: C().state.learnedStatus || null, ppmNew: C().state.learnedNew || null }
+    learnedControls: { status: C().state.learnedStatus || null }
   };
 }
 

@@ -10,9 +10,8 @@ const FUNCS = [
   'dispatchLegacySingleClick', 'observedAssetCode', 'currentAssetStatusText', 'assetIsActive',
   'toolbarActionClue', 'topAssetToolbarCandidates', 'findToolbarPrintButton', 'findToolbarCloseButton',
   'sameOriginDocuments', 'elementFromLearnedFingerprint', 'findLearnedStatusButton',
-  'findChangeAssetStatusButton', 'currentPpmStatusText', 'ppmIsActive', 'topPpmToolbarCandidates',
-  'findChangePpmStatusButton', 'findChangePpmStatusDialog', 'findChangeAssetStatusDialog',
-  'findConfirmButton', 'statusActiveOptionCandidates', 'selectActiveFromStatusDropdown', 'findAssetPpmNavLink'
+  'findChangeAssetStatusButton', 'findChangeAssetStatusDialog',
+  'findConfirmButton', 'statusActiveOptionCandidates', 'selectActiveFromStatusDropdown'
 ];
 
 function extract(code, name) {
@@ -41,7 +40,7 @@ const out = `(() => {
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
   const { wait, visible, isAssistantElement, elementValue, dispatchClick } = root.core.dom;
-  const { isSavedAssetPage, isSavedPpmPage } = root.core.pages;
+  const { isSavedAssetPage } = root.core.pages;
   const { clickableLookupNode, typeIntoInlineLookup } = root.core.lookup;
 
   /** @type {null | { state: object, waitForDom: Function, nearestControl: Function }} */
@@ -67,13 +66,8 @@ ${body}
     elementFromLearnedFingerprint,
     findChangeAssetStatusButton,
     findChangeAssetStatusDialog,
-    findChangePpmStatusButton,
-    findChangePpmStatusDialog,
     findConfirmButton,
-    selectActiveFromStatusDropdown,
-    findAssetPpmNavLink,
-    currentPpmStatusText,
-    ppmIsActive
+    selectActiveFromStatusDropdown
   });
 })();
 `;

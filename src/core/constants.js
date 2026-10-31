@@ -13,9 +13,7 @@
       settings: 'eeAssetImporterV80Settings',
       pendingLookup: 'eeAssetImporterV80PendingLookup',
       statusLearnRequest: 'eeAssetImporterV58StatusLearnRequest',
-      learnedStatus: 'eeAssetImporterV58LearnedStatus',
-      newLearnRequest: 'eeAssetImporterV69NewLearnRequest',
-      learnedNew: 'eeAssetImporterV69LearnedNew'
+      learnedStatus: 'eeAssetImporterV58LearnedStatus'
     }),
     LARGE_KEY: 'eeAssetImporterV80Workbook',
     DEFAULT_SETTINGS: Object.freeze({
@@ -23,7 +21,6 @@
       saveTimeoutMs: 20000,
       backgroundSaveTimeoutMs: 90000,
       lookupCommitTimeoutMs: 8000,
-      ppmChildTimeoutMs: 10000,
       backgroundOrchestrator: true,
       skipInvalidRows: false,
       stopOnLookupError: true,

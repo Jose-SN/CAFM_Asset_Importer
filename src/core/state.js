@@ -31,9 +31,7 @@
       lookupTimer: null,
       autoTimer: null,
       learnedStatus: null,
-      learnedNew: null,
       teachStatusArmed: false,
-      teachNewArmed: false,
       legacyClickTimes: Object.create(null),
       lastLoggedPhase: ''
     };

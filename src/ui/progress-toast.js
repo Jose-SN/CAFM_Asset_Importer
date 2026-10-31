@@ -28,23 +28,7 @@
     navigate: 'Open next asset New Entity form',
     asset_save_and_close: 'Save and Close on General tab',
     asset_save_and_close_wait: 'Wait for Save and Close to finish',
-    run_complete_finalize: 'Finish run and return to asset list',
-    ppm_open_list: 'Open PPM register',
-    ppm_wait_new: 'Wait for PPM Create New window',
-    ppm_wait_user_new: 'Waiting for you to click Create New',
-    ppm_fill: 'Fill PPM form from Excel',
-    ppm_await_save: 'Wait for PPM save confirmation',
-    ppm_parent_refresh: 'Click PPM register Refresh',
-    ppm_parent_refresh_wait: 'Wait for PPM register refresh',
-    ppm_next: 'Prepare next linked PPM',
-    ppm_cycle_complete_parent: 'Finish PPM cycle on asset',
-    ppm_cycle_general_wait: 'Open General tab after PPMs',
-    ppm_child_closing: 'PPM saved — closing editor',
-    ppm_status_open: 'Open PPM status change',
-    ppm_status_select: 'Select PPM Active status',
-    ppm_status_confirm: 'Confirm PPM status',
-    ppm_status_wait: 'Wait for PPM activation',
-    ppm_status_wait_user: 'Waiting for you to activate PPM'
+    run_complete_finalize: 'Finish run and return to asset list'
   });
 
   function phaseLabel(phase) {

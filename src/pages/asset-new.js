@@ -256,7 +256,7 @@
     if (options.respectAutoPause) clearAutoFillCursor();
     await b.persistSession();
     if (!options.respectAutoPause) {
-      b.showToast(`${record.assetCode} is fully filled. Save it normally; after CAFM confirms the save, the importer will change the asset to ACTIVE and add any enabled linked PPM rows.`, 'success', 9000);
+      b.showToast(`${record.assetCode} is fully filled. Save it normally; after CAFM confirms the save, the importer will change the asset to ACTIVE.`, 'success', 9000);
     }
     return { direct: filled.direct, lookups: filled.lookups };
   }

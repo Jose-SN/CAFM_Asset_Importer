@@ -21,9 +21,7 @@ const RULES = [
   ['src/data/field-registry.js', 'src/data/fill-profiles.js'],
   ['src/pages/asset-mappings.js', 'src/ui/panel.js'],
   ['src/workflow/post-save.js', 'src/pages/asset-saved.js'],
-  ['src/workflow/post-save.js', 'src/pages/ppm-status.js'],
-  ['src/workflow/post-save.js', 'src/workflow/engine.js'],
-  ['src/core/lookup.js', 'src/pages/ppm-register.js']
+  ['src/workflow/post-save.js', 'src/workflow/engine.js']
 ];
 
 const errors = [];

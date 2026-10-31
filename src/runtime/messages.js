@@ -27,7 +27,6 @@
         state.ppms = [];
         state.cache = null;
         state.learnedStatus = null;
-        state.learnedNew = null;
         state.busy = false;
         state.lookupAgentBusy = false;
         state.lastLoggedPhase = '';

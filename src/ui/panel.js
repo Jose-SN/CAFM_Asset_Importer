@@ -188,9 +188,6 @@ function render() {
     C().state.els.resumeRowInput.value = String(C().state.session.index + 1);
   }
   C().state.els.startAuto.disabled = !C().state.assets.length || Boolean(auto?.active) || !assetEntryPage;
-  if (C().state.els.startPpmHere) C().state.els.startPpmHere.hidden = true;
-  if (C().state.els.openPpmNew) C().state.els.openPpmNew.hidden = true;
-  if (C().state.els.ppmQueuePreview) C().state.els.ppmQueuePreview.hidden = true;
   C().state.els.fileInput.value = '';
 
   if (C().state.els.contextSub) {
@@ -269,13 +266,6 @@ function injectPanel() {
       #head button { border:1px solid #41505e; background:#202b35; color:#fff; width:28px; height:28px; border-radius:6px; cursor:pointer; }
       #body { overflow:auto; max-height:calc(100vh - 145px); padding:10px; }
       #panel.collapsed #body { display:none; }
-      #panel.ppm-workflow { width:350px; }
-      #panel.ppm-workflow #workbookSection, #panel.ppm-workflow #manualSection, #panel.ppm-workflow #sessionSection { display:none; }
-      #panel.ppm-workflow #currentSection #validation, #panel.ppm-workflow #currentSection #lookupSummary { display:none; }
-      #panel.ppm-workflow #autoSection #startAuto, #panel.ppm-workflow #autoSection .option { display:none; }
-      #panel.ppm-workflow #autoSection .buttons { grid-template-columns:1fr; }
-      #panel.ppm-workflow #autoSection { margin-bottom:0; }
-      #panel.ppm-workflow #body { max-height:310px; }
       .section { border:1px solid #2c3946; border-radius:8px; padding:9px; margin-bottom:9px; background:#151e27; }
       .section h3 { margin:0 0 7px; font-size:12px; color:#d9e2ea; text-transform:uppercase; letter-spacing:.35px; }
       .file { display:flex; gap:7px; align-items:center; }
@@ -371,8 +361,6 @@ function injectPanel() {
         <div id="autoSection" class="section">
           <h3>Automatic asset import</h3>
           <div class="buttons">
-            <button id="startPpmHere" class="action primary wide" hidden>START PPM FOR THIS ASSET</button>
-            <button id="openPpmNew" class="action wide" hidden>OPEN + NEW PPM WINDOW</button>
             <button id="startAuto" class="action primary">Start automatic</button>
             <button id="pauseAuto" class="action danger">Pause / Stop</button>
             <button id="resumeAuto" class="action primary wide" hidden>Resume from stopped row</button>
@@ -381,7 +369,6 @@ function injectPanel() {
             <input id="resumeRowInput" type="number" min="1" step="1" style="width:70px">
             <button id="resumeRowGo" type="button" class="action" style="min-height:28px;padding:4px 8px">Go</button>
           </label>
-          <div id="ppmQueuePreview" class="validation goodtext" hidden style="margin-top:8px"></div>
           <div id="autoState">Automatic import stopped</div>
           <div id="workflowGuide" hidden>
             <div class="guide-line"><span class="guide-key">Done</span><span id="guideDone" class="guide-val">—</span></div>
@@ -402,7 +389,7 @@ function injectPanel() {
           <label class="option"><input id="autoDownloadTimeline" type="checkbox"> Auto-download timeline JSON when each asset cycle completes</label>
           <label class="option"><input id="autoContinueNext" type="checkbox"> Auto-continue to next asset after activation</label>
           <label class="option"><input id="useSaveAndNew" type="checkbox"> Legacy: use Save and New instead of Save and Close between assets</label>
-          <div class="muted">Proceeds when CAFM state is verified. Safety timeouts default to 20s (PPM child wait 15s). Reload the extension at chrome://extensions after code updates.</div>
+          <div class="muted">Proceeds when CAFM state is verified. Safety timeouts default to 20s. Reload the extension at chrome://extensions after code updates.</div>
         </div>
         <div id="sessionSection" class="section">
           <h3>Session</h3>
@@ -411,7 +398,7 @@ function injectPanel() {
             <button id="downloadDiagnostic" class="action">Download diagnostic JSON</button>
             <button id="clear" class="action danger">Clear session</button>
           </div>
-          <div class="muted" style="margin-top:7px">NEW asset sequence: fill populated workbook fields -> Save -> verify saved Asset ID -> Change Asset Status -> Active -> PPM workflow. Legacy toolbar detection is corrected to use page-relative coordinates and one-click protection. v8 uses state-driven progression with no inter-record pacing delay and skips optional Notes/Spatial tabs unless enabled and populated. EDIT EXISTING: open a saved asset, use Fill saved asset from workbook, review, then Save existing changes only (or the normal CAFM Save). Edit mode matches by Asset Code, never creates a duplicate, never clears blank workbook fields, and does not alter asset status or existing PPMs.</div>
+          <div class="muted" style="margin-top:7px">NEW asset sequence: fill populated workbook fields -> Save -> verify saved Asset ID -> Change Asset Status -> Active -> next asset. v8 uses state-driven progression with no inter-record pacing delay and skips optional Notes/Spatial tabs unless enabled and populated. EDIT EXISTING: open a saved asset, use Fill saved asset from workbook, review, then Save existing changes only (or the normal CAFM Save). Edit mode matches by Asset Code, never creates a duplicate, never clears blank workbook fields, and does not alter asset status.</div>
         </div>
         <div class="footer">Move this panel by dragging the header. Site and calculated/read-only fields are not overwritten.</div>
       </div>
@@ -423,7 +410,7 @@ function injectPanel() {
     </div>
   `;
 
-  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'lookupStepDebug', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
+  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'lookupStepDebug', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
   for (const id of ids) C().state.els[id] = shadow.getElementById(id);
   root.ui.progressToast.configureToastElements({
     toast: C().state.els.toast,
@@ -432,7 +419,6 @@ function injectPanel() {
     toastDetail: C().state.els.toastDetail
   });
   C().state.els.dragHandle = C().state.els.head;
-  if (!isAssetPage()) C().state.els.panel.classList.add('ppm-workflow');
 
   if (C().state.settings.panelX != null) {
     C().state.els.panel.style.right = 'auto';
@@ -544,7 +530,6 @@ function injectPanel() {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
     if (changes[STORAGE.learnedStatus]) C().state.learnedStatus = changes[STORAGE.learnedStatus].newValue || null;
-    if (changes[STORAGE.learnedNew]) C().state.learnedNew = changes[STORAGE.learnedNew].newValue || null;
   });
   makeDraggable();
 }

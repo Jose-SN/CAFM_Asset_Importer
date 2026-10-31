@@ -9,8 +9,7 @@
     id: 'default',
     label: 'Standard CAFM asset',
     assetTabOrder: ['Details', 'Financial/Risk', 'Spatial'],
-    assetLookupSequence: ASSET_LOOKUP_FIELDS,
-    ppmTabOrder: ['General', 'Notes']
+    assetLookupSequence: ASSET_LOOKUP_FIELDS
   });
 
   /** Add { test(record), profile } entries ahead of the default rule to override tab order per asset type. */

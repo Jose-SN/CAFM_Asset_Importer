@@ -4,7 +4,7 @@
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
   const { wait, visible, isAssistantElement, elementValue, dispatchClick } = root.core.dom;
-  const { isSavedAssetPage, isSavedPpmPage } = root.core.pages;
+  const { isSavedAssetPage } = root.core.pages;
   const { clickableLookupNode, typeIntoInlineLookup } = root.core.lookup;
 
   /** @type {null | { state: object, waitForDom: Function, nearestControl: Function }} */
@@ -292,119 +292,6 @@ function findChangeAssetStatusButton() {
   return null;
 }
 
-function currentPpmStatusText() {
-  if (!isSavedPpmPage()) return '';
-  const candidates = [...document.querySelectorAll('span,div,td,a,strong,b,label')]
-    .filter((element) => {
-      if (!visible(element) || isAssistantElement(element)) return false;
-      const rect = element.getBoundingClientRect();
-      if (rect.top > 240 || rect.width > 620 || rect.height > 100) return false;
-      const text = clean(element.textContent);
-      return /^status\s*:/i.test(text) && text.length < 180;
-    })
-    .map((element) => ({ text: clean(element.textContent), area: element.getBoundingClientRect().width * element.getBoundingClientRect().height }))
-    .sort((a, b) => a.area - b.area);
-  return candidates[0]?.text || '';
-}
-
-function ppmIsActive() {
-  return /status\s*:\s*active(?:\s*-\s*active)?\b/i.test(currentPpmStatusText());
-}
-
-function topPpmToolbarCandidates() {
-  if (!isSavedPpmPage()) return [];
-  const selectors = 'button,a,input[type="button"],input[type="image"],[role="button"],[onclick],img,svg,i,span,td,li,div';
-  const seen = new Set();
-  const candidates = [];
-  for (const element of document.querySelectorAll(selectors)) {
-    if (!visible(element) || isAssistantElement(element)) continue;
-    const clickable = clickableLookupNode(element);
-    if (!clickable || seen.has(clickable) || !visible(clickable)) continue;
-    seen.add(clickable);
-    const rect = clickable.getBoundingClientRect();
-    if (rect.width < 8 || rect.height < 8 || rect.width > 95 || rect.height > 70) continue;
-    if (rect.top < 35 || rect.top > 130 || rect.left < 155 || rect.left > Math.min(720, window.innerWidth * 0.72)) continue;
-    const clue = `${toolbarActionClue(element)} ${toolbarActionClue(clickable)}`;
-    const actionLike = element.matches?.('button,a,input[type="button"],input[type="image"],[role="button"],[onclick],img,svg,i')
-      || clickable !== element || getComputedStyle(element).cursor === 'pointer'
-      || /print|traffic|status|close|save|edit|refresh|delete|copy/.test(clue);
-    if (!actionLike) continue;
-    candidates.push({ clickable, element, rect, centerY: rect.top + rect.height / 2, clue, x: rect.left });
-  }
-  candidates.sort((a, b) => a.x - b.x);
-  return candidates;
-}
-
-function findChangePpmStatusButton() {
-  // If the user taught the Asset status control and Evolution reuses the
-  // same toolbar DOM for PPMs, prefer that learned real control first.
-  const learned = findLearnedStatusButton();
-  if (learned && visible(learned)) {
-    const r = learned.getBoundingClientRect();
-    if (r.top >= 30 && r.top <= 140 && r.left >= 140 && r.left <= Math.min(760, window.innerWidth * 0.75)) return learned;
-  }
-  const candidates = topPpmToolbarCandidates();
-  const explicit = candidates
-    .map((item) => {
-      let score = 0;
-      if (/change\s*(ppm|planned maintenance)?\s*status|change[^a-z0-9]*status/.test(item.clue)) score += 9000;
-      if (/traffic.?light|trafficlight|statusicon|status_icon/.test(item.clue)) score += 8000;
-      if (/save|print|close|cancel|copy|new|edit|refresh|delete|remove/.test(item.clue)) score -= 10000;
-      return { ...item, score };
-    })
-    .sort((a, b) => b.score - a.score);
-  if (explicit[0]?.score >= 7500) return explicit[0].clickable;
-
-  const print = candidates
-    .filter((item) => /\bprint\b|printer|printicon|print_icon/.test(item.clue))
-    .sort((a, b) => b.x - a.x)[0];
-  if (print) {
-    const pr = print.rect;
-    const left = candidates
-      .filter((item) => item.clickable !== print.clickable && item.rect.left < pr.left)
-      .map((item) => {
-        const gap = pr.left - item.rect.right;
-        const vertical = Math.abs(item.centerY - print.centerY);
-        let score = 0;
-        if (gap >= -4 && gap <= 58 && vertical <= 16) score += 10000 - Math.max(0, gap) * 65 - vertical * 90;
-        if (/save|print|close|cancel|copy|new|edit|refresh|delete|remove/.test(item.clue)) score -= 9000;
-        return { ...item, score };
-      })
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score);
-    if (left[0]) return left[0].clickable;
-  }
-
-  const compact = candidates.filter((item) => item.x < 470);
-  if (compact.length >= 3) {
-    // Saved Evolution entity toolbars generally expose Close, Status, Print.
-    for (let i = 1; i < compact.length - 1; i += 1) {
-      const mid = compact[i];
-      if (!/print|printer|save|close|cancel|copy|new|edit|refresh|delete|remove/.test(mid.clue)) return mid.clickable;
-    }
-    return compact[1].clickable;
-  }
-  return null;
-}
-
-function findChangePpmStatusDialog() {
-  const titleCandidates = [...document.querySelectorAll('h1,h2,h3,h4,legend,span,div,td')]
-    .filter((element) => visible(element) && !isAssistantElement(element) && /change.*status/i.test(clean(element.textContent)));
-  const roots = [];
-  for (const title of titleCandidates) {
-    let node = title;
-    for (let i = 0; i < 8 && node; i += 1, node = node.parentElement) {
-      if (!visible(node) || node === document.body || node === document.documentElement) continue;
-      const rect = node.getBoundingClientRect();
-      const text = clean(node.textContent);
-      if (rect.width >= 260 && rect.width <= 1100 && rect.height >= 120 && rect.height <= 850 && /status/i.test(text)) {
-        roots.push({ node, area: rect.width * rect.height });
-      }
-    }
-  }
-  roots.sort((a, b) => a.area - b.area);
-  return roots[0]?.node || null;
-}
 
 function findChangeAssetStatusDialog() {
   const exact = document.getElementById('ctl00_ctl00_assetStatusPopup_container');
@@ -596,27 +483,6 @@ function clickAssetListCreateNew() {
   return { ok: false, reason: 'create-new-not-found' };
 }
 
-function findAssetPpmNavLink() {
-  const candidates = [...document.querySelectorAll('a,button,[role="button"],[onclick],li,span,div,td')]
-    .filter((element) => {
-      if (!visible(element) || isAssistantElement(element)) return false;
-      if (norm(element.textContent || '') !== 'ppm') return false;
-      const rect = element.getBoundingClientRect();
-      return rect.left >= 0 && rect.left < 230 && rect.top > 80 && rect.top < Math.min(window.innerHeight - 30, 620)
-        && rect.width > 24 && rect.width < 220 && rect.height > 14 && rect.height < 70;
-    })
-    .map((element) => {
-      const clickable = element.closest?.('a,button,[role="button"],[onclick],li') || element;
-      const rect = clickable.getBoundingClientRect();
-      let score = 0;
-      if (clickable.matches?.('a,button,[role="button"],[onclick]')) score += 900;
-      score -= rect.left * 2 + Math.abs(rect.top - 210);
-      return { clickable, score, area: rect.width * rect.height };
-    })
-    .sort((a, b) => (b.score - a.score) || (a.area - b.area));
-  return candidates[0]?.clickable || null;
-}
-
   root.core = root.core || {};
   root.core.toolbar = Object.freeze({
     configure,
@@ -629,15 +495,10 @@ function findAssetPpmNavLink() {
     findToolbarCloseButton,
     findChangeAssetStatusButton,
     findChangeAssetStatusDialog,
-    findChangePpmStatusButton,
-    findChangePpmStatusDialog,
     findConfirmButton,
     selectActiveFromStatusDropdown,
     findAssetGeneralNavLink,
     findAssetListCreateNewButton,
-    clickAssetListCreateNew,
-    findAssetPpmNavLink,
-    currentPpmStatusText,
-    ppmIsActive
+    clickAssetListCreateNew
   });
 })();
