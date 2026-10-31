@@ -9,8 +9,8 @@
     isAssetListPage,
     isSavedAssetPage,
     isPpmListPage,
+    isPpmRegisterParentPage,
     isPpmNewEntityPage,
-    isSavedPpmPage,
     isPpmItemPage,
     entityIdFromUrl,
     assetEntityUrl,
@@ -138,7 +138,13 @@
     if (phase === 'wait_ppm') {
       return isPpmListPage() || Boolean(document.querySelector('[id*="fsiGridPPMs"]'));
     }
-    if (phase === 'wait_ppm_new' || phase === 'ppm_fill' || phase === 'ppm_saving' || phase === 'ppm_await_save') {
+    if (phase === 'wait_ppm_new' || phase === 'ppm_fill' || phase === 'ppm_saving') {
+      return isPpmNewEntityPage() || isPpmItemPage();
+    }
+    if (phase === 'ppm_await_save') {
+      if (clean(auto?.ppmAwaitSaveKind) === 'save_and_close') {
+        return isPpmListPage() || Boolean(document.querySelector('[id*="fsiGridPPMs"]')) || isPpmItemPage();
+      }
       return isPpmNewEntityPage() || isPpmItemPage();
     }
     return false;
@@ -185,8 +191,17 @@
     if (!auto.active) return;
     const phase = clean(auto.phase || '');
     if (phase === 'ppm_ready' || phase === 'ppm_fill' || phase === 'ppm_filled') return;
-    if (phase === 'wait_ppm_new' && !isPpmNewEntityPage()) return;
-    if ((phase === 'ppm_saving' || phase === 'ppm_await_save') && !isPpmItemPage()) return;
+    if (phase === 'wait_ppm_new' && !isPpmNewEntityPage()) {
+      const onPpmRegister = isPpmRegisterParentPage() || isPpmListPage() || Boolean(document.querySelector('[id*="fsiGridPPMs"]'));
+      if (!onPpmRegister && !isPpmItemPage()) return;
+    }
+    if (phase === 'ppm_saving' && !isPpmItemPage()) return;
+    if (phase === 'ppm_await_save') {
+      const kind = clean(auto.ppmAwaitSaveKind);
+      if (kind === 'save_and_close') {
+        if (!isPpmListPage() && !document.querySelector('[id*="fsiGridPPMs"]') && !isPpmItemPage()) return;
+      } else if (!isPpmItemPage()) return;
+    }
     const waitMs = Math.max(0, Number(delay) || 0);
     const watchdogMs = WAITING_PHASES.has(phase) ? Math.max(waitMs, 750) : waitMs;
     if (auto.active) {
@@ -371,6 +386,7 @@
     if (isAssetListPage()) return phase === 'search';
     if (phase === 'search') return false;
     if (isPpmListPage() || document.querySelector('[id*="fsiGridPPMs"]')) return true;
+    if (phase === 'wait_ppm' && isSavedAssetPage()) return true;
     if (phase === 'wait_asset' && isSavedAssetPage()) return true;
     if (isPpmNewEntityPage() || isPpmItemPage()) return true;
     return false;
@@ -459,10 +475,19 @@
             await root.pages.ppmNew.processFill(record);
             return;
           }
+          if (isPpmRegisterParentPage() || isPpmListPage() || document.querySelector('[id*="fsiGridPPMs"]')) {
+            await root.pages.ppmList.processWaitForNewEditor(record);
+            return;
+          }
+          scheduleAuto(500);
           return;
         }
-        if (auto.phase === 'ppm_saving' || auto.phase === 'ppm_await_save') {
-          if (isPpmNewEntityPage() || isSavedPpmPage()) {
+        if (auto.phase === 'ppm_await_save') {
+          await root.pages.ppmNew.processAwaitSave(record);
+          return;
+        }
+        if (auto.phase === 'ppm_saving') {
+          if (isPpmItemPage()) {
             await root.pages.ppmNew.processSave(record);
             return;
           }

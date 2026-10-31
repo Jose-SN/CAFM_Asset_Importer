@@ -100,7 +100,7 @@
       href: link.getAttribute('href') || ''
     });
     dispatchClick(link, false, 'PPM');
-    showStep(b, 'PPM tab switched', 'Side navigation clicked', 'Checking PPM data next', {
+    showStep(b, 'PPM tab switched', 'Side navigation clicked', 'Create New for workbook PPM rows next', {
       meta: record?.assetCode || '',
       wait: false,
       duration: 4000,

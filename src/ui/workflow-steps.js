@@ -37,7 +37,7 @@
       return;
     }
     if (key === 'ppm_saving' || key === 'ppm_await_save') {
-      show(b, 'Waiting', 'PPM save', 'Child tab: saving new PPM', { meta, wait: true, tick: true });
+      show(b, 'Waiting', 'PPM save', 'Child tab: Save and New or Save and Close', { meta, wait: true, tick: true });
       return;
     }
     show(b, 'Waiting', 'Child window', key.replace(/_/g, ' ') || 'workflow', { meta, wait: true, tick: true });

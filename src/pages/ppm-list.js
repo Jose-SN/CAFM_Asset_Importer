@@ -4,7 +4,7 @@
   const root = globalThis.CAFMImporter;
   const { clean } = root.core.text;
   const { wait, visible, isAssistantElement, dispatchClick } = root.core.dom;
-  const { entityIdFromUrl, isPpmListPage } = root.core.pages;
+  const { entityIdFromUrl, isPpmListPage, isPpmRegisterParentPage } = root.core.pages;
   const { linkedForAsset } = root.data.ppm;
   const $ = () => root.runtime.b;
 
@@ -12,10 +12,61 @@
     return root.ui.workflowSteps?.show(b, verb, target, detail, options);
   }
 
-  /** Settle delay after PPM tab is shown before Create New (no grid row scan). */
-  const PPM_TAB_SETTLE_MS = 3000;
+  const PPM_TAB_SETTLE_MS = 1200;
   const CLOSE_BUTTON = 'a[title="Click to close the form without saving changes"][onclick*="Toolbar.Close"], a[onclick*="Toolbar.Close()"]';
   const CREATE_NEW = 'a[title="Create New"][onclick*="Toolbar.New"]';
+
+  function toolbarDocuments() {
+    const docs = [document];
+    for (const frame of document.querySelectorAll('iframe')) {
+      try {
+        const doc = frame.contentDocument;
+        if (doc?.documentElement) docs.push(doc);
+      } catch (_) {}
+    }
+    return docs;
+  }
+
+  function findCreateNewControl() {
+    for (const doc of toolbarDocuments()) {
+      const link = doc.querySelector(CREATE_NEW);
+      if (link && !isAssistantElement(link)) return link;
+    }
+    return null;
+  }
+
+  function clickCreateNew() {
+    try {
+      if (typeof Toolbar !== 'undefined' && typeof Toolbar.New === 'function') {
+        Toolbar.New();
+        return 'Toolbar.New';
+      }
+    } catch (_) {}
+
+    const link = findCreateNewControl();
+    if (!link) return '';
+
+    if (link.classList.contains('x-button-drop-menu-link')) {
+      try {
+        if (typeof Toolbar !== 'undefined' && typeof Toolbar.New === 'function') {
+          Toolbar.New();
+          return 'Toolbar.New-menu-link';
+        }
+      } catch (_) {}
+    }
+
+    const b = $();
+    const legacyClick = b?.dispatchLegacySingleClick;
+    if (typeof legacyClick === 'function' && legacyClick(link, 'ppm-create-new', 800)) {
+      return 'legacy-click';
+    }
+    if (visible(link)) {
+      dispatchClick(link, false, 'Create New');
+      return 'create-new-link';
+    }
+    dispatchClick(link, false, 'Create New');
+    return 'create-new-link-forced';
+  }
 
   function ppmGridDocument() {
     if (document.querySelector('[id*="fsiGridPPMs"]')) return document;
@@ -26,29 +77,6 @@
       } catch (_) {}
     }
     return document;
-  }
-
-  function clickCreateNew(doc = document) {
-    const link = doc.querySelector(CREATE_NEW) || document.querySelector(CREATE_NEW);
-    if (link && !isAssistantElement(link) && link.classList.contains('x-button-drop-menu-link')) {
-      try {
-        if (typeof Toolbar !== 'undefined' && typeof Toolbar.New === 'function') {
-          Toolbar.New();
-          return 'Toolbar.New-menu-link';
-        }
-      } catch (_) {}
-    }
-    if (link && visible(link) && !isAssistantElement(link)) {
-      dispatchClick(link, false, 'Create New');
-      return 'create-new-link';
-    }
-    try {
-      if (typeof Toolbar !== 'undefined' && typeof Toolbar.New === 'function') {
-        Toolbar.New();
-        return 'Toolbar.New';
-      }
-    } catch (_) {}
-    return '';
   }
 
   function clickClose(doc = document) {
@@ -107,6 +135,23 @@
     return method;
   }
 
+  async function processWaitForNewEditor(record) {
+    const b = $();
+    const auto = b.state.session.auto || {};
+    if (!auto.active || auto.mode !== 'ppm') return;
+    if (auto.phase !== 'wait_ppm_new') return;
+    if (!isPpmRegisterParentPage() && !isPpmListPage() && !ppmGridDocument().querySelector('[id*="fsiGridPPMs"]')) return;
+
+    const code = record?.assetCode || '';
+    showStep(b, 'Waiting', 'New PPM editor', 'Create New — waiting for FPPM form in child window', {
+      meta: code,
+      wait: true,
+      tick: true
+    });
+    await root.workflow.engine?.touchPpmPhaseProgress?.();
+    b.scheduleAuto(700);
+  }
+
   async function processList(record) {
     const b = $();
     let auto = b.state.session.auto || {};
@@ -147,7 +192,7 @@
     const ppmIndex = Math.max(0, Number(auto.ppmIndex) || 0);
 
     try {
-      showStep(b, 'PPM tab ready', 'Workbook queue', `Waiting ${PPM_TAB_SETTLE_MS / 1000}s for toolbar`, {
+      showStep(b, 'PPM tab ready', 'Create New', `Preparing toolbar (${PPM_TAB_SETTLE_MS / 1000}s)`, {
         meta: code,
         wait: true,
         tick: true
@@ -159,7 +204,8 @@
         assetCode: record.assetCode,
         entityId,
         linkedCount: linked.length,
-        ppmIndex
+        ppmIndex,
+        createNewFound: Boolean(findCreateNewControl())
       });
 
       if (!linked.length) {
@@ -184,23 +230,13 @@
       const nextPpm = linked[ppmIndex];
       showStep(
         b,
+        'Clicking',
         'Create New',
-        `PPM ${ppmIndex + 1} of ${linked.length}`,
-        clean(nextPpm.instruction) || code,
-        { meta: code, wait: false, duration: 5000 }
+        `PPM ${ppmIndex + 1} of ${linked.length} — ${clean(nextPpm.instruction) || code}`,
+        { meta: code, wait: false, duration: 4000 }
       );
-      b.state.session.auto = {
-        ...b.state.session.auto,
-        phase: 'wait_ppm_new',
-        ppmListRunning: false,
-        assetEntityId: entityId || auto.assetEntityId || '',
-        ppmIndex,
-        ppmKey: nextPpm.ppmKey || '',
-        ppmInstruction: nextPpm.instruction || ''
-      };
-      await b.persistSession();
-      const gridDoc = ppmGridDocument();
-      const method = clickCreateNew(gridDoc);
+
+      const method = clickCreateNew();
       b.addEvent('ppm-create-new', {
         assetCode: record.assetCode,
         method,
@@ -209,8 +245,21 @@
         linkedCount: linked.length
       });
       if (!method) throw new Error('Create New was not found on the asset PPM list.');
-      showStep(b, 'Opening', 'New PPM editor', clean(nextPpm.instruction) || code, { meta: code, wait: true, tick: true });
-      b.scheduleAuto(500);
+
+      b.state.session.auto = {
+        ...b.state.session.auto,
+        phase: 'wait_ppm_new',
+        ppmListRunning: false,
+        assetEntityId: entityId || auto.assetEntityId || '',
+        ppmIndex,
+        ppmKey: nextPpm.ppmKey || '',
+        ppmInstruction: nextPpm.instruction || '',
+        ppmCreateNewAt: Date.now(),
+        phaseProgressAt: Date.now()
+      };
+      await b.persistSession();
+      showStep(b, 'Create New sent', 'New PPM window', clean(nextPpm.instruction) || code, { meta: code, wait: true, tick: true });
+      b.scheduleAuto(400);
     } finally {
       if (b.state.session.auto?.ppmListRunning) {
         b.state.session.auto = { ...b.state.session.auto, ppmListRunning: false };
@@ -220,5 +269,5 @@
   }
 
   root.pages = root.pages || {};
-  root.pages.ppmList = Object.freeze({ processList });
+  root.pages.ppmList = Object.freeze({ processList, processWaitForNewEditor });
 })();
