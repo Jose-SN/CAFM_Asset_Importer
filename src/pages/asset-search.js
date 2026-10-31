@@ -46,10 +46,24 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  function savedAssetCodes() {
+    const list = $().state.session.savedAssetCodes;
+    return Array.isArray(list) ? list.filter(Boolean) : [];
+  }
+
+  function isAssetFinished(record) {
+    const code = norm(record?.assetCode);
+    if (!code) return false;
+    if (DONE.has($().statusOf(record))) return true;
+    if (savedAssetCodes().some((item) => norm(item) === code)) return true;
+    if (missingAssetCodes().some((item) => norm(item) === code)) return true;
+    return false;
+  }
+
   function nextSearchIndex(start) {
     const assets = $().state.assets || [];
     for (let i = Math.max(0, Number(start) || 0); i < assets.length; i += 1) {
-      if (!DONE.has($().statusOf(assets[i]))) return i;
+      if (!isAssetFinished(assets[i])) return i;
     }
     return -1;
   }
@@ -94,10 +108,13 @@
       await b.setStatus(record, 'found', 'Asset row opened');
     }
     b.state.session.auto = {
-      ...(b.state.session.auto || {}),
       active: true,
+      mode: 'ppm',
       phase: 'wait_asset',
-      assetCode: record.assetCode
+      index: Number(b.state.session.index || 0),
+      assetCode: record.assetCode,
+      processedThisRun: Number(b.state.session.auto?.processedThisRun || 0),
+      startedAt: b.state.session.auto?.startedAt
     };
     await b.persistSession();
     b.render();
@@ -119,12 +136,24 @@
     const extra = missingCount
       ? ` ${missingCount} Asset Code(s) were not in the register. Download EE_CAFM_Missing_Asset_Codes.txt from the panel.`
       : '';
-    b.showToast(`Asset Code search complete. ${processed} row(s) processed.${extra}`, missingCount ? 'warn' : 'success', 12000);
+    b.showToast(`Asset Code search complete. ${savedAssetCodes().length} saved, ${processed} row(s) processed.${extra}`, missingCount ? 'warn' : 'success', 12000);
+  }
+
+  async function rememberCompletedAsset(record) {
+    const b = $();
+    const code = clean(record?.assetCode);
+    if (!code) return;
+    const list = savedAssetCodes();
+    if (!list.some((item) => norm(item) === norm(code))) {
+      b.state.session.savedAssetCodes = [...list, code];
+    }
   }
 
   async function goToNext(fromIndex, processed, options = {}) {
     const b = $();
     const assets = b.state.assets || [];
+    const startedAt = b.state.session.auto?.startedAt;
+    b.state.session.currentLookupEvidence = [];
     if (processed >= assets.length) {
       await completeRun(processed);
       return;
@@ -136,11 +165,13 @@
     }
     b.state.session.index = next;
     b.state.session.auto = {
-      ...(b.state.session.auto || {}),
+      active: true,
+      mode: 'ppm',
       phase: 'search',
       index: next,
       assetCode: assets[next].assetCode,
-      processedThisRun: processed
+      processedThisRun: processed,
+      startedAt
     };
     await b.persistSession();
     b.render();
@@ -151,10 +182,11 @@
     const b = $();
     const fromIndex = Math.max(0, Number(b.state.session.index) || 0);
     const current = b.statusOf(record);
-    if (!DONE.has(current) || (status === 'existing' && current === 'found')) {
+    if (!DONE.has(current) || (status === 'existing' && current === 'found') || (status === 'saved' && current === 'found')) {
       await b.setStatus(record, status, note);
     }
-    const processed = Number(b.state.session.auto?.processedThisRun || 0) + 1;
+    if (status === 'saved' || status === 'existing') await rememberCompletedAsset(record);
+    const processed = Math.max(savedAssetCodes().length, Number(b.state.session.auto?.processedThisRun || 0) + 1);
     await goToNext(fromIndex, processed, options);
   }
 
@@ -177,13 +209,8 @@
     if (!isAssetListPage()) throw new Error('Open the Asset register (ViewFASSETItems.aspx) before searching.');
 
     const fromIndex = Math.max(0, Number(b.state.session.index) || 0);
-    const status = b.statusOf(record);
-    if (status === 'found') {
-      await stayOnOpenedAsset(record);
-      return;
-    }
-    if (DONE.has(status)) {
-      await goToNext(fromIndex, Number(auto.processedThisRun || 0));
+    if (isAssetFinished(record) && b.statusOf(record) !== 'found') {
+      await goToNext(fromIndex, Number(auto.processedThisRun || 0) || savedAssetCodes().length);
       return;
     }
 
@@ -193,6 +220,9 @@
     if (!input) throw new Error('Asset Code filter box was not found on the register (listFASSET_AR_CODE_3).');
 
     b.showActivity?.('Searching', 'Asset Code filter', code, { wait: true, meta: code, tick: true });
+    b.addEvent('asset-search-clear', { previous: clean(input.value) });
+    await typeIntoInlineLookup(input, '');
+    await wait(150);
     b.addEvent('asset-search-type', { assetCode: code, workbookRow: record.workbookRow });
     await typeIntoInlineLookup(input, code);
 

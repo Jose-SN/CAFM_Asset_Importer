@@ -21,7 +21,8 @@
         manualAwaitSave: null,
         currentLookupEvidence: [],
         events: [],
-        missingAssetCodes: []
+        missingAssetCodes: [],
+        savedAssetCodes: []
       },
       settings: { ...DEFAULT_SETTINGS },
       host: null,

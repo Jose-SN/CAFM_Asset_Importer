@@ -84,7 +84,8 @@ async function restoreState() {
       manualAwaitSave: null,
       currentLookupEvidence: [],
       events: [],
-      missingAssetCodes: []
+      missingAssetCodes: [],
+      savedAssetCodes: []
     };
     C().state.lastLoggedPhase = '';
     C().showToast?.('Extension version changed — importer cache, session, and settings were reset. Load your workbook again.', 'info', 12000);
@@ -151,7 +152,8 @@ async function loadWorkbookFile(file) {
     manualAwaitSave: null,
     currentLookupEvidence: [],
     events: [],
-    missingAssetCodes: []
+    missingAssetCodes: [],
+    savedAssetCodes: []
   };
   await persistSession();
   C().render();
@@ -217,7 +219,7 @@ async function clearSession() {
   C().state.allAssets = [];
   C().state.ppms = [];
   C().state.cache = null;
-  C().state.session = { fileName: '', fileSize: 0, fileModified: 0, index: 0, statuses: {}, newEntityUrl: deriveNewEntityUrl(), auto: null, manualAwaitSave: null, currentLookupEvidence: [], events: [], missingAssetCodes: [] };
+  C().state.session = { fileName: '', fileSize: 0, fileModified: 0, index: 0, statuses: {}, newEntityUrl: deriveNewEntityUrl(), auto: null, manualAwaitSave: null, currentLookupEvidence: [], events: [], missingAssetCodes: [], savedAssetCodes: [] };
   C().render();
 }
 

@@ -39,10 +39,16 @@
     return true;
   }
 
-  async function waitForGrid() {
+  async function waitForGrid(linked) {
     const deadline = Date.now() + GRID_WAIT_MS;
+    let listed = listedPpms();
     while (Date.now() < deadline) {
-      if (document.querySelector('[id*="fsiGridPPMs"]')) return listedPpms();
+      listed = listedPpms();
+      if (document.querySelector('[id*="fsiGridPPMs"]')) {
+        if (!linked?.length) return listed;
+        const matched = linked.filter((ppm) => listed.some((row) => rowMatchesPpm(ppm, row)));
+        if (matched.length === linked.length) return listed;
+      }
       await wait(GRID_POLL_MS);
     }
     return listedPpms();
@@ -92,8 +98,8 @@
     if (!auto.active || auto.phase !== 'wait_ppm') return;
     if (!isPpmListPage()) return;
 
-    const listed = await waitForGrid();
     const linked = linkedForAsset(record, b.state.ppms || []);
+    const listed = await waitForGrid(linked);
     const matched = linked.filter((ppm) => listed.some((row) => rowMatchesPpm(ppm, row)));
     b.addEvent('ppm-list-scan', {
       assetCode: record.assetCode,
@@ -105,10 +111,10 @@
     });
 
     if (!linked.length) {
-      b.state.session.auto = { ...auto, phase: 'ppm_ready', assetEntityId: entityIdFromUrl() || auto.assetEntityId || '' };
-      await b.persistSession();
-      b.render();
-      b.showToast(`${record.assetCode}: PPM list is open. No workbook PPM rows for this asset.`, 'info', 9000);
+      b.showActivity?.('Closing', 'PPM list window', 'No workbook PPM rows', { wait: false, meta: record.assetCode, duration: 4000, tick: false });
+      await root.pages.assetSearch.finishRow(record, 'saved', 'No workbook PPM rows for this asset', { schedule: true });
+      const method = clickClose();
+      b.addEvent('ppm-list-close', { assetCode: record.assetCode, method, reason: 'no-linked-ppms' });
       return;
     }
 
@@ -138,15 +144,15 @@
       return;
     }
 
-    b.showActivity?.('Closing', 'Asset window', 'PPM already listed', { wait: false, meta: record.assetCode, duration: 4000, tick: false });
-    await root.pages.assetSearch.finishRow(record, 'existing', 'PPM already listed on the asset', { schedule: false });
+    b.showActivity?.('Closing', 'PPM list window', 'Returning to the asset register', { wait: false, meta: record.assetCode, duration: 4000, tick: false });
+    await root.pages.assetSearch.finishRow(record, 'saved', 'PPM list complete for this asset', { schedule: true });
     const method = clickClose();
     b.addEvent('ppm-list-close', {
       assetCode: record.assetCode,
       method,
       matched: matched.map((ppm) => ppm.instruction)
     });
-    b.showToast(`${record.assetCode}: matching PPM(s) already listed. Closing the asset window.`, 'success', 8000);
+    b.showToast(`${record.assetCode}: PPM list complete. Closing this window and searching the next Asset Code.`, 'success', 8000);
   }
 
   root.pages = root.pages || {};
