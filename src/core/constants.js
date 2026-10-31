@@ -5,7 +5,7 @@
   root.core = root.core || {};
 
   root.core.constants = Object.freeze({
-    VERSION: '9.1.2',
+    VERSION: '9.1.3',
     HOST_ID: 'ee-cafm-asset-importer-host',
     STORAGE: Object.freeze({
       installedVersion: 'eeAssetImporterInstalledVersion',
@@ -42,6 +42,7 @@
       cafmImport: 'CAFM Import',
       cafmPpmImport: 'CAFM PPM Import'
     }),
+    assetPagePattern: /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItem\.aspx/i,
     assetListPagePattern: /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItems\.aspx/i,
     ppmListPagePattern: /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItemPPMs\.aspx/i,
     ppmItemPagePattern: /\/Evolution\/!System\/PPMs\/FPPM\/ViewFPPMItem\.aspx/i
