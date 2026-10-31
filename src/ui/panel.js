@@ -100,7 +100,9 @@ function render() {
   })();
   const nextPendingIdx = C().nextPendingIndex(C().state.session.index);
   const nextPendingCode = nextPendingIdx >= 0 ? C().state.assets[nextPendingIdx]?.assetCode || '' : '';
-  C().state.els.row.textContent = record ? `${C().state.session.index + 1} / ${C().state.assets.length} | Excel row ${record.workbookRow}` : '-';
+  C().state.els.row.textContent = record
+    ? `${C().state.session.index + 1} / ${C().state.assets.length} | ${record.ppmQueueSource === 'CAFM PPM Import' ? 'PPM Import' : 'Excel'} row ${record.workbookRow} | ${record.assetCode}`
+    : '-';
   if (C().state.els.queueNav) {
     C().state.els.queueNav.textContent = loaded
       ? `Last saved: ${prevSavedCode || '-'} | Next to save: ${nextPendingCode || '-'}`
@@ -122,7 +124,7 @@ function render() {
     C().state.els.validation.textContent = 'Automatic run uses CAFM PPM Import only: search each Asset Code on this register, open PPM, and save missing PPM rows from that sheet.';
     C().state.els.validation.className = 'validation goodtext';
   } else if (isAssetListPage()) {
-    C().state.els.validation.textContent = 'Load a workbook with a CAFM PPM Import tab (Import? = YES). Optional CAFM Import rows can enrich Asset Code metadata.';
+    C().state.els.validation.textContent = 'Load a workbook with a CAFM PPM Import tab (Import? = YES). This branch queues distinct Asset Codes from that sheet only.';
     C().state.els.validation.className = 'validation goodtext';
   } else {
     C().state.els.validation.textContent = validation.length ? validation.join(' | ') : 'Workbook row passed local validation.';
@@ -469,7 +471,7 @@ function injectPanel() {
       <div id="body">
         <div id="workbookSection" class="section">
           <h3>Workbook</h3>
-          <div class="muted" style="margin-bottom:7px">Primary data: <b>CAFM PPM Import</b> (PPM rows with Import? = YES, linked by Asset Code). The run searches each distinct Asset Code on the register and saves PPMs from that sheet. This branch does not create new assets.</div>
+          <div class="muted" style="margin-bottom:7px">Primary data: <b>CAFM PPM Import</b> only — distinct Asset Codes (first seen in sheet order) drive search, Next/Prev, and automatic run. Multiple PPM rows per code are filled in one asset visit (Save and New between rows).</div>
           <div class="file"><input id="fileInput" type="file" accept=".xlsx"></div>
           <div id="fileName" class="muted" style="margin-top:5px"></div>
           <div class="kpis">

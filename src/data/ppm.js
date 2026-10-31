@@ -11,13 +11,11 @@
       .sort((a, b) => Number(a.workbookRow || 0) - Number(b.workbookRow || 0));
   }
 
-  /** One queue row per Asset Code on CAFM PPM Import (Import? = YES rows), in sheet order. */
-  function assetQueueFromPpmImport(ppms = [], allAssets = []) {
-    const importByCode = new Map();
-    for (const row of allAssets || []) {
-      const code = clean(row?.assetCode);
-      if (code && !importByCode.has(norm(code))) importByCode.set(norm(code), row);
-    }
+  /**
+   * One queue entry per distinct Asset Code on CAFM PPM Import (Import? = YES),
+   * in first-seen sheet order. Multiple PPM rows for the same code → one asset step.
+   */
+  function assetQueueFromPpmImport(ppms = []) {
     const seen = new Set();
     const queue = [];
     for (const ppm of ppms || []) {
@@ -26,8 +24,7 @@
       const key = norm(code);
       if (seen.has(key)) continue;
       seen.add(key);
-      const fromImport = importByCode.get(key);
-      queue.push(fromImport ? { ...fromImport, assetCode: code } : {
+      queue.push({
         assetCode: code,
         workbookRow: Number(ppm.workbookRow) || 0,
         description: '',

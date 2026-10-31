@@ -30,7 +30,7 @@ function loadCoreStack() {
 
 loadCoreStack();
 
-const { linkedForAsset, currentFromList, sourceIssues } = globalThis.CAFMImporter.data.ppm;
+const { linkedForAsset, currentFromList, sourceIssues, assetQueueFromPpmImport } = globalThis.CAFMImporter.data.ppm;
 const { summarize, formatSummary } = globalThis.CAFMImporter.data.preflight;
 const { directMappingsFromRegistry, valueAtPath, SUPPORTED_WORKBOOK_SCHEMAS } = globalThis.CAFMImporter.data.fieldRegistry;
 const { assetProfileForRecord, resolveAssetTabOrder, shouldFillAssetNotes, PROFILE_RULES, DEFAULT_ASSET_PROFILE } = globalThis.CAFMImporter.data.fillProfiles;
@@ -49,6 +49,24 @@ assert(linked[0].instruction === 'PPM-A', 'linkedForAsset should sort by workboo
 assert(currentFromList(asset, ppms, 1).instruction === 'PPM-B', 'currentFromList index 1');
 assert(sourceIssues({ assetCode: '', instruction: 'X' }).includes('PPM Asset Code is blank'), 'sourceIssues blank asset code');
 assert(sourceIssues({ assetCode: 'WCH-1', instruction: '', estTimeMinutes: 99 }).length === 2, 'sourceIssues instruction + minutes');
+
+const dupPpms = [
+  { assetCode: 'WCH-29-10-ELTS-0003', instruction: 'A', workbookRow: 1 },
+  { assetCode: 'WCH-29-10-ELTS-0003', instruction: 'B', workbookRow: 2 },
+  { assetCode: 'WCH-29-10-ELTS-0002', instruction: 'C', workbookRow: 3 },
+  { assetCode: 'WCH-29-10-ELTS-0002', instruction: 'D', workbookRow: 4 },
+  { assetCode: 'WCH-29-10-ELTS-0001', instruction: 'E', workbookRow: 5 },
+  { assetCode: 'WCH-29-10-ELTS-0001', instruction: 'F', workbookRow: 6 },
+  { assetCode: 'WCH-07-01-ELTS-0001', instruction: 'G', workbookRow: 7 }
+];
+const queue = assetQueueFromPpmImport(dupPpms);
+assert(queue.length === 4, 'assetQueueFromPpmImport dedupes to one slot per Asset Code');
+assert(
+  queue.map((r) => r.assetCode).join('|') ===
+    'WCH-29-10-ELTS-0003|WCH-29-10-ELTS-0002|WCH-29-10-ELTS-0001|WCH-07-01-ELTS-0001',
+  'assetQueueFromPpmImport preserves first-seen sheet order'
+);
+assert(queue[0].ppmQueueSource === 'CAFM PPM Import', 'queue marks PPM Import source');
 
 // --- asset-rules.js ---
 assert(validateRecord({ assetCode: '' }).includes('Asset Code is blank'), 'validateRecord requires asset code');

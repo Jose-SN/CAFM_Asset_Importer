@@ -91,7 +91,10 @@ function workflowAssetCodeOnPage() {
 function recordByAssetCode(assetCode) {
   const code = clean(assetCode);
   if (!code) return null;
-  const pools = [C().state.assets, C().state.allAssets].filter((list) => Array.isArray(list) && list.length);
+  const ppmMode = (C().state.ppms || []).length > 0;
+  const pools = ppmMode
+    ? [C().state.assets]
+    : [C().state.assets, C().state.allAssets].filter((list) => Array.isArray(list) && list.length);
   for (const pool of pools) {
     const hit = pool.find((record) => norm(record?.assetCode) === norm(code));
     if (hit) return hit;

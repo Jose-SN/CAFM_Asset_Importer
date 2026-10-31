@@ -33,12 +33,26 @@
 
   function assetQueueFromCache(cache) {
     const ppms = cache?.ppms || [];
-    const allAssets = cache?.allAssets || cache?.assets || [];
     if (ppms.length) {
-      return ppmData.assetQueueFromPpmImport(ppms, allAssets);
+      return ppmData.assetQueueFromPpmImport(ppms);
     }
+    const allAssets = cache?.allAssets || cache?.assets || [];
     const coded = allAssets.filter((row) => clean(row?.assetCode));
     return coded.length ? coded : (cache?.assets || []);
+  }
+
+  /** Next/prev index in the PPM asset queue, skipping duplicate Asset Code rows if any. */
+  function adjacentQueueIndex(fromIndex, delta) {
+    const assets = C().state.assets || [];
+    if (!assets.length) return 0;
+    const from = Math.max(0, Math.min(Number(fromIndex) || 0, assets.length - 1));
+    if (!delta) return from;
+    const fromCode = norm(assets[from]?.assetCode);
+    const step = delta > 0 ? 1 : -1;
+    for (let i = from + step; step > 0 ? i < assets.length : i >= 0; i += step) {
+      if (norm(assets[i]?.assetCode) !== fromCode) return i;
+    }
+    return Math.max(0, Math.min(assets.length - 1, from + (delta > 0 ? 1 : -1)));
   }
 
 async function persistSession() {
@@ -260,7 +274,12 @@ function counts() {
 
 async function move(delta) {
   if (!C().state.assets.length) return;
-  C().state.session.index = Math.max(0, Math.min(C().state.assets.length - 1, C().state.session.index + delta));
+  const step = Number(delta) || 0;
+  if ((C().state.ppms || []).length) {
+    C().state.session.index = adjacentQueueIndex(C().state.session.index, step);
+  } else {
+    C().state.session.index = Math.max(0, Math.min(C().state.assets.length - 1, C().state.session.index + step));
+  }
   C().state.session.currentLookupEvidence = [];
   await persistSession();
   C().render();
