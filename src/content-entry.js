@@ -45,6 +45,7 @@
     entityIdFromUrl,
     isAssetListPage,
     isPanelPage,
+    isCompactPanelPage,
     isWorkflowPage
   } = CI.core.pages;
   const { runtimeMessage, storageGet, storageSet, storageRemove } = CI.core.storage;
@@ -68,7 +69,7 @@
   const handlePostReloadSaveState = (...args) => CI.workflow.postSave.handlePostReloadSaveState(...args);
   const fillExistingSavedAsset = (...args) => CI.pages.assetManual.fillExistingSavedAsset(...args);
   const saveExistingAssetChanges = (...args) => CI.pages.assetManual.saveExistingAssetChanges(...args);
-  const { configure: configurePanel, injectPanel, render, showToast, showActivity, showFieldFill, showWorkflowStatus } = CI.ui.panel;
+  const { configure: configurePanel, injectPanel, injectCompactPanel, render, showToast, showActivity, showFieldFill, showWorkflowStatus } = CI.ui.panel;
   const { configure: configureToolbar } = CI.core.toolbar;
   const { configure: configureTeach, initTeachCapture } = CI.core.teach;
   const { configure: configureMessages, initMessageListeners } = CI.runtime.messages;
@@ -207,7 +208,7 @@
       restoreError = error;
     }
 
-    if (!isPanelPage()) {
+    if (!isPanelPage() && !isCompactPanelPage()) {
       if (state.session.auto?.active) scheduleAuto();
       return;
     }
@@ -221,7 +222,8 @@
       persistSession, storageSet,
       startAutomatic, pauseAutomatic, resumeAutomatic, downloadLog, clearSession, downloadDiagnostic
     });
-    injectPanel();
+    if (isPanelPage()) injectPanel();
+    else if (isCompactPanelPage()) injectCompactPanel();
     render();
     if (restoreError) reportInitFailure(restoreError);
 

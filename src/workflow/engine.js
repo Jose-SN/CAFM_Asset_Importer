@@ -127,6 +127,9 @@
     if (blank.length) {
       return b.showToast(`${blank.length} workbook row(s) have no Asset Code.`, 'warn', 12000);
     }
+    if (!root.pages.assetSearch?.nextSearchIndex) {
+      return b.showToast('Extension modules did not load (asset search). Reload at chrome://extensions.', 'error', 12000);
+    }
     const startIndex = root.pages.assetSearch.nextSearchIndex(0);
     if (startIndex < 0) return b.showToast('Every workbook Asset Code has already been searched.', 'info', 8000);
     const record = b.state.assets[startIndex];
@@ -219,6 +222,17 @@
     return record;
   }
 
+  function shouldRunPpmAutomation(auto) {
+    const phase = clean(auto?.phase || '');
+    if (phase === 'search' || (phase === 'wait_asset' && isAssetListPage())) {
+      return window === window.top;
+    }
+    if (isPpmListPage() || document.querySelector('[id*="fsiGridPPMs"]')) return true;
+    if (phase === 'wait_asset' && isSavedAssetPage()) return true;
+    if (isPpmNewEntityPage() || isPpmItemPage()) return true;
+    return window === window.top;
+  }
+
   async function runAutomatic() {
     const b = $();
     if (b.state.busy) {
@@ -227,18 +241,25 @@
     }
     const auto = b.state.session.auto;
     if (!auto?.active) return;
+    if (auto.mode === 'ppm' && !shouldRunPpmAutomation(auto)) return;
     const phase = clean(auto.phase || '');
     if (
       auto.mode === 'ppm'
       && isAssetListPage()
       && ['wait_asset', 'wait_ppm', 'wait_ppm_new', 'ppm_fill', 'ppm_saving', 'ppm_await_save'].includes(phase)
     ) {
+      const record = await resolveWorkflowRecord(auto);
+      root.ui.workflowSteps?.showRegisterWait(b, phase, record);
+      scheduleAuto(2000);
       return;
     }
     b.state.busy = true;
     try {
       const waitingPhase = WAITING_PHASES.has(phase);
-      if (b.showActivity && !(b.showWorkflowStatus && waitingPhase)) {
+      const skipGenericActivity = auto.mode === 'ppm'
+        && (phase === 'wait_ppm' || phase === 'wait_ppm_new' || phase === 'ppm_fill' || phase === 'ppm_saving')
+        && (isPpmListPage() || isPpmNewEntityPage() || isPpmItemPage());
+      if (b.showActivity && !(b.showWorkflowStatus && waitingPhase) && !skipGenericActivity) {
         const recordPreview = await resolveWorkflowRecord(auto);
         b.showActivity(
           'Running',
@@ -282,7 +303,7 @@
           return;
         }
         if (auto.phase === 'wait_asset' || auto.phase === 'wait_ppm') {
-          if (isPpmListPage()) {
+          if (isPpmListPage() || document.querySelector('[id*="fsiGridPPMs"]')) {
             if (auto.phase !== 'wait_ppm') {
               b.state.session.auto = {
                 ...auto,
@@ -298,6 +319,7 @@
             await root.pages.assetDetail.processOpenPpm(record);
             return;
           }
+          scheduleAuto(800);
           return;
         }
         if (auto.phase !== 'search') throw new Error(`Unsupported saved-asset phase: ${auto.phase || 'none'}.`);

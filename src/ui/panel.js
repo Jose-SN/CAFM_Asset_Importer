@@ -13,6 +13,7 @@
     isSavedPpmPage,
     isAssetListPage,
     isPanelPage,
+    isCompactPanelPage,
     isWorkflowPage
   } = root.core.pages;
   const { lookupMapping } = root.pages.assetMappings;
@@ -56,6 +57,10 @@ function showWorkflowStatus(context = {}, options = {}) {
 
 function render() {
   if (!C().state.shadow) return;
+  if (C().state.compactPanel) {
+    renderCompact();
+    return;
+  }
   const c = C().counts();
   const record = C().currentRecord();
   const status = record ? C().statusOf(record) : 'pending';
@@ -215,6 +220,134 @@ function render() {
   if (C().state.els.autoContinueNext) C().state.els.autoContinueNext.checked = C().state.settings.autoContinueNext !== false;
   if (C().state.els.useSaveAndNew) C().state.els.useSaveAndNew.checked = C().state.settings.useSaveAndNew === true;
   if (C().state.els.lookupStepDebug) C().state.els.lookupStepDebug.checked = Boolean(C().state.settings.lookupStepDebug);
+}
+
+function renderCompact() {
+  const auto = C().state.session.auto;
+  const activeRecord = auto?.active ? (C().workflowRecord(auto) || C().currentRecord()) : null;
+  if (C().state.els.contextSub) {
+    const page = isPpmListPage() ? 'PPM list' : isPpmNewEntityPage() ? 'New PPM' : isSavedPpmPage() ? 'Saved PPM' : isSavedAssetPage() ? 'Asset details' : 'CAFM workflow';
+    const phase = auto?.active ? String(auto.phase || 'running').replace(/_/g, ' ') : 'idle';
+    C().state.els.contextSub.textContent = `Engineering Efficiency Ltd | v${VERSION} | ${page} | ${phase}`;
+  }
+  if (C().state.els.autoState) {
+    C().state.els.autoState.textContent = auto?.active
+      ? `Automatic: ${String(auto.phase || 'running').replace(/_/g, ' ')} | ${activeRecord?.assetCode || auto.assetCode || ''}`
+      : 'Automatic import runs from the Asset register tab.';
+  }
+  if (C().state.els.pauseAuto) C().state.els.pauseAuto.disabled = !auto?.active;
+  if (C().state.els.workflowGuide && root.ui?.workflowGuide?.buildGuide) {
+    const showGuide = Boolean(auto?.active);
+    C().state.els.workflowGuide.hidden = !showGuide;
+    if (showGuide) {
+      const guide = root.ui.workflowGuide.buildGuide({
+        auto,
+        record: activeRecord,
+        currentPpm: activeRecord ? C().currentPpm(activeRecord) : null,
+        linkedPpms: activeRecord ? C().linkedPpms(activeRecord) : [],
+        statuses: C().state.session.statuses || {},
+        statusOf: (row) => C().statusOf(row)
+      });
+      if (C().state.els.guideDone) C().state.els.guideDone.textContent = guide.done;
+      if (C().state.els.guideNow) C().state.els.guideNow.textContent = guide.now;
+      if (C().state.els.guideNext) C().state.els.guideNext.textContent = guide.next;
+    }
+  }
+  if (C().state.els.progressTrack && C().state.els.progressFill) {
+    const showProgress = Boolean(auto?.active) && C().state.assets.length > 0;
+    C().state.els.progressTrack.hidden = !showProgress;
+    if (C().state.els.progressLabel) C().state.els.progressLabel.hidden = !showProgress;
+    if (showProgress) {
+      const assetIndex = Math.max(0, Number(auto.index ?? C().state.session.index) || 0);
+      const assetTotal = Math.max(1, C().state.assets.length);
+      const pct = Math.min(100, Math.max(0, Math.round((assetIndex / assetTotal) * 100)));
+      C().state.els.progressFill.style.width = `${pct}%`;
+      if (C().state.els.progressLabel) {
+        C().state.els.progressLabel.textContent = `Progress ~${pct}% | asset ${assetIndex + 1}/${assetTotal}`;
+      }
+    }
+  }
+}
+
+function injectCompactPanel() {
+  if (!isCompactPanelPage() || document.getElementById(HOST_ID)) return;
+  C().state.compactPanel = true;
+  const host = document.createElement('div');
+  host.id = HOST_ID;
+  host.style.all = 'initial';
+  document.documentElement.appendChild(host);
+  const shadow = host.attachShadow({ mode: 'open' });
+  C().state.host = host;
+  C().state.shadow = shadow;
+  const logo = chrome.runtime.getURL('branding/engineering_efficiency_logo.png');
+  shadow.innerHTML = `
+    <style>
+      :host { all: initial; }
+      * { box-sizing: border-box; }
+      #panel { position: fixed; top: 76px; right: 14px; width: 320px; max-width: calc(100vw - 20px); z-index: 2147483646; background:#111820; color:#f4f6f8; border:1px solid #34414e; border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,.35); font:13px/1.35 Arial,Helvetica,sans-serif; overflow:hidden; }
+      #head { display:flex; align-items:center; gap:10px; padding:10px 12px; background:#0b1117; border-bottom:1px solid #2c3946; cursor:move; user-select:none; }
+      #head img { width:28px; height:28px; object-fit:contain; background:#fff; border-radius:5px; }
+      #head .titles { flex:1; min-width:0; }
+      #head h2 { margin:0; font-size:14px; color:#fff; }
+      #head .sub { color:#aeb9c4; font-size:10px; margin-top:2px; line-height:1.3; }
+      #body { padding:10px; }
+      .muted { color:#9aa8b3; font-size:11px; line-height:1.4; margin-bottom:8px; }
+      .action { border:1px solid #41505e; background:#202b35; color:#fff; border-radius:6px; padding:8px 10px; cursor:pointer; width:100%; }
+      .action.danger { background:#5a2329; border-color:#7a3a42; }
+      .action:disabled { opacity:.45; cursor:not-allowed; }
+      #autoState { font-size:11px; color:#c5d0da; margin:8px 0; }
+      .guide-line { display:flex; gap:6px; font-size:10px; margin:3px 0; }
+      .guide-key { color:#8fa0ad; min-width:32px; }
+      .guide-val { color:#e8eef3; flex:1; }
+      .toast { position:fixed; bottom:14px; right:14px; width:min(360px,calc(100vw - 28px)); padding:10px 12px; border-radius:10px; color:#fff; z-index:2147483647; display:none; }
+      .toast.show { display:block; }
+      .toast-title { font-weight:700; font-size:13px; }
+      .toast-meta { font-size:10px; opacity:.88; margin-top:3px; }
+      .toast-detail { font-size:12px; margin-top:5px; opacity:.96; }
+      .toast.info { background:#1a4a6e; }
+      .toast.success { background:#1c5134; }
+      .toast.warn { background:#6a5319; }
+      .toast.error { background:#702b31; }
+      .toast.progress { border-left:4px solid #3d8bfd; }
+    </style>
+    <div id="panel">
+      <div id="head">
+        <img src="${logo}" alt="Engineering Efficiency Ltd">
+        <div class="titles"><h2>CAFM Importer</h2><div id="contextSub" class="sub">Workflow helper — use the Asset register tab for workbook upload and Start automatic.</div></div>
+      </div>
+      <div id="body">
+        <div class="muted">This window follows the automatic run. Upload the workbook and start the run on <b>ViewFASSETItems.aspx</b> only.</div>
+        <div id="autoState">Automatic import stopped</div>
+        <div id="workflowGuide" hidden>
+          <div class="guide-line"><span class="guide-key">Done</span><span id="guideDone" class="guide-val">—</span></div>
+          <div class="guide-line"><span class="guide-key">Now</span><span id="guideNow" class="guide-val">—</span></div>
+          <div class="guide-line"><span class="guide-key">Next</span><span id="guideNext" class="guide-val">—</span></div>
+        </div>
+        <div id="progressTrack" hidden style="height:6px;background:#2d3944;border-radius:4px;margin:8px 0;overflow:hidden">
+          <div id="progressFill" style="height:100%;width:0%;background:linear-gradient(90deg,#3d8bfd,#7ee2a8)"></div>
+        </div>
+        <div id="progressLabel" class="muted" hidden></div>
+        <button id="pauseAuto" class="action danger" type="button">Pause automatic run</button>
+      </div>
+    </div>
+    <div id="toast" class="toast">
+      <div id="toastTitle" class="toast-title"></div>
+      <div id="toastMeta" class="toast-meta" hidden></div>
+      <div id="toastDetail" class="toast-detail" hidden></div>
+    </div>
+  `;
+  const ids = ['panel', 'head', 'contextSub', 'pauseAuto', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
+  for (const id of ids) C().state.els[id] = shadow.getElementById(id);
+  root.ui.progressToast.configureToastElements({
+    toast: C().state.els.toast,
+    toastTitle: C().state.els.toastTitle,
+    toastMeta: C().state.els.toastMeta,
+    toastDetail: C().state.els.toastDetail
+  });
+  C().state.els.dragHandle = C().state.els.head;
+  C().state.els.pauseAuto.addEventListener('click', () => C().pauseAutomatic());
+  makeDraggable();
+  renderCompact();
 }
 
 function makeDraggable() {
@@ -551,6 +684,7 @@ function injectPanel() {
   root.ui.panel = Object.freeze({
     configure,
     injectPanel,
+    injectCompactPanel,
     render,
     showToast,
     showActivity,

@@ -1,3 +1,12 @@
+# v9.1.9 (PPM-from-existing-assets branch)
+- Step-by-step snackbar messages for PPM workflow (register wait, PPM tab, grid check, match, close, next asset) via `workflow-steps.js`.
+- Register tab re-schedules automation every 2s while waiting on child windows.
+
+# v9.1.7 (PPM-from-existing-assets branch)
+- **Faster PPM step**: child asset tab navigates directly to `ViewFASSETItemPPMs.aspx` (sets `assetEntityId` from the register Open link for background orchestration).
+- **Compact UI on child tabs**: full workbook panel only on `ViewFASSETItems.aspx`; PPM/asset child windows get a small status strip + Pause.
+- **PPM match/close**: match workbook rows by scanning all grid cells (instruction + frequency), one-to-one pairing; when all linked rows exist, Close + next Asset Code search; otherwise Create New. Child tabs now run the DOM observer (init fix).
+
 # v8.0.40
 - **Notes and Spatial tabs**: fill Notes when the workbook `Notes`/`Comments` column is populated, and fill Spatial/GIS fields (including GIS Reference) when any spatial column has data — no panel checkbox required unless the user explicitly disables **Include Notes**.
 - Workbook column alias **GIS** maps to GIS Reference; CAFM field label **GIS** is recognised on the Spatial tab.

@@ -9,6 +9,10 @@
   const { VERSION } = root.core.constants;
   const $ = () => root.runtime.b;
 
+  function showStep(b, verb, target, detail, options) {
+    return root.ui.workflowSteps?.show(b, verb, target, detail, options);
+  }
+
   const FILTER_INPUT = 'input.rcbInput[id*="listFASSET_AR_CODE_3_Input"]';
   const FILTER_DROPDOWN = '[id*="listFASSET_AR_CODE_3_DropDown"]';
   const OPEN_LINK = 'a.gridImageColumn[title="Open dialog to edit the selected entity"]';
@@ -211,6 +215,16 @@
     return link && visible(link) && !isAssistantElement(link) ? link : null;
   }
 
+  function entityIdFromOpenLink(link) {
+    if (!link) return '';
+    try {
+      const href = link.getAttribute('href') || link.href || '';
+      return new URL(href, location.href).searchParams.get('id') || '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   async function waitForGridRow(code) {
     const deadline = Date.now() + OPTION_WAIT_MS;
     while (Date.now() < deadline) {
@@ -221,7 +235,7 @@
     return findGridRow(code);
   }
 
-  async function stayOnOpenedAsset(record) {
+  async function stayOnOpenedAsset(record, options = {}) {
     const b = $();
     if (!DONE.has(b.statusOf(record))) {
       await b.setStatus(record, 'found', 'Asset row opened');
@@ -232,12 +246,17 @@
       phase: 'wait_asset',
       index: Number(b.state.session.index || 0),
       assetCode: record.assetCode,
+      assetEntityId: clean(options.assetEntityId || b.state.session.auto?.assetEntityId || ''),
       processedThisRun: Number(b.state.session.auto?.processedThisRun || 0),
       startedAt: b.state.session.auto?.startedAt
     };
     await b.persistSession();
     b.render();
-    b.showToast(`${record.assetCode} opened. Waiting on the asset details window — PPM side nav will run there.`, 'success', 8000);
+    showStep(b, 'Asset row opened', 'Waiting for editor window', 'Child tab: PPM tab will switch next', {
+      meta: record.assetCode,
+      wait: true,
+      tick: true
+    });
   }
 
   async function completeRun(processed) {
@@ -256,6 +275,12 @@
       ? ` ${missingCount} Asset Code(s) were not in the register. They are stored in missing-asset-codes.json.`
       : '';
     b.showToast(`Asset Code search complete. ${savedAssetCodes().length} saved, ${processed} row(s) processed.${extra}`, missingCount ? 'warn' : 'success', 12000);
+    showStep(b, 'Run complete', 'PPM import', `${processed} asset(s) processed`, {
+      meta: '',
+      wait: false,
+      duration: 8000,
+      type: missingCount ? 'warn' : 'success'
+    });
   }
 
   async function rememberCompletedAsset(record) {
@@ -294,6 +319,12 @@
     };
     await b.persistSession();
     b.render();
+    const nextCode = assets[next]?.assetCode || '';
+    showStep(b, 'Checking next asset', 'Register search', nextCode, {
+      meta: nextCode,
+      wait: true,
+      tick: true
+    });
     if (options.schedule !== false) b.scheduleAuto(400);
   }
 
@@ -382,10 +413,16 @@
       return;
     }
 
-    await stayOnOpenedAsset(record);
+    await stayOnOpenedAsset(record, { assetEntityId: entityIdFromOpenLink(openLink) });
+    showStep(b, 'Opening', 'Asset editor', code, { meta: code, wait: true, tick: true });
     dispatchClick(openLink, false);
     b.addEvent('asset-search-open', { assetCode: code, workbookRow: record.workbookRow });
     await wait(AFTER_CLICK_MS);
+    showStep(b, 'Asset editor opening', 'Child window', 'PPM tab switches in child tab', {
+      meta: code,
+      wait: true,
+      tick: true
+    });
   }
 
   root.pages = root.pages || {};

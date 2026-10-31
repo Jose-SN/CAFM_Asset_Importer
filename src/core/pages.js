@@ -79,9 +79,13 @@
     return isAssetPage() || isAssetListPage() || isPpmListPage() || isPpmItemPage();
   }
 
-  /** Pages where the floating importer panel (workbook upload) should appear. */
+  /** Full panel (workbook upload) only on the asset register; child workflow tabs use a compact strip. */
   function isPanelPage() {
-    return isWorkflowPage() || isAssetListPage();
+    return isAssetListPage();
+  }
+
+  function isCompactPanelPage() {
+    return isWorkflowPage() && !isAssetListPage();
   }
 
   function assetEntityUrl(assetEntityId) {
@@ -134,6 +138,7 @@
     isAssetListPage,
     isWorkflowPage,
     isPanelPage,
+    isCompactPanelPage,
     assetEntityUrl,
     ppmListUrl,
     ppmEntityUrl,
