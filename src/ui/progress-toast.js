@@ -19,6 +19,8 @@
     wait_ppm_new: 'PPM Create New window opened',
     ppm_fill: 'Fill new PPM from Excel',
     ppm_filled: 'New PPM fields filled',
+    ppm_saving: 'Save new PPM',
+    ppm_await_save: 'Wait for PPM save',
     navigate: 'Open next asset form',
     fill: 'Prepare asset form',
     filling: 'Fill asset fields from Excel',

@@ -12,6 +12,8 @@
     wait_ppm_new: 'Fill the new PPM form',
     ppm_fill: 'Selecting Contract, Instruction, Last Service, Notes',
     ppm_filled: 'PPM fields filled from Excel',
+    ppm_saving: 'Save and New, or Save and Close',
+    ppm_await_save: 'Waiting for the PPM save',
     navigate: 'Fill asset fields from Excel',
     fill: 'Validate and fill all asset tabs',
     filling: 'Complete remaining asset fields',

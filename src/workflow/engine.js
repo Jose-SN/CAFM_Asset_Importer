@@ -10,6 +10,8 @@
     isSavedAssetPage,
     isPpmListPage,
     isPpmNewEntityPage,
+    isSavedPpmPage,
+    isPpmItemPage,
     entityIdFromUrl,
     assetEntityUrl,
     deriveNewEntityUrl
@@ -44,6 +46,7 @@
     const phase = clean(auto.phase || '');
     if (phase === 'ppm_ready' || phase === 'ppm_fill' || phase === 'ppm_filled') return;
     if (phase === 'wait_ppm_new' && !isPpmNewEntityPage()) return;
+    if ((phase === 'ppm_saving' || phase === 'ppm_await_save') && !isPpmItemPage()) return;
     const waitMs = Math.max(0, Number(delay) || 0);
     const watchdogMs = WAITING_PHASES.has(phase) ? Math.max(waitMs, 750) : waitMs;
     if (auto.active) {
@@ -226,6 +229,13 @@
         if (auto.phase === 'wait_ppm_new' || auto.phase === 'ppm_fill') {
           if (isPpmNewEntityPage()) {
             await root.pages.ppmNew.processFill(record);
+            return;
+          }
+          return;
+        }
+        if (auto.phase === 'ppm_saving' || auto.phase === 'ppm_await_save') {
+          if (isPpmNewEntityPage() || isSavedPpmPage()) {
+            await root.pages.ppmNew.processSave(record);
             return;
           }
           return;

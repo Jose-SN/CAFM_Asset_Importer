@@ -12,6 +12,8 @@
     'wait_ppm_new',
     'ppm_fill',
     'ppm_filled',
+    'ppm_saving',
+    'ppm_await_save',
     'navigate',
     'fill',
     'filling',
@@ -31,6 +33,7 @@
 
   const WAITING_PHASES = new Set([
     'await_save',
+    'ppm_await_save',
     'asset_close_wait',
     'activate_wait',
     'activate_wait_user',

@@ -30,7 +30,7 @@
       id: 'ppm-new',
       label: 'PPM New Entity',
       test: () => pages.isPpmNewEntityPage(),
-      phases: ['wait_ppm_new', 'ppm_fill', 'ppm_filled'],
+      phases: ['wait_ppm_new', 'ppm_fill', 'ppm_filled', 'ppm_saving', 'ppm_await_save'],
       handler: 'processFill'
     },
     {
