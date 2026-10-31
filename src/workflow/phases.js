@@ -8,6 +8,7 @@
     'search',
     'wait_asset',
     'wait_ppm',
+    'ppm_ready',
     'navigate',
     'fill',
     'filling',

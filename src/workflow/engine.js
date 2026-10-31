@@ -41,6 +41,7 @@
     const auto = b.state.session.auto || {};
     if (!auto.active) return;
     const phase = clean(auto.phase || '');
+    if (phase === 'ppm_ready') return;
     const waitMs = Math.max(0, Number(delay) || 0);
     const watchdogMs = WAITING_PHASES.has(phase) ? Math.max(waitMs, 750) : waitMs;
     if (auto.active) {
@@ -219,24 +220,28 @@
       if (!record) throw new Error('No asset row is available for the active workflow.');
 
       if (auto.mode === 'ppm') {
-        if (auto.phase === 'wait_ppm') return;
-        if (auto.phase === 'wait_asset') {
-          if (isSavedAssetPage()) {
-            await root.pages.assetDetail.processOpenPpm(record);
+        if (auto.phase === 'ppm_ready') return;
+        if (auto.phase === 'wait_asset' || auto.phase === 'wait_ppm') {
+          if (isPpmListPage()) {
+            if (auto.phase !== 'wait_ppm') {
+              b.state.session.auto = {
+                ...auto,
+                phase: 'wait_ppm',
+                assetEntityId: entityIdFromUrl() || auto.assetEntityId || ''
+              };
+              await b.persistSession();
+            }
+            await root.pages.ppmList.processList(record);
             return;
           }
-          if (isPpmListPage()) {
-            b.state.session.auto = {
-              ...auto,
-              phase: 'wait_ppm',
-              assetEntityId: entityIdFromUrl() || auto.assetEntityId || ''
-            };
-            await b.persistSession();
+          if (auto.phase === 'wait_asset' && isSavedAssetPage()) {
+            await root.pages.assetDetail.processOpenPpm(record);
+            return;
           }
           return;
         }
         if (auto.phase !== 'search') throw new Error(`Unsupported saved-asset phase: ${auto.phase || 'none'}.`);
-        if (!isAssetListPage()) throw new Error('Open the Asset register (ViewFASSETItems.aspx) to continue the search.');
+        if (!isAssetListPage()) return;
         if (Number(auto.processedThisRun || 0) >= b.state.assets.length) {
           b.state.session.auto = { ...auto, active: false, phase: 'complete', completedAt: Date.now() };
           await b.persistSession();

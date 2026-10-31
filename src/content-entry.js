@@ -99,12 +99,12 @@
   startLookupAgent();
   if (!TOP) return;
 
-  function linkedPpms() {
-    return [];
+  function linkedPpms(record) {
+    return CI.data.ppm.linkedForAsset(record, state.ppms);
   }
 
   function currentPpm() {
-    return null;
+    return CI.data.ppm.currentFromList(CI.data.records.currentRecord(), state.ppms, state.session.auto?.ppmIndex);
   }
 
   CI.runtime.bind({

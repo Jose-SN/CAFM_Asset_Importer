@@ -15,6 +15,7 @@
     search: 'Search Asset Code on the register',
     wait_asset: 'Asset details window opened',
     wait_ppm: 'PPM register opened',
+    ppm_ready: 'PPM list ready',
     navigate: 'Open next asset form',
     fill: 'Prepare asset form',
     filling: 'Fill asset fields from Excel',

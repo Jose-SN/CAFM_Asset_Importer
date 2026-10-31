@@ -8,6 +8,7 @@
     search: 'Type Asset Code in the register filter and select the matching row',
     wait_asset: 'Click PPM in the asset side navigation',
     wait_ppm: 'PPM register is open',
+    ppm_ready: 'Matching PPM listed, or waiting to create',
     navigate: 'Fill asset fields from Excel',
     fill: 'Validate and fill all asset tabs',
     filling: 'Complete remaining asset fields',

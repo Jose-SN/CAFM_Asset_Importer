@@ -14,7 +14,7 @@
   const OPTION_WAIT_MS = 4000;
   const OPTION_POLL_MS = 150;
   const AFTER_CLICK_MS = 300;
-  const DONE = new Set(['found', 'not_found', 'skipped', 'saved']);
+  const DONE = new Set(['found', 'not_found', 'skipped', 'saved', 'existing']);
 
   function findFilterInput() {
     const el = document.querySelector(FILTER_INPUT);
@@ -122,7 +122,7 @@
     b.showToast(`Asset Code search complete. ${processed} row(s) processed.${extra}`, missingCount ? 'warn' : 'success', 12000);
   }
 
-  async function goToNext(fromIndex, processed) {
+  async function goToNext(fromIndex, processed, options = {}) {
     const b = $();
     const assets = b.state.assets || [];
     if (processed >= assets.length) {
@@ -144,17 +144,18 @@
     };
     await b.persistSession();
     b.render();
-    b.scheduleAuto(400);
+    if (options.schedule !== false) b.scheduleAuto(400);
   }
 
-  async function finishRow(record, status, note) {
+  async function finishRow(record, status, note, options = {}) {
     const b = $();
     const fromIndex = Math.max(0, Number(b.state.session.index) || 0);
-    if (!DONE.has(b.statusOf(record))) {
+    const current = b.statusOf(record);
+    if (!DONE.has(current) || (status === 'existing' && current === 'found')) {
       await b.setStatus(record, status, note);
     }
     const processed = Number(b.state.session.auto?.processedThisRun || 0) + 1;
-    await goToNext(fromIndex, processed);
+    await goToNext(fromIndex, processed, options);
   }
 
   async function recordMissingAsset(record, code) {
@@ -223,6 +224,7 @@
     processSearch,
     nextSearchIndex,
     missingAssetCodes,
-    downloadMissingAssetCodes
+    downloadMissingAssetCodes,
+    finishRow
   });
 })();

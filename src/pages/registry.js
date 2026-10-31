@@ -20,6 +20,13 @@
       handler: 'processOpenPpm'
     },
     {
+      id: 'ppm-list',
+      label: 'Asset PPM list',
+      test: () => pages.isPpmListPage(),
+      phases: ['wait_ppm', 'ppm_ready'],
+      handler: 'processList'
+    },
+    {
       id: 'asset-new',
       label: 'Asset New Entity',
       test: () => pages.isAssetPage() && pages.isNewEntityPage(),
