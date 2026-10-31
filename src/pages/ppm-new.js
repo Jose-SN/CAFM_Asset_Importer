@@ -24,6 +24,49 @@
   const LAST_SERVICE_INPUT = 'input[id*="FPPMGeneral_Editor_LastService_ctl00"]';
   const NOTES_TEXTAREA = 'textarea[id*="FPPMNotes_Editor_TextBoxNAME"]';
 
+  async function claimPpmEditorStep(b, reason) {
+    if (!isPpmItemPage()) return true;
+    try {
+      const res = await chrome.runtime.sendMessage({
+        type: 'PPM_EDITOR_CLAIM',
+        reason: String(reason || ''),
+        url: location.href,
+        phase: clean(b.state.session.auto?.phase || '')
+      });
+      return Boolean(res?.isEditor);
+    } catch (_) {
+      return true;
+    }
+  }
+
+  async function registerPpmEditor(reason) {
+    if (!isPpmItemPage()) return;
+    try {
+      await chrome.runtime.sendMessage({
+        type: 'REGISTER_PPM_EDITOR_TAB',
+        reason: String(reason || ''),
+        url: location.href
+      });
+    } catch (_) {}
+  }
+
+  async function adoptEditorAfterSaveAndNew(b) {
+    try {
+      return await chrome.runtime.sendMessage({ type: 'PPM_ADOPT_EDITOR_AFTER_SAVE' });
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function clearPpmSaveDispatchFlags(auto) {
+    return {
+      ...auto,
+      ppmSaveInFlight: false,
+      ppmSaveDispatchedAt: 0,
+      ppmSaveDispatchedAction: ''
+    };
+  }
+
   function lookupSpec(field, value) {
     const raw = clean(value);
     const lookupValue = field === 'Instruction' ? ppmInstructionLookupValue(raw) : raw;
@@ -49,7 +92,6 @@
     return linkedForAsset(record, b.state.ppms || []).length;
   }
 
-  /** True when another workbook PPM row remains after the row at ppmIndex. */
   function hasMoreLinkedPpms(record, b, ppmIndex) {
     return ppmIndex + 1 < linkedCount(record, b);
   }
@@ -151,13 +193,19 @@
     if (auto.phase === 'ppm_filled') return;
     if (auto.phase !== 'wait_ppm_new' && auto.phase !== 'ppm_fill') return;
 
+    if (!(await claimPpmEditorStep(b, 'processFill'))) {
+      b.scheduleAuto(450);
+      return;
+    }
+    await registerPpmEditor('processFill');
+
     const ppm = currentFromList(record, b.state.ppms, auto.ppmIndex);
     if (!ppm) throw new Error(`No workbook PPM row is queued for ${record.assetCode}.`);
 
     const saveAction = saveActionForRow(record, b, ppmIndexOf(auto));
 
     b.state.session.auto = {
-      ...auto,
+      ...clearPpmSaveDispatchFlags(auto),
       phase: 'ppm_fill',
       ppmKey: ppm.ppmKey || auto.ppmKey || '',
       ppmInstruction: ppm.instruction || auto.ppmInstruction || '',
@@ -195,7 +243,9 @@
       ...b.state.session.auto,
       phase: 'ppm_saving',
       ppmSaveAction: saveAction,
-      ppmSaveMenuStartedAt: 0
+      ppmSaveMenuStartedAt: 0,
+      ppmSaveInFlight: false,
+      ppmSaveDispatchedAt: 0
     };
     await b.persistSession();
     b.showToast(
@@ -217,6 +267,20 @@
     if (auto.phase !== 'ppm_saving') return;
     if (!isPpmItemPage()) return;
 
+    if (!(await claimPpmEditorStep(b, 'processSave'))) {
+      b.scheduleAuto(450);
+      return;
+    }
+
+    if (Number(auto.ppmSaveDispatchedAt || 0) > 0 || auto.phase === 'ppm_await_save') {
+      b.scheduleAuto(400);
+      return;
+    }
+    if (auto.ppmSaveInFlight) {
+      b.scheduleAuto(400);
+      return;
+    }
+
     const ppm = currentFromList(record, b.state.ppms, auto.ppmIndex);
     if (!ppm) throw new Error(`No workbook PPM row is queued for ${record.assetCode}.`);
 
@@ -225,6 +289,9 @@
 
     const validation = b.validationMessage();
     if (validation) throw new Error(validation);
+
+    b.state.session.auto = { ...auto, ppmSaveInFlight: true, ppmSaveMenuStartedAt: auto.ppmSaveMenuStartedAt || 0 };
+    await b.persistSession();
 
     const click = clickSaveForAction(saveAction);
     b.addEvent('ppm-save-click', {
@@ -238,10 +305,14 @@
     });
     if (!click.ok) {
       const started = Number(auto.ppmSaveMenuStartedAt || Date.now());
-      if (!auto.ppmSaveMenuStartedAt) {
-        b.state.session.auto = { ...auto, phase: 'ppm_saving', ppmSaveAction: saveAction, ppmSaveMenuStartedAt: started };
-        await b.persistSession();
-      }
+      b.state.session.auto = {
+        ...b.state.session.auto,
+        phase: 'ppm_saving',
+        ppmSaveAction: saveAction,
+        ppmSaveMenuStartedAt: started,
+        ppmSaveInFlight: false
+      };
+      await b.persistSession();
       if (Date.now() - started > Number(b.state.settings.lookupTimeoutMs || 8000)) {
         throw new Error(`${actionLabel} was not found on the PPM toolbar.`);
       }
@@ -258,6 +329,7 @@
     await markPpmSaved(b, record, ppm);
     const nextPpmIndex = ppmIndexOf(auto) + 1;
     const awaitKind = saveAction === 'save_and_new' ? 'save_and_new' : 'save_and_close';
+    const dispatchedAt = Date.now();
     b.state.session.auto = {
       ...auto,
       active: true,
@@ -271,9 +343,12 @@
       ppmIndex: nextPpmIndex,
       ppmListRunning: false,
       ppmSaveMenuStartedAt: 0,
+      ppmSaveInFlight: false,
+      ppmSaveDispatchedAt: dispatchedAt,
+      ppmSaveDispatchedAction: saveAction,
       ppmAwaitSaveKind: awaitKind,
-      ppmAwaitSaveStartedAt: Date.now(),
-      phaseProgressAt: Date.now()
+      ppmAwaitSaveStartedAt: dispatchedAt,
+      phaseProgressAt: dispatchedAt
     };
     await b.persistSession();
     await root.workflow.engine?.touchPpmPhaseProgress?.();
@@ -293,8 +368,13 @@
 
     if (kind === 'save_and_new') {
       if (isPpmNewEntityPage()) {
+        if (!(await claimPpmEditorStep(b, 'processAwaitSave-new-form'))) {
+          b.scheduleAuto(450);
+          return;
+        }
+        await registerPpmEditor('await-save-new-form');
         b.state.session.auto = {
-          ...auto,
+          ...clearPpmSaveDispatchFlags(auto),
           phase: 'wait_ppm_new',
           ppmAwaitSaveKind: '',
           ppmAwaitSaveStartedAt: 0,
@@ -310,10 +390,33 @@
         b.scheduleAuto(250);
         return;
       }
+      if (isPpmItemPage()) {
+        if (!(await claimPpmEditorStep(b, 'processAwaitSave-handoff'))) {
+          b.scheduleAuto(500);
+          return;
+        }
+        const adopted = await adoptEditorAfterSaveAndNew(b);
+        if (adopted?.ready && !adopted.isThisTab) {
+          b.scheduleAuto(500);
+          return;
+        }
+        if (adopted?.ready && adopted.isThisTab && isPpmNewEntityPage()) {
+          b.state.session.auto = {
+            ...clearPpmSaveDispatchFlags(auto),
+            phase: 'wait_ppm_new',
+            ppmAwaitSaveKind: '',
+            ppmAwaitSaveStartedAt: 0,
+            phaseProgressAt: Date.now()
+          };
+          await b.persistSession();
+          b.scheduleAuto(250);
+          return;
+        }
+      }
     } else if (kind === 'save_and_close') {
       if (onAssetPpmListSurface()) {
         b.state.session.auto = {
-          ...auto,
+          ...clearPpmSaveDispatchFlags(auto),
           phase: 'wait_ppm',
           ppmAwaitSaveKind: '',
           ppmAwaitSaveStartedAt: 0,
