@@ -9,7 +9,7 @@
       id: 'asset-search',
       label: 'Asset register search',
       test: () => pages.isAssetListPage(),
-      phases: ['search'],
+      phases: ['search', 'wait_asset'],
       handler: 'processSearch'
     },
     {

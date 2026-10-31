@@ -10,6 +10,7 @@
 
   const FILTER_INPUT = 'input.rcbInput[id*="listFASSET_AR_CODE_3_Input"]';
   const FILTER_DROPDOWN = '[id*="listFASSET_AR_CODE_3_DropDown"]';
+  const OPEN_LINK = 'a.gridImageColumn[title="Open dialog to edit the selected entity"]';
   const OPTION_WAIT_MS = 4000;
   const OPTION_POLL_MS = 150;
   const AFTER_CLICK_MS = 300;
@@ -53,6 +54,20 @@
     return -1;
   }
 
+  function findGridRow(code) {
+    const rows = [...document.querySelectorAll('tr.rgRow, tr.rgAltRow, tr.rgSelectedRow')];
+    return rows.find((row) => {
+      if (!visible(row) || isAssistantElement(row)) return false;
+      return [...row.querySelectorAll('td')].some((td) => norm(td.textContent) === norm(code));
+    }) || null;
+  }
+
+  function findOpenLink(row) {
+    if (!row) return null;
+    const link = row.querySelector(OPEN_LINK);
+    return link && visible(link) && !isAssistantElement(link) ? link : null;
+  }
+
   async function waitForOption(code) {
     const deadline = Date.now() + OPTION_WAIT_MS;
     while (Date.now() < deadline) {
@@ -61,6 +76,32 @@
       await wait(OPTION_POLL_MS);
     }
     return findExactOption(code);
+  }
+
+  async function waitForGridRow(code) {
+    const deadline = Date.now() + OPTION_WAIT_MS;
+    while (Date.now() < deadline) {
+      const row = findGridRow(code);
+      if (row && findOpenLink(row)) return row;
+      await wait(OPTION_POLL_MS);
+    }
+    return findGridRow(code);
+  }
+
+  async function stayOnOpenedAsset(record) {
+    const b = $();
+    if (!DONE.has(b.statusOf(record))) {
+      await b.setStatus(record, 'found', 'Asset row opened');
+    }
+    b.state.session.auto = {
+      ...(b.state.session.auto || {}),
+      active: true,
+      phase: 'wait_asset',
+      assetCode: record.assetCode
+    };
+    await b.persistSession();
+    b.render();
+    b.showToast(`${record.assetCode} opened. Waiting on the asset details window.`, 'success', 8000);
   }
 
   async function completeRun(processed) {
@@ -135,7 +176,12 @@
     if (!isAssetListPage()) throw new Error('Open the Asset register (ViewFASSETItems.aspx) before searching.');
 
     const fromIndex = Math.max(0, Number(b.state.session.index) || 0);
-    if (DONE.has(b.statusOf(record))) {
+    const status = b.statusOf(record);
+    if (status === 'found') {
+      await stayOnOpenedAsset(record);
+      return;
+    }
+    if (DONE.has(status)) {
       await goToNext(fromIndex, Number(auto.processedThisRun || 0));
       return;
     }
@@ -157,8 +203,19 @@
 
     dispatchClick(option, false);
     b.addEvent('asset-search-select', { assetCode: code, selected: clean(option.textContent) });
+
+    const row = await waitForGridRow(code);
+    const openLink = findOpenLink(row);
+    if (!openLink) {
+      b.showToast(`Asset Code ${code} was selected, but the register row open button was not found.`, 'warn', 10000);
+      await recordMissingAsset(record, code);
+      return;
+    }
+
+    dispatchClick(openLink, false);
+    b.addEvent('asset-search-open', { assetCode: code, workbookRow: record.workbookRow });
     await wait(AFTER_CLICK_MS);
-    await finishRow(record, 'found', 'Asset Code selected in the register filter');
+    await stayOnOpenedAsset(record);
   }
 
   root.pages = root.pages || {};

@@ -13,6 +13,7 @@
 
   const PHASE_LABELS = Object.freeze({
     search: 'Search Asset Code on the register',
+    wait_asset: 'Asset details window opened',
     navigate: 'Open next asset form',
     fill: 'Prepare asset form',
     filling: 'Fill asset fields from Excel',
