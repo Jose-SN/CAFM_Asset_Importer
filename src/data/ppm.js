@@ -52,29 +52,11 @@
     return issues;
   }
 
-  function instructionCanon(value) {
-    return String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-  }
-
-  /** True when this workbook PPM row was already saved/skipped for this asset in session or stored status. */
-  function alreadyProcessed(record, ppm, auto = {}, statuses = {}) {
-    if (!record || !ppm) return false;
-    if (norm(record.assetCode) !== norm(ppm.assetCode)) return false;
-    const key = clean(ppm.ppmKey);
-    const merged = [
-      ...(auto.ppmResults || []),
-      ...(statuses[record.assetCode]?.ppmResults || [])
-    ];
-    return Boolean(key && merged.some((item) => clean(item.ppmKey) === key && ['saved', 'existing'].includes(clean(item.status))));
-  }
-
   root.data = root.data || {};
   root.data.ppm = Object.freeze({
     linkedForAsset,
     assetQueueFromPpmImport,
     currentFromList,
-    sourceIssues,
-    instructionCanon,
-    alreadyProcessed
+    sourceIssues
   });
 })();

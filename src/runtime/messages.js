@@ -17,7 +17,8 @@
       if (!message || typeof message !== 'object') return;
       const {
         state, addEvent, storageGet, persistSession, render, scheduleAuto, runAutomatic,
-        isAssetPage, assetEntityUrl, entityIdFromUrl, isSavedAssetPage, showToast
+        isAssetPage, isAssetListPage, assetEntityUrl, entityIdFromUrl, isSavedAssetPage, showToast,
+        workflowRecord
       } = C();
 
       if (message.type === 'EE_EXTENSION_VERSION_RESET') {
@@ -86,6 +87,37 @@
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
           const currentAuto = state.session.auto || {};
           if (!currentAuto.active) return;
+
+          if (currentAuto.mode === 'ppm') {
+            const handoff = clean(currentAuto.ppmRegisterHandoff);
+            state.session.auto = {
+              ...currentAuto,
+              assetCloseStartedAt: 0,
+              assetCloseRequestedAt: 0,
+              ppmListRunning: false
+            };
+            await persistSession();
+            if (handoff && isAssetListPage?.()) {
+              const record = workflowRecord?.(state.session.auto);
+              const note = clean(state.session.auto.ppmRegisterHandoffNote) || '';
+              const status = handoff === 'saved' ? 'saved' : handoff === 'failed' ? 'failed' : '';
+              state.session.auto = {
+                ...state.session.auto,
+                ppmRegisterHandoff: '',
+                ppmRegisterHandoffNote: ''
+              };
+              await persistSession();
+              if (record && status && root.pages.assetSearch?.finishRow) {
+                await root.pages.assetSearch.finishRow(record, status, note, { schedule: true });
+              }
+              render();
+              return;
+            }
+            render();
+            scheduleAuto(400);
+            return;
+          }
+
           const entityId = String(message.assetEntityId || currentAuto.assetEntityId || '').trim();
           state.session.auto = {
             ...currentAuto,

@@ -21,11 +21,151 @@
   const { dispatchClick } = root.core.dom;
   const $ = () => root.runtime.b;
 
+  const PPM_PHASE_STALL_MS = 15000;
+  const PPM_STALL_PHASES = new Set([
+    'search',
+    'wait_asset',
+    'wait_ppm',
+    'wait_ppm_new',
+    'ppm_fill',
+    'ppm_saving',
+    'ppm_await_save'
+  ]);
+  const PPM_CLOSE_BUTTON = 'a[title="Click to close the form without saving changes"][onclick*="Toolbar.Close"], a[onclick*="Toolbar.Close()"]';
+
   function syncAutoOrchestrator() {
     const active = Boolean($().state.session.auto?.active);
     try {
       chrome.runtime.sendMessage({ type: active ? 'AUTO_ORCHESTRATOR_SYNC' : 'AUTO_ORCHESTRATOR_STOP' }).catch(() => {});
     } catch (_) {}
+  }
+
+  function ppmPhaseStalled(auto) {
+    const phase = clean(auto?.phase || '');
+    if (auto?.mode !== 'ppm' || !PPM_STALL_PHASES.has(phase)) return false;
+    const anchor = Number(auto.phaseProgressAt) || Number(auto.phaseEnteredAt) || Number(auto.startedAt) || 0;
+    if (!anchor) return false;
+    return Date.now() - anchor >= PPM_PHASE_STALL_MS;
+  }
+
+  async function syncPpmPhaseClock(b, auto) {
+    if (auto?.mode !== 'ppm') return auto;
+    const phase = clean(auto.phase || '');
+    if (clean(auto.lastPhaseClock) === phase) return auto;
+    const now = Date.now();
+    b.state.session.auto = {
+      ...auto,
+      lastPhaseClock: phase,
+      phaseEnteredAt: now,
+      phaseProgressAt: now
+    };
+    await b.persistSession();
+    return b.state.session.auto;
+  }
+
+  async function touchPpmPhaseProgress() {
+    const b = $();
+    const auto = b.state.session.auto;
+    if (!auto?.active || auto.mode !== 'ppm') return;
+    b.state.session.auto = { ...auto, phaseProgressAt: Date.now() };
+    await b.persistSession();
+  }
+
+  function tryClosePpmOrAssetEditor() {
+    const button = document.querySelector(PPM_CLOSE_BUTTON);
+    if (button) {
+      dispatchClick(button, false, 'Close');
+      return 'close-button';
+    }
+    try {
+      if (typeof Toolbar !== 'undefined' && typeof Toolbar.Close === 'function') {
+        Toolbar.Close();
+        return 'Toolbar.Close';
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  async function skipStalledPpmAsset(record, auto) {
+    const b = $();
+    const phase = clean(auto?.phase || '');
+    const anchor = Number(auto.phaseProgressAt) || Number(auto.phaseEnteredAt) || 0;
+    const stalledSec = anchor ? Math.max(15, Math.round((Date.now() - anchor) / 1000)) : 15;
+    const note = `PPM not saved: no progress for ${stalledSec}s (${phase.replace(/_/g, ' ')})`;
+    b.addEvent('ppm-phase-timeout', {
+      assetCode: record?.assetCode || '',
+      phase,
+      stalledSec,
+      note
+    });
+    root.ui.workflowSteps?.show(b, 'Timed out', 'PPM not saved', 'Moving to next asset on register', {
+      meta: record?.assetCode || '',
+      wait: false,
+      duration: 8000,
+      type: 'warn'
+    });
+    b.showToast(`${record?.assetCode || 'Asset'}: ${note}`, 'warn', 10000);
+    b.state.session.auto = {
+      ...(b.state.session.auto || auto),
+      ppmListRunning: false,
+      phase: 'search',
+      ppmRegisterHandoff: 'failed',
+      ppmRegisterHandoffNote: note
+    };
+    await b.persistSession();
+    const closeMethod = tryClosePpmOrAssetEditor();
+    try {
+      await chrome.runtime.sendMessage({
+        type: 'ASSET_CLOSE_EDITOR_TAB',
+        assetCode: record?.assetCode || '',
+        assetEntityId: String(auto.assetEntityId || '')
+      });
+    } catch (_) {}
+    b.addEvent('ppm-phase-timeout-close', { assetCode: record?.assetCode || '', method: closeMethod });
+    if (isAssetListPage() && root.pages.assetSearch?.finishRow) {
+      await root.pages.assetSearch.finishRow(record, 'failed', note, { schedule: true });
+      return;
+    }
+    scheduleAuto(600);
+  }
+
+  function ppmWorkflowCanActHere(auto) {
+    const phase = clean(auto?.phase || '');
+    if (phase === 'search') return isAssetListPage();
+    if (phase === 'wait_asset') {
+      return isSavedAssetPage() || isPpmListPage() || Boolean(document.querySelector('[id*="fsiGridPPMs"]'));
+    }
+    if (phase === 'wait_ppm') {
+      return isPpmListPage() || Boolean(document.querySelector('[id*="fsiGridPPMs"]'));
+    }
+    if (phase === 'wait_ppm_new' || phase === 'ppm_fill' || phase === 'ppm_saving' || phase === 'ppm_await_save') {
+      return isPpmNewEntityPage() || isPpmItemPage();
+    }
+    return false;
+  }
+
+  async function abortPpmStallIfNeeded(auto) {
+    if (!ppmPhaseStalled(auto)) return false;
+    const b = $();
+    const phase = clean(auto?.phase || '');
+
+    if (
+      isAssetListPage()
+      && ['wait_asset', 'wait_ppm', 'wait_ppm_new', 'ppm_fill', 'ppm_saving', 'ppm_await_save'].includes(phase)
+    ) {
+      await touchPpmPhaseProgress();
+      return false;
+    }
+
+    if (!ppmWorkflowCanActHere(auto)) {
+      await touchPpmPhaseProgress();
+      return false;
+    }
+
+    const record = await resolveWorkflowRecord(auto);
+    if (!record) return false;
+    await skipStalledPpmAsset(record, auto);
+    return true;
   }
 
   function cancelAutoWorkflowTimers() {
@@ -141,6 +281,9 @@
       index: startIndex,
       assetCode: record.assetCode,
       startedAt: Date.now(),
+      phaseEnteredAt: Date.now(),
+      phaseProgressAt: Date.now(),
+      lastPhaseClock: 'search',
       processedThisRun: 0,
       maxIterations: b.state.assets.length
     };
@@ -224,23 +367,39 @@
 
   function shouldRunPpmAutomation(auto) {
     const phase = clean(auto?.phase || '');
-    if (phase === 'search' || (phase === 'wait_asset' && isAssetListPage())) {
-      return window === window.top;
-    }
+    // Register parent: poll/wait only for search (same role as navigate + isAssetListPage on assets_working_file).
+    if (isAssetListPage()) return phase === 'search';
+    if (phase === 'search') return false;
     if (isPpmListPage() || document.querySelector('[id*="fsiGridPPMs"]')) return true;
     if (phase === 'wait_asset' && isSavedAssetPage()) return true;
     if (isPpmNewEntityPage() || isPpmItemPage()) return true;
-    return window === window.top;
+    return false;
   }
 
   async function runAutomatic() {
     const b = $();
+    let auto = b.state.session.auto;
+    if (!auto?.active) return;
+    if (auto.mode === 'ppm') {
+      if (typeof b.syncSessionFromStorage === 'function') {
+        await b.syncSessionFromStorage();
+      } else if (typeof b.ensureWorkbookLoaded === 'function') {
+        await b.ensureWorkbookLoaded();
+      }
+      auto = b.state.session.auto;
+    }
+    if (auto.mode === 'ppm') {
+      auto = await syncPpmPhaseClock(b, auto);
+      if (await abortPpmStallIfNeeded(auto)) return;
+    }
     if (b.state.busy) {
+      if (auto.mode === 'ppm' && ppmPhaseStalled(auto)) {
+        b.state.busy = false;
+        if (await abortPpmStallIfNeeded(auto)) return;
+      }
       scheduleAuto(400);
       return;
     }
-    const auto = b.state.session.auto;
-    if (!auto?.active) return;
     if (auto.mode === 'ppm' && !shouldRunPpmAutomation(auto)) return;
     const phase = clean(auto.phase || '');
     if (
@@ -250,6 +409,7 @@
     ) {
       const record = await resolveWorkflowRecord(auto);
       root.ui.workflowSteps?.showRegisterWait(b, phase, record);
+      await touchPpmPhaseProgress();
       scheduleAuto(2000);
       return;
     }
@@ -288,6 +448,12 @@
 
       if (auto.mode === 'ppm') {
         if (auto.phase === 'ppm_ready' || auto.phase === 'ppm_filled') return;
+        if (auto.phase === 'activate_open') {
+          b.state.session.auto = { ...auto, phase: 'search' };
+          await b.persistSession();
+          scheduleAuto(400);
+          return;
+        }
         if (auto.phase === 'wait_ppm_new' || auto.phase === 'ppm_fill') {
           if (isPpmNewEntityPage()) {
             await root.pages.ppmNew.processFill(record);
@@ -631,6 +797,12 @@
 
   root.workflow = root.workflow || {};
   root.workflow.engine = Object.freeze({
-    scheduleAuto, runAutomatic, startAutomatic, pauseAutomatic, resumeAutomatic, stopAutomaticWithError
+    scheduleAuto,
+    runAutomatic,
+    startAutomatic,
+    pauseAutomatic,
+    resumeAutomatic,
+    stopAutomaticWithError,
+    touchPpmPhaseProgress
   });
 })();

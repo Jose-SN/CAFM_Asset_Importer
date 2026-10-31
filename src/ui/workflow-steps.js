@@ -25,7 +25,7 @@
       return;
     }
     if (key === 'wait_ppm') {
-      show(b, 'Waiting', 'PPM data check', 'Child tab: comparing CAFM grid to workbook', { meta, wait: true, tick: true });
+      show(b, 'Waiting', 'PPM register', 'Child tab: Create New for next workbook row', { meta, wait: true, tick: true });
       return;
     }
     if (key === 'wait_ppm_new') {

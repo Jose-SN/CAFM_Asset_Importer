@@ -25,6 +25,7 @@
     configure: configureWorkbook,
     persistSession,
     restoreState,
+    syncSessionFromStorage,
     ensureWorkbookLoaded,
     loadWorkbookFile,
     counts,
@@ -121,6 +122,7 @@
     dispatchClick,
     addEvent: CI.core.events.addEvent,
     persistSession: CI.data.workbook.persistSession,
+    syncSessionFromStorage: CI.data.workbook.syncSessionFromStorage,
     ensureWorkbookLoaded: CI.data.workbook.ensureWorkbookLoaded,
     scheduleAuto: CI.workflow.engine.scheduleAuto,
     finishPostSave: CI.workflow.postSave.finishPostSave,
@@ -184,6 +186,7 @@
     configureMessages({
       state, addEvent, storageGet, persistSession, render, scheduleAuto, runAutomatic,
       isAssetPage,
+      isAssetListPage: CI.core.pages.isAssetListPage,
       assetEntityUrl: CI.core.pages.assetEntityUrl,
       entityIdFromUrl: CI.core.pages.entityIdFromUrl,
       isSavedAssetPage: CI.core.pages.isSavedAssetPage,

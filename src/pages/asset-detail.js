@@ -51,7 +51,9 @@
       ...auto,
       phase: 'wait_ppm',
       assetEntityId: entityId,
-      assetCode: record.assetCode
+      assetCode: record.assetCode,
+      ppmIndex: 0,
+      phaseProgressAt: Date.now()
     };
     b.addEvent('asset-open-ppm', {
       assetCode: record.assetCode,
@@ -62,7 +64,7 @@
     b.render();
 
     if (isPpmListPage()) {
-      showStep(b, 'PPM tab switched', 'PPM register open', 'Checking PPM data next', {
+      showStep(b, 'PPM tab switched', 'PPM register open', 'Creating workbook PPM rows next', {
         meta: record?.assetCode || '',
         wait: false,
         duration: 3500

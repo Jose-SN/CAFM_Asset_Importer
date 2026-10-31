@@ -187,6 +187,7 @@
       return;
     }
     await markPpmSaved(b, record, ppm);
+    const nextPpmIndex = Math.max(0, Number(auto.ppmIndex) || 0) + 1;
     b.state.session.auto = {
       active: true,
       mode: 'ppm',
@@ -195,10 +196,15 @@
       assetCode: record.assetCode,
       assetEntityId: auto.assetEntityId || '',
       processedThisRun: Number(auto.processedThisRun || 0),
-      startedAt: auto.startedAt
+      startedAt: auto.startedAt,
+      ppmIndex: nextPpmIndex,
+      ppmListRunning: false,
+      phaseProgressAt: Date.now()
     };
     await b.persistSession();
+    await root.workflow.engine?.touchPpmPhaseProgress?.();
     b.showActivity?.('Waiting', 'Save and Close', 'Returning to the asset PPM list', { wait: true, meta: record.assetCode, tick: true });
+    b.scheduleAuto(600);
   }
 
   root.pages = root.pages || {};

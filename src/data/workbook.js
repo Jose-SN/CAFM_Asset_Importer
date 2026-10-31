@@ -140,6 +140,18 @@ async function restoreState() {
   }
 }
 
+/** Merge persisted session (especially auto) before a workflow step — same idea as RUN_AUTO_STEP on assets_working_file. */
+async function syncSessionFromStorage() {
+  const stored = await storageGet([STORAGE.session]);
+  if (!stored[STORAGE.session]) return;
+  const incoming = stored[STORAGE.session];
+  C().state.session = {
+    ...C().state.session,
+    ...incoming,
+    events: Array.isArray(incoming.events) ? incoming.events : (C().state.session.events || [])
+  };
+}
+
 async function ensureWorkbookLoaded() {
   if ((C().state.ppms || []).length && (C().state.assets || []).length) return true;
   const cache = await loadLargeWorkbook();
@@ -437,6 +449,7 @@ function nextPendingIndex(start = C().state.session.index + 1) {
     configure,
     persistSession,
     restoreState,
+    syncSessionFromStorage,
     ensureWorkbookLoaded,
     loadWorkbookFile,
     counts,
