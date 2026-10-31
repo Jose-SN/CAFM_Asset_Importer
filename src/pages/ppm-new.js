@@ -12,7 +12,7 @@
     clickAssetToolbarSaveAndClose,
     clickAssetToolbarSaveAndNew
   } = root.core.dom;
-  const { makeLookupSpec, typeLookupSearchTerm } = root.core.lookupSpec;
+  const { makeLookupSpec, typeLookupSearchTerm, ppmInstructionLookupValue } = root.core.lookupSpec;
   const { isPpmNewEntityPage, isPpmItemPage, isPpmListPage } = root.core.pages;
   const { currentFromList, linkedForAsset } = root.data.ppm;
   const $ = () => root.runtime.b;
@@ -25,12 +25,19 @@
   const NOTES_TEXTAREA = 'textarea[id*="FPPMNotes_Editor_TextBoxNAME"]';
 
   function lookupSpec(field, value) {
-    const term = typeLookupSearchTerm(value);
-    return makeLookupSpec(field, value, {
+    const raw = clean(value);
+    const lookupValue = field === 'Instruction' ? ppmInstructionLookupValue(raw) : raw;
+    const term = field === 'Instruction'
+      ? typeLookupSearchTerm(lookupValue)
+      : typeLookupSearchTerm(value);
+    const searchTerms = field === 'Instruction'
+      ? uniqueNonBlank([lookupValue, term, raw !== lookupValue ? raw : ''])
+      : uniqueNonBlank([term, value]);
+    return makeLookupSpec(field, lookupValue, {
       tab: 'General',
-      display: value,
-      description: value,
-      searchTerms: uniqueNonBlank([term, value])
+      display: lookupValue,
+      description: lookupValue,
+      searchTerms
     });
   }
 

@@ -35,6 +35,16 @@
     return full.replace(/\s+/g, '');
   }
 
+  /**
+   * PPM Instruction workbook cell often ends with a stray hyphen (e.g. "… - 1M -").
+   * CAFM dropdown lines use the same text without that suffix ("… - 1M").
+   */
+  function ppmInstructionLookupValue(value) {
+    const full = clean(value);
+    if (!full) return '';
+    return full.replace(/\s+-\s*$/, '').trim();
+  }
+
   /** CAFM / display value first, then fallback (e.g. code) when they differ. */
   function cafmThenFallbackSearchTerms(cafmValue, fallback) {
     const cafm = clean(cafmValue);
@@ -134,6 +144,7 @@
     buildingNumber,
     buildingCodeBeforeHyphen,
     typeLookupSearchTerm,
+    ppmInstructionLookupValue,
     cafmThenFallbackSearchTerms,
     fallbackThenCafmSearchTerms,
     SIMPLE_LOOKUP_FIELDS,

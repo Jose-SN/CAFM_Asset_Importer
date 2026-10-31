@@ -47,7 +47,10 @@
     isAssetListPage,
     isPanelPage,
     isCompactPanelPage,
-    isWorkflowPage
+    isWorkflowPage,
+    isSavedAssetPage,
+    isPpmListPage,
+    isPpmItemPage
   } = CI.core.pages;
   const { runtimeMessage, storageGet, storageSet, storageRemove } = CI.core.storage;
   const {
@@ -232,7 +235,12 @@
 
     if (!isWorkflowPage()) return;
 
-    if (isAssetPage() || isAssetListPage()) await runtimeMessage({ type: 'REGISTER_ASSET_TAB' });
+    if (isAssetPage() || isAssetListPage()) {
+      if (isAssetListPage()) await runtimeMessage({ type: 'REGISTER_ASSET_TAB', role: 'register' });
+      else if (isSavedAssetPage() || isPpmListPage() || isPpmItemPage()) {
+        await runtimeMessage({ type: 'REGISTER_ASSET_TAB', role: 'editor' });
+      }
+    }
     if (isAssetPage()) await handlePostReloadSaveState();
     let autoDomTimer = null;
     const autoObserver = new MutationObserver(() => {

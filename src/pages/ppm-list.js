@@ -259,6 +259,13 @@
       };
       await b.persistSession();
       showStep(b, 'Create New sent', 'New PPM window', clean(nextPpm.instruction) || code, { meta: code, wait: true, tick: true });
+      try {
+        await chrome.runtime.sendMessage({
+          type: 'PPM_CREATE_NEW_CLICKED',
+          assetCode: record.assetCode || '',
+          assetEntityId: entityId || ''
+        });
+      } catch (_) {}
       b.scheduleAuto(400);
     } finally {
       if (b.state.session.auto?.ppmListRunning) {

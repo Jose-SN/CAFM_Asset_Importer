@@ -61,7 +61,8 @@
   }
 
   function ppmInstructionCanon(value) {
-    return String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const trimmed = String(value ?? '').replace(/\s+-\s*$/, '');
+    return trimmed.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
 function clickableLookupNode(element) {

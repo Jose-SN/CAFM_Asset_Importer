@@ -57,7 +57,11 @@ assert(validateRecord({ assetCode: 'WCH-OK-001', quantity: '-1' }).length > 0, '
 assert(lookupValue('System', 'CODE - Description').code === 'CODE', 'lookupValue splits code/description');
 
 load('src/core/lookup-spec.js');
-const { makeLookupSpec } = globalThis.CAFMImporter.core.lookupSpec;
+const { makeLookupSpec, ppmInstructionLookupValue } = globalThis.CAFMImporter.core.lookupSpec;
+assert(
+  ppmInstructionLookupValue('Emergency Lighting Inspection and Test - 1M -') === 'Emergency Lighting Inspection and Test - 1M',
+  'ppmInstructionLookupValue strips trailing hyphen segment'
+);
 const systemSpec = makeLookupSpec('System', 'MECH - Mechanical', {
   lookupCafmValue: 'MECH - Mechanical',
   lookupFallback: 'MECH'
