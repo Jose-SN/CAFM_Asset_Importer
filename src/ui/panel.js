@@ -194,7 +194,6 @@ function render() {
   if (C().state.els.missingAssetWrap) {
     C().state.els.missingAssetWrap.hidden = !missingCodes.length;
     if (C().state.els.missingAssetList) C().state.els.missingAssetList.textContent = missingCodes.join('\n');
-    if (C().state.els.downloadMissingAssets) C().state.els.downloadMissingAssets.disabled = !missingCodes.length;
   }
   C().state.els.fileInput.value = '';
 
@@ -353,9 +352,8 @@ function injectPanel() {
           <div id="assetCode" class="asset">-</div>
           <div id="validation" class="validation goodtext">Load a workbook to begin.</div>
           <div id="missingAssetWrap" hidden style="margin-top:8px">
-            <div class="muted" style="margin-bottom:4px">Asset Codes not found in the register</div>
+            <div class="muted" style="margin-bottom:4px">missing-asset-codes.json (updated, not downloaded)</div>
             <div id="missingAssetList" class="validation badtext" style="white-space:pre-wrap;max-height:120px;overflow:auto"></div>
-            <button id="downloadMissingAssets" class="action wide" type="button" style="margin-top:6px">Download missing Asset Codes</button>
           </div>
           <div id="lookupSummary" class="lookup-list"></div>
         </div>
@@ -424,7 +422,7 @@ function injectPanel() {
     </div>
   `;
 
-  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'missingAssetWrap', 'missingAssetList', 'downloadMissingAssets', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'lookupStepDebug', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
+  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'missingAssetWrap', 'missingAssetList', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'lookupStepDebug', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
   for (const id of ids) C().state.els[id] = shadow.getElementById(id);
   root.ui.progressToast.configureToastElements({
     toast: C().state.els.toast,
@@ -496,9 +494,6 @@ function injectPanel() {
     showToast(`Selected asset row ${n}.`, 'info', 4000);
   });
   C().state.els.downloadLog.addEventListener('click', () => C().downloadLog());
-  C().state.els.downloadMissingAssets.addEventListener('click', () => {
-    root.pages.assetSearch.downloadMissingAssetCodes();
-  });
   C().state.els.clear.addEventListener('click', () => C().clearSession());
   C().state.els.includeNotes.addEventListener('change', async () => {
     C().state.settings.includeNotes = C().state.els.includeNotes.checked;

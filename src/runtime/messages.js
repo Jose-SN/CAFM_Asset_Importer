@@ -42,7 +42,9 @@
           manualAwaitSave: null,
           currentLookupEvidence: [],
           events: [],
-          missingAssetCodes: []
+          missingAssetCodes: [],
+          missingAssetLog: null,
+          savedAssetCodes: []
         };
         clearTimeout(state.autoTimer);
         clearTimeout(state.lookupTimer);

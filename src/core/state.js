@@ -22,6 +22,7 @@
         currentLookupEvidence: [],
         events: [],
         missingAssetCodes: [],
+        missingAssetLog: null,
         savedAssetCodes: []
       },
       settings: { ...DEFAULT_SETTINGS },

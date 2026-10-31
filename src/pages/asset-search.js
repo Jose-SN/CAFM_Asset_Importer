@@ -6,6 +6,7 @@
   const { wait, visible, isAssistantElement, dispatchClick } = root.core.dom;
   const { typeIntoInlineLookup } = root.core.lookup;
   const { isAssetListPage } = root.core.pages;
+  const { VERSION } = root.core.constants;
   const $ = () => root.runtime.b;
 
   const FILTER_INPUT = 'input.rcbInput[id*="listFASSET_AR_CODE_3_Input"]';
@@ -30,20 +31,55 @@
   }
 
   function missingAssetCodes() {
+    const log = $().state.session.missingAssetLog;
+    if (Array.isArray(log?.codes)) {
+      return log.codes.map((item) => (typeof item === 'string' ? item : item?.assetCode)).filter(Boolean);
+    }
     const list = $().state.session.missingAssetCodes;
     return Array.isArray(list) ? list.filter(Boolean) : [];
   }
 
-  function downloadMissingAssetCodes() {
-    const codes = missingAssetCodes();
-    if (!codes.length) return;
-    const blob = new Blob([`${codes.join('\r\n')}\r\n`], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'EE_CAFM_Missing_Asset_Codes.txt';
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  function missingAssetLog() {
+    const b = $();
+    const existing = b.state.session.missingAssetLog;
+    if (existing && typeof existing === 'object' && Array.isArray(existing.codes)) return existing;
+    return {
+      generatedAt: new Date().toISOString(),
+      updatedAt: '',
+      extensionVersion: VERSION,
+      fileName: 'missing-asset-codes.json',
+      page: {
+        url: String(location.href || ''),
+        title: String(document.title || '')
+      },
+      workbook: {
+        fileName: b.state.session.fileName || '',
+        assetsLoaded: (b.state.assets || []).length
+      },
+      codes: []
+    };
+  }
+
+  async function recordMissingCode(record, code) {
+    const b = $();
+    const log = missingAssetLog();
+    const already = (log.codes || []).some((item) => norm(typeof item === 'string' ? item : item?.assetCode) === norm(code));
+    if (!already) {
+      log.codes = [...(log.codes || []), {
+        assetCode: code,
+        workbookRow: Number(record?.workbookRow) || 0,
+        at: new Date().toISOString()
+      }];
+    }
+    if (!log.generatedAt) log.generatedAt = new Date().toISOString();
+    log.updatedAt = new Date().toISOString();
+    log.extensionVersion = VERSION;
+    log.fileName = 'missing-asset-codes.json';
+    log.page = { url: String(location.href || ''), title: String(document.title || '') };
+    log.workbook = { fileName: b.state.session.fileName || '', assetsLoaded: (b.state.assets || []).length };
+    b.state.session.missingAssetLog = log;
+    b.state.session.missingAssetCodes = missingAssetCodes();
+    await b.persistSession();
   }
 
   function savedAssetCodes() {
@@ -134,7 +170,7 @@
     await b.persistSession();
     b.render();
     const extra = missingCount
-      ? ` ${missingCount} Asset Code(s) were not in the register. Download EE_CAFM_Missing_Asset_Codes.txt from the panel.`
+      ? ` ${missingCount} Asset Code(s) were not in the register. They are stored in missing-asset-codes.json.`
       : '';
     b.showToast(`Asset Code search complete. ${savedAssetCodes().length} saved, ${processed} row(s) processed.${extra}`, missingCount ? 'warn' : 'success', 12000);
   }
@@ -192,13 +228,9 @@
 
   async function recordMissingAsset(record, code) {
     const b = $();
-    const existing = missingAssetCodes();
-    if (!existing.some((item) => norm(item) === norm(code))) {
-      b.state.session.missingAssetCodes = [...existing, code];
-    }
+    await recordMissingCode(record, code);
     b.addEvent('asset-search-not-found', { assetCode: code, workbookRow: record.workbookRow });
-    downloadMissingAssetCodes();
-    b.showToast(`Asset Code ${code} was not found in the register dropdown. It was added to EE_CAFM_Missing_Asset_Codes.txt.`, 'warn', 10000);
+    b.showToast(`Asset Code ${code} was not found. It was added to missing-asset-codes.json.`, 'warn', 8000);
     await finishRow(record, 'not_found', 'Asset Code not found in the register filter');
   }
 
@@ -254,7 +286,7 @@
     processSearch,
     nextSearchIndex,
     missingAssetCodes,
-    downloadMissingAssetCodes,
+    missingAssetLog,
     finishRow
   });
 })();

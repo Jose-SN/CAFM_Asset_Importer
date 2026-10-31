@@ -77,6 +77,17 @@ try {
   console.warn('sync-version: log.json skipped (not valid JSON)');
 }
 
+try {
+  const missing = JSON.parse(read('missing-asset-codes.json'));
+  if (missing.extensionVersion !== version) {
+    missing.extensionVersion = version;
+    write('missing-asset-codes.json', `${JSON.stringify(missing, null, 2)}\n`);
+    changes.push('missing-asset-codes.json extensionVersion');
+  }
+} catch (_) {
+  console.warn('sync-version: missing-asset-codes.json skipped (not valid JSON)');
+}
+
 const constantsText = read('src/core/constants.js');
 if (!constantsText.includes(`VERSION: '${version}'`)) {
   console.error('constants.js VERSION still out of sync after patch');

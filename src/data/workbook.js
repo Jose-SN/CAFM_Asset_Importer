@@ -57,7 +57,12 @@ async function persistSession() {
       );
     }
   }
-  await storageSet({ [STORAGE.session]: C().state.session, [STORAGE.settings]: C().state.settings });
+  const missingLog = C().state.session.missingAssetLog || null;
+  await storageSet({
+    [STORAGE.session]: C().state.session,
+    [STORAGE.settings]: C().state.settings,
+    [STORAGE.missingAssetCodes]: missingLog
+  });
   try {
     chrome.runtime.sendMessage({ type: 'AUTO_ORCHESTRATOR_SYNC' }).catch(() => {});
   } catch (_) {}
@@ -65,7 +70,7 @@ async function persistSession() {
 
 async function restoreState() {
   const resetForVersion = await ensureStorageVersion();
-  const stored = await storageGet([STORAGE.session, STORAGE.settings, STORAGE.learnedStatus]);
+  const stored = await storageGet([STORAGE.session, STORAGE.settings, STORAGE.learnedStatus, STORAGE.missingAssetCodes]);
   if (resetForVersion) {
     C().state.assets = [];
     C().state.allAssets = [];
@@ -85,6 +90,7 @@ async function restoreState() {
       currentLookupEvidence: [],
       events: [],
       missingAssetCodes: [],
+      missingAssetLog: null,
       savedAssetCodes: []
     };
     C().state.lastLoggedPhase = '';
@@ -110,6 +116,13 @@ async function restoreState() {
     C().state.allAssets = cache.allAssets || cache.assets || [];
     C().state.ppms = cache.ppms || [];
     if (C().state.assets.length) C().state.session.index = Math.max(0, Math.min(Number(C().state.session.index) || 0, C().state.assets.length - 1));
+  }
+  const missingLog = stored[STORAGE.missingAssetCodes] || C().state.session.missingAssetLog || null;
+  if (missingLog && typeof missingLog === 'object') {
+    C().state.session.missingAssetLog = missingLog;
+    C().state.session.missingAssetCodes = Array.isArray(missingLog.codes)
+      ? missingLog.codes.map((item) => (typeof item === 'string' ? item : item?.assetCode)).filter(Boolean)
+      : (C().state.session.missingAssetCodes || []);
   }
   if (isNewEntityPage()) {
     C().state.session.newEntityUrl = C().state.session.newEntityUrl || deriveNewEntityUrl();
@@ -141,6 +154,8 @@ async function loadWorkbookFile(file) {
   C().state.assets = cache.assets || [];
   C().state.allAssets = cache.allAssets || cache.assets || [];
   C().state.ppms = cache.ppms || [];
+  const keepMissingLog = C().state.session.missingAssetLog || null;
+  const keepMissingCodes = Array.isArray(C().state.session.missingAssetCodes) ? C().state.session.missingAssetCodes : [];
   C().state.session = {
     fileName: cache.fileName,
     fileSize: cache.fileSize,
@@ -152,7 +167,8 @@ async function loadWorkbookFile(file) {
     manualAwaitSave: null,
     currentLookupEvidence: [],
     events: [],
-    missingAssetCodes: [],
+    missingAssetCodes: keepMissingCodes,
+    missingAssetLog: keepMissingLog,
     savedAssetCodes: []
   };
   await persistSession();
@@ -214,12 +230,12 @@ async function markSavedAndNext(note = 'Confirmed saved') {
 async function clearSession() {
   if (!confirm('Clear the loaded workbook and importer progress? This does not delete anything from CAFM.')) return;
   await clearLargeWorkbook();
-  await storageRemove([STORAGE.session, STORAGE.pendingLookup]);
+  await storageRemove([STORAGE.session, STORAGE.pendingLookup, STORAGE.missingAssetCodes]);
   C().state.assets = [];
   C().state.allAssets = [];
   C().state.ppms = [];
   C().state.cache = null;
-  C().state.session = { fileName: '', fileSize: 0, fileModified: 0, index: 0, statuses: {}, newEntityUrl: deriveNewEntityUrl(), auto: null, manualAwaitSave: null, currentLookupEvidence: [], events: [], missingAssetCodes: [], savedAssetCodes: [] };
+  C().state.session = { fileName: '', fileSize: 0, fileModified: 0, index: 0, statuses: {}, newEntityUrl: deriveNewEntityUrl(), auto: null, manualAwaitSave: null, currentLookupEvidence: [], events: [], missingAssetCodes: [], missingAssetLog: null, savedAssetCodes: [] };
   C().render();
 }
 
