@@ -83,7 +83,8 @@ async function restoreState() {
       auto: null,
       manualAwaitSave: null,
       currentLookupEvidence: [],
-      events: []
+      events: [],
+      missingAssetCodes: []
     };
     C().state.lastLoggedPhase = '';
     C().showToast?.('Extension version changed — importer cache, session, and settings were reset. Load your workbook again.', 'info', 12000);
@@ -149,12 +150,12 @@ async function loadWorkbookFile(file) {
     auto: null,
     manualAwaitSave: null,
     currentLookupEvidence: [],
-    events: []
+    events: [],
+    missingAssetCodes: []
   };
   await persistSession();
   C().render();
-  const preflight = root.data.preflight.summarize(C().state);
-  C().showToast(`${C().state.assets.length} NEW-import asset row(s), ${C().state.allAssets.length} total asset row(s) available for editing, and ${C().state.ppms.length} enabled PPM row(s) loaded from ${cache.fileName}. ${root.data.preflight.formatSummary(preflight)}`, preflight.blocking.length ? 'warn' : 'success', 12000);
+  C().showToast(`Loaded ${C().state.assets.length} asset row(s) from ${cache.fileName}. Use only workbooks for assets already saved in CAFM.`, 'success', 12000);
 }
 
 async function jumpToIndex(index) {
@@ -172,9 +173,9 @@ function counts() {
   let invalid = 0;
   for (const record of C().state.assets) {
     const status = statusOf(record);
-    if (status === 'saved') saved += 1;
+    if (status === 'saved' || status === 'found') saved += 1;
     else if (status === 'skipped') skipped += 1;
-    else if (status === 'failed') failed += 1;
+    else if (status === 'failed' || status === 'not_found') failed += 1;
     if (C().validateRecord(record).length) invalid += 1;
   }
   return { total: C().state.assets.length, saved, skipped, failed, invalid, remaining: Math.max(0, C().state.assets.length - saved - skipped) };
@@ -216,7 +217,7 @@ async function clearSession() {
   C().state.allAssets = [];
   C().state.ppms = [];
   C().state.cache = null;
-  C().state.session = { fileName: '', fileSize: 0, fileModified: 0, index: 0, statuses: {}, newEntityUrl: deriveNewEntityUrl(), auto: null, manualAwaitSave: null, currentLookupEvidence: [] };
+  C().state.session = { fileName: '', fileSize: 0, fileModified: 0, index: 0, statuses: {}, newEntityUrl: deriveNewEntityUrl(), auto: null, manualAwaitSave: null, currentLookupEvidence: [], events: [], missingAssetCodes: [] };
   C().render();
 }
 

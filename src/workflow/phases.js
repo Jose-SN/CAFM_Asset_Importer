@@ -5,6 +5,7 @@
   root.workflow = root.workflow || {};
 
   const ASSET_PHASES = Object.freeze([
+    'search',
     'navigate',
     'fill',
     'filling',

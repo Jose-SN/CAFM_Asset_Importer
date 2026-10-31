@@ -34,7 +34,7 @@ function escapeHtml(value) {
 }
 
 function statusClass(status) {
-  return status === 'saved' ? 'ok' : status === 'failed' ? 'bad' : ['skipped', 'asset_saved'].includes(status) ? 'warn' : 'neutral';
+  return status === 'saved' || status === 'found' ? 'ok' : status === 'failed' || status === 'not_found' ? 'bad' : ['skipped', 'asset_saved'].includes(status) ? 'warn' : 'neutral';
 }
 
 function showToast(message, type = 'info', duration = 4500) {
@@ -70,7 +70,7 @@ function render() {
   const editPool = C().state.allAssets.length ? C().state.allAssets : C().state.assets;
   const savedMatch = pageAssetCode ? editPool.find((item) => norm(item.assetCode) === norm(pageAssetCode)) : null;
 
-  C().state.els.fileName.textContent = C().state.cache?.fileName ? `${C().state.cache.fileName} | ${C().state.assets.length} NEW row(s) | ${C().state.allAssets.length} editable asset row(s)` : 'No workbook loaded';
+  C().state.els.fileName.textContent = C().state.cache?.fileName ? `${C().state.cache.fileName} | ${C().state.assets.length} saved-asset row(s)` : 'No workbook loaded';
   C().state.els.total.textContent = String(c.total);
   C().state.els.saved.textContent = String(c.saved);
   C().state.els.remaining.textContent = String(c.remaining);
@@ -112,10 +112,10 @@ function render() {
       C().state.els.assetCode.textContent = savedMatch.assetCode;
     }
   } else if (isAssetListPage() && loaded) {
-    C().state.els.validation.textContent = 'Workbook loaded. Click + New, then Start automatic on the New Entity form.';
+    C().state.els.validation.textContent = 'Upload only workbooks for assets already saved in CAFM. Start automatic searches each Asset Code on this register.';
     C().state.els.validation.className = 'validation goodtext';
   } else if (isAssetListPage()) {
-    C().state.els.validation.textContent = 'Load workbook here, or on the New Entity form opened via + New.';
+    C().state.els.validation.textContent = 'Upload only workbooks for assets already saved in CAFM. This branch does not create new assets.';
     C().state.els.validation.className = 'validation goodtext';
   } else {
     C().state.els.validation.textContent = validation.length ? validation.join(' | ') : 'Workbook row passed local validation.';
@@ -169,7 +169,9 @@ function render() {
   }
 
   const assetEntryPage = isAssetPage() && isNewEntityPage();
-  for (const id of ['fill', 'saveCurrent', 'skip', 'prev', 'next', 'markSaved']) C().state.els[id].disabled = !loaded || !assetEntryPage;
+  const assetListReady = isAssetListPage() && loaded;
+  for (const id of ['fill', 'saveCurrent', 'markSaved']) C().state.els[id].disabled = !loaded || !assetEntryPage;
+  for (const id of ['skip', 'prev', 'next']) C().state.els[id].disabled = !loaded || !(assetEntryPage || assetListReady);
   C().state.els.editExisting.disabled = !loaded || !savedAssetPage || !savedMatch;
   C().state.els.saveExisting.disabled = !loaded || !savedAssetPage || !savedMatch;
   C().state.els.downloadLog.disabled = !loaded;
@@ -187,7 +189,13 @@ function render() {
     C().state.els.resumeRowInput.max = String(C().state.assets.length);
     C().state.els.resumeRowInput.value = String(C().state.session.index + 1);
   }
-  C().state.els.startAuto.disabled = !C().state.assets.length || Boolean(auto?.active) || !assetEntryPage;
+  C().state.els.startAuto.disabled = !C().state.assets.length || Boolean(auto?.active) || !isAssetListPage();
+  const missingCodes = root.pages.assetSearch?.missingAssetCodes?.() || [];
+  if (C().state.els.missingAssetWrap) {
+    C().state.els.missingAssetWrap.hidden = !missingCodes.length;
+    if (C().state.els.missingAssetList) C().state.els.missingAssetList.textContent = missingCodes.join('\n');
+    if (C().state.els.downloadMissingAssets) C().state.els.downloadMissingAssets.disabled = !missingCodes.length;
+  }
   C().state.els.fileInput.value = '';
 
   if (C().state.els.contextSub) {
@@ -321,12 +329,13 @@ function injectPanel() {
     <div id="panel">
       <div id="head">
         <img src="${logo}" alt="Engineering Efficiency Ltd">
-        <div class="titles"><h2>CAFM Asset Importer</h2><div id="contextSub" class="sub">Engineering Efficiency Ltd | v${VERSION} | Asset save, activate, next row</div></div>
+        <div class="titles"><h2>CAFM Asset Importer</h2><div id="contextSub" class="sub">Engineering Efficiency Ltd | v${VERSION} | Search saved assets by Asset Code</div></div>
         <button id="collapse" title="Collapse">-</button>
       </div>
       <div id="body">
         <div id="workbookSection" class="section">
           <h3>Workbook</h3>
+          <div class="muted" style="margin-bottom:7px">Upload only a workbook for assets already saved in CAFM. This branch searches existing Asset Codes. It does not create new assets.</div>
           <div class="file"><input id="fileInput" type="file" accept=".xlsx"></div>
           <div id="fileName" class="muted" style="margin-top:5px"></div>
           <div class="kpis">
@@ -343,6 +352,11 @@ function injectPanel() {
           <div id="queueNav" class="muted" style="margin:4px 0">Last saved: - | Next to save: -</div>
           <div id="assetCode" class="asset">-</div>
           <div id="validation" class="validation goodtext">Load a workbook to begin.</div>
+          <div id="missingAssetWrap" hidden style="margin-top:8px">
+            <div class="muted" style="margin-bottom:4px">Asset Codes not found in the register</div>
+            <div id="missingAssetList" class="validation badtext" style="white-space:pre-wrap;max-height:120px;overflow:auto"></div>
+            <button id="downloadMissingAssets" class="action wide" type="button" style="margin-top:6px">Download missing Asset Codes</button>
+          </div>
           <div id="lookupSummary" class="lookup-list"></div>
         </div>
         <div id="manualSection" class="section">
@@ -359,7 +373,7 @@ function injectPanel() {
           </div>
         </div>
         <div id="autoSection" class="section">
-          <h3>Automatic asset import</h3>
+          <h3>Automatic saved-asset search</h3>
           <div class="buttons">
             <button id="startAuto" class="action primary">Start automatic</button>
             <button id="pauseAuto" class="action danger">Pause / Stop</button>
@@ -410,7 +424,7 @@ function injectPanel() {
     </div>
   `;
 
-  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'lookupStepDebug', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
+  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'missingAssetWrap', 'missingAssetList', 'downloadMissingAssets', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'lookupStepDebug', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
   for (const id of ids) C().state.els[id] = shadow.getElementById(id);
   root.ui.progressToast.configureToastElements({
     toast: C().state.els.toast,
@@ -482,6 +496,9 @@ function injectPanel() {
     showToast(`Selected asset row ${n}.`, 'info', 4000);
   });
   C().state.els.downloadLog.addEventListener('click', () => C().downloadLog());
+  C().state.els.downloadMissingAssets.addEventListener('click', () => {
+    root.pages.assetSearch.downloadMissingAssetCodes();
+  });
   C().state.els.clear.addEventListener('click', () => C().clearSession());
   C().state.els.includeNotes.addEventListener('change', async () => {
     C().state.settings.includeNotes = C().state.els.includeNotes.checked;

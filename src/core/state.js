@@ -20,7 +20,8 @@
         auto: null,
         manualAwaitSave: null,
         currentLookupEvidence: [],
-        events: []
+        events: [],
+        missingAssetCodes: []
       },
       settings: { ...DEFAULT_SETTINGS },
       host: null,

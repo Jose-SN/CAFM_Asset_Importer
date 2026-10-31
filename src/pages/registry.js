@@ -6,6 +6,13 @@
 
   const PAGE_HANDLERS = Object.freeze([
     {
+      id: 'asset-search',
+      label: 'Asset register search',
+      test: () => pages.isAssetListPage(),
+      phases: ['search'],
+      handler: 'processSearch'
+    },
+    {
       id: 'asset-new',
       label: 'Asset New Entity',
       test: () => pages.isAssetPage() && pages.isNewEntityPage(),

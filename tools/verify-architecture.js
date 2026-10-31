@@ -33,6 +33,7 @@ const requiredNamespaces = [
   ['src/pages/registry.js', 'PAGE_HANDLERS'],
   ['src/pages/asset-new.js', 'fillCurrentRecord'],
   ['src/pages/asset-saved.js', 'processActivationPage'],
+  ['src/pages/asset-search.js', 'processSearch'],
   ['src/workflow/engine.js', 'runAutomatic'],
   ['src/data/field-registry.js', 'ASSET_DIRECT_FIELDS'],
   ['src/data/preflight.js', 'summarize'],
@@ -46,6 +47,7 @@ for (const [file, needle] of requiredNamespaces) {
 }
 
 const knownPhases = new Set([
+  'search',
   'navigate', 'fill', 'filling', 'saving', 'await_save', 'asset_close_child', 'asset_close_wait',
   'activate_open', 'activate_select',
   'activate_confirm', 'activate_wait', 'activate_wait_user',
@@ -63,7 +65,7 @@ for (const match of phaseMatches) {
 }
 
 const registry = read('src/pages/registry.js');
-const handlers = ['processActivationPage', 'fillCurrentRecord'];
+const handlers = ['processActivationPage', 'fillCurrentRecord', 'processSearch'];
 for (const handler of handlers) {
   if (!registry.includes(handler)) errors.push(`registry.js missing handler reference: ${handler}`);
 }

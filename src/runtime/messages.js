@@ -41,7 +41,8 @@
           auto: null,
           manualAwaitSave: null,
           currentLookupEvidence: [],
-          events: []
+          events: [],
+          missingAssetCodes: []
         };
         clearTimeout(state.autoTimer);
         clearTimeout(state.lookupTimer);

@@ -107,28 +107,32 @@
 
   async function startAutomatic() {
     const b = $();
-    if (!b.state.assets.length) return b.showToast('Load the CAFM Import workbook first.', 'warn');
-    if (!isNewEntityPage()) return b.showToast('Open the Asset New Entity page before starting automatic import.', 'warn', 8000);
-    const record = b.currentRecord();
-    if (!record) return;
-    const preflight = root.data.preflight.summarize(b.state);
-    if (preflight.blocking.length) {
-      return b.showToast(`Preflight blocked start: ${preflight.blocking.join('; ')}. Fix workbook rows first.`, 'warn', 12000);
+    if (!b.state.assets.length) return b.showToast('Load a workbook of already-saved assets first.', 'warn');
+    if (!isAssetListPage()) {
+      return b.showToast('Open the Asset register (ViewFASSETItems.aspx), then start automatic.', 'warn', 8000);
     }
-    b.showToast(`Preflight OK: ${root.data.preflight.formatSummary(preflight)}`, 'info', 7000);
-    b.state.session.newEntityUrl = b.state.session.newEntityUrl || deriveNewEntityUrl();
-    const maxIterations = b.state.settings.iterationEnabled
-      ? Math.max(1, Math.floor(Number(b.state.settings.iterationCount) || 1))
-      : 1;
+    const blank = b.state.assets.filter((row) => !clean(row.assetCode));
+    if (blank.length) {
+      return b.showToast(`${blank.length} workbook row(s) have no Asset Code.`, 'warn', 12000);
+    }
+    const startIndex = root.pages.assetSearch.nextSearchIndex(0);
+    if (startIndex < 0) return b.showToast('Every workbook Asset Code has already been searched.', 'info', 8000);
+    const record = b.state.assets[startIndex];
+    b.state.session.index = startIndex;
     b.state.session.auto = {
-      active: true, mode: 'automatic', phase: 'fill', index: b.state.session.index,
-      assetCode: record.assetCode, startedAt: Date.now(),
-      processedThisRun: 0, maxIterations,
-      fillPlanStep: 0, fillPlanAssetCode: ''
+      active: true,
+      mode: 'ppm',
+      phase: 'search',
+      index: startIndex,
+      assetCode: record.assetCode,
+      startedAt: Date.now(),
+      processedThisRun: 0,
+      maxIterations: b.state.assets.length
     };
-    b.addEvent('run-start', { maxIterations, iterationEnabled: Boolean(b.state.settings.iterationEnabled) });
+    b.addEvent('run-start', { mode: 'ppm', assetCode: record.assetCode, rows: b.state.assets.length });
     await b.persistSession();
     b.render();
+    b.showToast(`Searching ${b.state.assets.length} saved asset(s) by Asset Code.`, 'info', 7000);
     scheduleAuto(100);
     syncAutoOrchestrator();
   }
@@ -141,7 +145,7 @@
     }
     const record = b.currentRecord();
     if (!record) return b.showToast('Use Previous/Next to select the workbook row to resume, then click Resume.', 'warn', 9000);
-    let resumePhase = clean(auto.failedPhase || 'fill') || 'fill';
+    let resumePhase = clean(auto.failedPhase || (auto.mode === 'ppm' ? 'search' : 'fill')) || 'fill';
     if (
       resumePhase === 'fill'
       && Number(auto.fillPlanStep) > 0
@@ -212,6 +216,19 @@
       if (b.state.assets[index]) b.state.session.index = index;
       const record = b.workflowRecord(auto);
       if (!record) throw new Error('No asset row is available for the active workflow.');
+
+      if (auto.mode === 'ppm') {
+        if (auto.phase !== 'search') throw new Error(`Unsupported saved-asset phase: ${auto.phase || 'none'}.`);
+        if (!isAssetListPage()) throw new Error('Open the Asset register (ViewFASSETItems.aspx) to continue the search.');
+        if (Number(auto.processedThisRun || 0) >= b.state.assets.length) {
+          b.state.session.auto = { ...auto, active: false, phase: 'complete', completedAt: Date.now() };
+          await b.persistSession();
+          b.render();
+          return;
+        }
+        await root.pages.assetSearch.processSearch(record);
+        return;
+      }
 
       if (auto.phase === 'asset_close_child' || auto.phase === 'asset_close_wait') {
         if (isSavedAssetPage()) {
