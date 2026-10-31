@@ -23,7 +23,14 @@
       id: 'ppm-list',
       label: 'Asset PPM list',
       test: () => pages.isPpmListPage(),
-      phases: ['wait_ppm', 'ppm_ready'],
+      phases: ['wait_ppm', 'ppm_ready', 'wait_ppm_new'],
+      handler: 'processList'
+    },
+    {
+      id: 'ppm-new',
+      label: 'PPM New Entity',
+      test: () => pages.isPpmNewEntityPage(),
+      phases: ['wait_ppm_new'],
       handler: 'processList'
     },
     {

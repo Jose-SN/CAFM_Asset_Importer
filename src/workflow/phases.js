@@ -9,6 +9,7 @@
     'wait_asset',
     'wait_ppm',
     'ppm_ready',
+    'wait_ppm_new',
     'navigate',
     'fill',
     'filling',

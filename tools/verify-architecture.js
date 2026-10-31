@@ -49,7 +49,7 @@ for (const [file, needle] of requiredNamespaces) {
 }
 
 const knownPhases = new Set([
-  'search', 'wait_asset', 'wait_ppm', 'ppm_ready',
+  'search', 'wait_asset', 'wait_ppm', 'ppm_ready', 'wait_ppm_new',
   'navigate', 'fill', 'filling', 'saving', 'await_save', 'asset_close_child', 'asset_close_wait',
   'activate_open', 'activate_select',
   'activate_confirm', 'activate_wait', 'activate_wait_user',

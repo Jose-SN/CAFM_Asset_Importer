@@ -11,6 +11,7 @@
   const GRID_WAIT_MS = 4000;
   const GRID_POLL_MS = 150;
   const CLOSE_BUTTON = 'a[title="Click to close the form without saving changes"][onclick*="Toolbar.Close"], a[onclick*="Toolbar.Close()"]';
+  const CREATE_NEW = 'a[title="Create New"][onclick*="Toolbar.New"]';
 
   function cellText(td) {
     return clean(td?.textContent || '').replace(/\u00a0/g, ' ');
@@ -47,6 +48,29 @@
     return listedPpms();
   }
 
+  function clickCreateNew() {
+    const link = document.querySelector(CREATE_NEW);
+    if (link && !isAssistantElement(link) && link.classList.contains('x-button-drop-menu-link')) {
+      try {
+        if (typeof Toolbar !== 'undefined' && typeof Toolbar.New === 'function') {
+          Toolbar.New();
+          return 'Toolbar.New-menu-link';
+        }
+      } catch (_) {}
+    }
+    if (link && visible(link) && !isAssistantElement(link)) {
+      dispatchClick(link, false, 'Create New');
+      return 'create-new-link';
+    }
+    try {
+      if (typeof Toolbar !== 'undefined' && typeof Toolbar.New === 'function') {
+        Toolbar.New();
+        return 'Toolbar.New';
+      }
+    } catch (_) {}
+    return '';
+  }
+
   function clickClose() {
     const button = document.querySelector(CLOSE_BUTTON);
     if (button && !isAssistantElement(button)) {
@@ -80,18 +104,37 @@
       listedInstructions: listed.map((row) => row.instruction)
     });
 
-    if (!linked.length || matched.length !== linked.length) {
+    if (!linked.length) {
       b.state.session.auto = { ...auto, phase: 'ppm_ready', assetEntityId: entityIdFromUrl() || auto.assetEntityId || '' };
       await b.persistSession();
       b.render();
-      const missing = linked.length - matched.length;
-      b.showToast(
-        linked.length
-          ? `${record.assetCode}: ${matched.length} listed PPM(s) match the workbook. ${missing} still to create.`
-          : `${record.assetCode}: PPM list is open. No workbook PPM rows for this asset.`,
-        'info',
-        9000
-      );
+      b.showToast(`${record.assetCode}: PPM list is open. No workbook PPM rows for this asset.`, 'info', 9000);
+      return;
+    }
+
+    if (matched.length !== linked.length) {
+      const ppmIndex = linked.findIndex((ppm) => !listed.some((row) => rowMatchesPpm(ppm, row)));
+      const nextPpm = linked[Math.max(0, ppmIndex)];
+      b.state.session.auto = {
+        ...auto,
+        phase: 'wait_ppm_new',
+        assetEntityId: entityIdFromUrl() || auto.assetEntityId || '',
+        ppmIndex: Math.max(0, ppmIndex),
+        ppmKey: nextPpm.ppmKey || '',
+        ppmInstruction: nextPpm.instruction || ''
+      };
+      await b.persistSession();
+      const method = clickCreateNew();
+      b.addEvent('ppm-create-new', {
+        assetCode: record.assetCode,
+        method,
+        instruction: nextPpm.instruction || '',
+        listedCount: listed.length,
+        linkedCount: linked.length
+      });
+      if (!method) throw new Error('Create New was not found on the asset PPM list.');
+      b.showActivity?.('Clicking', 'Create New', nextPpm.instruction || record.assetCode, { wait: true, meta: record.assetCode, tick: true });
+      b.showToast(`${record.assetCode}: listed PPMs do not match the workbook. Opening Create New.`, 'info', 8000);
       return;
     }
 

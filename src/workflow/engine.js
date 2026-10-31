@@ -9,6 +9,7 @@
     isAssetListPage,
     isSavedAssetPage,
     isPpmListPage,
+    isPpmNewEntityPage,
     entityIdFromUrl,
     assetEntityUrl,
     deriveNewEntityUrl
@@ -41,7 +42,7 @@
     const auto = b.state.session.auto || {};
     if (!auto.active) return;
     const phase = clean(auto.phase || '');
-    if (phase === 'ppm_ready') return;
+    if (phase === 'ppm_ready' || phase === 'wait_ppm_new') return;
     const waitMs = Math.max(0, Number(delay) || 0);
     const watchdogMs = WAITING_PHASES.has(phase) ? Math.max(waitMs, 750) : waitMs;
     if (auto.active) {
@@ -221,6 +222,10 @@
 
       if (auto.mode === 'ppm') {
         if (auto.phase === 'ppm_ready') return;
+        if (auto.phase === 'wait_ppm_new') {
+          if (isPpmNewEntityPage()) return;
+          return;
+        }
         if (auto.phase === 'wait_asset' || auto.phase === 'wait_ppm') {
           if (isPpmListPage()) {
             if (auto.phase !== 'wait_ppm') {

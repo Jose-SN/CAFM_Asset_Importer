@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Engineering Efficiency Ltd - CAFM Asset Importer v9.0.3",
-  "version": "9.0.3",
+  "name": "Engineering Efficiency Ltd - CAFM Asset Importer v9.0.4",
+  "version": "9.0.4",
   "description": "Search already-saved CAFM assets by Asset Code on the asset register.",
   "permissions": [
     "storage",
@@ -69,7 +69,7 @@
     }
   ],
   "action": {
-    "default_title": "Engineering Efficiency Ltd - CAFM Asset Importer v9.0.3",
+    "default_title": "Engineering Efficiency Ltd - CAFM Asset Importer v9.0.4",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
