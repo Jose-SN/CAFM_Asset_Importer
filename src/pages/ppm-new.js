@@ -107,15 +107,24 @@
   async function fillLastService(b, ppm) {
     const value = clean(ppm.lastService);
     if (!value) return;
-    await b.clickTab('General');
+    const onGeneral = document.querySelector(LAST_SERVICE_INPUT) || document.querySelector(CONTRACT_INPUT);
+    if (!onGeneral) await b.clickTab('General');
     const input = document.querySelector(LAST_SERVICE_INPUT);
     const control = input instanceof HTMLInputElement && visible(input) && !isAssistantElement(input)
       ? input
       : b.nearestControl(['Last Service'])?.control;
-    if (!control) throw new Error('Last Service date field was not found on the PPM form.');
-    b.showFieldFill?.('Last Service', value, { meta: 'General tab', wait: false, duration: 2800, tick: false });
-    if (!b.setNativeValue(control, value)) throw new Error(`Last Service could not be filled with ${value}.`);
-    b.addEvent('ppm-field-filled', { field: 'Last Service', expected: value, actual: clean(elementValue(control)) });
+    if (!control) {
+      b.addEvent('ppm-field-filled', { field: 'Last Service', expected: value, actual: '', status: 'missing' });
+      return;
+    }
+    b.showFieldFill?.('Last Service', value, { meta: 'General tab', wait: false, duration: 900, tick: false });
+    const ok = b.setNativeValue(control, value);
+    b.addEvent('ppm-field-filled', {
+      field: 'Last Service',
+      expected: value,
+      actual: clean(elementValue(control)),
+      status: ok ? 'filled' : 'set-failed'
+    });
   }
 
   async function markPpmSaved(b, record, ppm) {

@@ -41,6 +41,19 @@
     cfg = Object.freeze({ ...deps });
   }
 
+  function isPpmFillLookup(spec) {
+    const auto = C().state.session.auto;
+    if (auto?.mode !== 'ppm' || !auto?.active || !spec) return false;
+    return spec.field === 'Contract' || spec.field === 'Instruction';
+  }
+
+  function autoFillPaused() {
+    const auto = C().state.session.auto;
+    if (auto?.mode === 'automatic' && !auto.active) return true;
+    if (auto?.mode === 'ppm' && !auto.active) return true;
+    return false;
+  }
+
   function C() {
     if (!cfg) throw new Error('CAFMImporter lookup is not configured yet.');
     return cfg;
@@ -738,20 +751,28 @@ async function commitInlineSelectionWithKeyboard(spec, control) {
   await wait(0);
 }
 
-async function waitForCommittedLookup(spec, beforeFingerprint, timeoutMs = C().state.settings.lookupTimeoutMs, control = null) {
-  const evaluate = () => {
-    const live = C().nearestControl([spec.field])?.control || control;
-    if (!live) return null;
-    const value = elementValue(live);
-    const fp = lookupCommitFingerprint(live);
-    const matches = lookupTextMatches(value, spec);
-    const optionsOpen = inlineOptionCandidates(spec, live).length > 0;
-    const relatedHiddenExist = (fp.hidden || []).length > 0;
-    const hiddenOk = !relatedHiddenExist || hiddenCommitted(live) || fingerprintChanged(beforeFingerprint, fp);
-    const bareCode = clean(spec.strictCode) && norm(value) === norm(spec.strictCode) && clean(spec.description) && norm(spec.description) !== norm(spec.strictCode);
-    if (matches && !optionsOpen && hiddenOk && !bareCode) return { control: live, value, fingerprint: fp, hiddenOk };
+function evaluateCommittedLookup(spec, beforeFingerprint, control = null) {
+  const live = C().nearestControl([spec.field])?.control || control;
+  if (!live) return null;
+  const value = elementValue(live);
+  const fp = lookupCommitFingerprint(live);
+  const matches = lookupTextMatches(value, spec);
+  const optionsOpen = inlineOptionCandidates(spec, live).length > 0;
+  if (isPpmFillLookup(spec)) {
+    if (matches && !optionsOpen) {
+      return { control: live, value, fingerprint: fp, hiddenOk: true, ppmFastCommit: true };
+    }
     return null;
-  };
+  }
+  const relatedHiddenExist = (fp.hidden || []).length > 0;
+  const hiddenOk = !relatedHiddenExist || hiddenCommitted(live) || fingerprintChanged(beforeFingerprint, fp);
+  const bareCode = clean(spec.strictCode) && norm(value) === norm(spec.strictCode) && clean(spec.description) && norm(spec.description) !== norm(spec.strictCode);
+  if (matches && !optionsOpen && hiddenOk && !bareCode) return { control: live, value, fingerprint: fp, hiddenOk };
+  return null;
+}
+
+async function waitForCommittedLookup(spec, beforeFingerprint, timeoutMs = C().state.settings.lookupTimeoutMs, control = null) {
+  const evaluate = () => evaluateCommittedLookup(spec, beforeFingerprint, control);
   try { return await C().waitForDom(evaluate, timeoutMs, `${spec.field} committed lookup value`); }
   catch (_) { return null; }
 }
@@ -759,8 +780,9 @@ async function waitForCommittedLookup(spec, beforeFingerprint, timeoutMs = C().s
 async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden) {
   // Searchable Evolution combo boxes often return no rows when a long lookup
   // Simple lookups: searchTerms only (one or two terms); click row to commit (no same-term retry).
+  const ppmLookup = isPpmFillLookup(spec);
   const simpleLookup = SIMPLE_LOOKUP_FIELDS.has(spec.field);
-  const terms = spec.field === 'Instruction'
+  let terms = spec.field === 'Instruction'
     ? uniqueNonBlank([...(spec.searchTerms || []), spec.strictCode, spec.sourceCode, spec.description, spec.value, spec.display])
     : spec.field === 'Building'
       ? uniqueNonBlank(spec.searchTerms?.length ? spec.searchTerms : [buildingCodeBeforeHyphen(spec.display || spec.value)])
@@ -774,9 +796,21 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
           spec.display,
           ...(spec.searchTerms || [])
         ]);
-  const commitTimeoutMs = Number(C().state.settings.lookupCommitTimeoutMs) || 8000;
-  const clickFirstField = spec.field === 'Instruction' || simpleLookup;
-  const clickFirstNoSameTermRetry = simpleLookup;
+  if (ppmLookup) {
+    terms = uniqueNonBlank(
+      spec.searchTerms?.length
+        ? spec.searchTerms
+        : [spec.display, spec.value, spec.strictCode].filter((item) => clean(item))
+    );
+  }
+  const commitTimeoutMs = ppmLookup
+    ? Number(C().state.settings.ppmLookupCommitTimeoutMs) || 2200
+    : Number(C().state.settings.lookupCommitTimeoutMs) || 8000;
+  const inlineOptionsTimeoutMs = ppmLookup
+    ? Number(C().state.settings.ppmInlineOptionsTimeoutMs) || 2400
+    : 4600;
+  const clickFirstField = spec.field === 'Instruction' || (spec.field === 'Contract' && ppmLookup) || simpleLookup;
+  const clickFirstNoSameTermRetry = simpleLookup || ppmLookup;
 
   lookupStepDebug('inline-lookup-start', {
     field: spec.field,
@@ -790,7 +824,7 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
 
   let lastTyped = '';
   for (let termIndex = 0; termIndex < terms.length; termIndex += 1) {
-    if (C().state.session.auto?.mode === 'automatic' && !C().state.session.auto?.active) {
+    if (autoFillPaused()) {
       throw new Error('Automatic import paused.');
     }
     const term = terms[termIndex];
@@ -807,7 +841,7 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
     });
     const beforeFingerprint = lookupCommitFingerprint(control);
     await typeIntoInlineLookup(control, term);
-    let options = await waitForInlineOptions(spec, control, 4600);
+    let options = await waitForInlineOptions(spec, control, inlineOptionsTimeoutMs);
 
     if (!options.length) {
       try { control.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
@@ -880,7 +914,8 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
       try { control.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); } catch (_) {}
       try { control.blur(); } catch (_) {}
       await wait(0);
-      committed = await waitForCommittedLookup(spec, beforeFingerprint, commitTimeoutMs, control);
+      committed = evaluateCommittedLookup(spec, beforeFingerprint, control)
+        || await waitForCommittedLookup(spec, beforeFingerprint, commitTimeoutMs, control);
     } else {
       await commitInlineSelectionWithKeyboard(spec, control);
       committed = await waitForCommittedLookup(spec, beforeFingerprint, commitTimeoutMs, control);
@@ -963,30 +998,31 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
 }
 
 async function selectLookup(spec) {
-  const auto = C().state.session.auto;
-  if (auto?.mode === 'automatic' && !auto?.active) {
+  if (autoFillPaused()) {
     throw new Error('Automatic import paused.');
   }
+  const ppmLookup = isPpmFillLookup(spec);
   lookupStepDebug('lookup-field-start', {
     field: spec.field,
     tab: spec.tab,
     cafmValue: clean(spec.display || spec.value),
     strictCode: clean(spec.strictCode),
-    description: clean(spec.description)
+    description: clean(spec.description),
+    ppmFast: ppmLookup
   });
   if (C().showFieldFill) {
     C().showFieldFill(spec.field || 'lookup', spec.value || spec.display || '', {
       verb: 'Selecting',
       meta: `${clean(spec.tab || 'General')} tab · lookup`,
-      wait: true,
-      tick: true
+      wait: !ppmLookup,
+      tick: !ppmLookup
     });
   } else if (C().showActivity) {
     C().showActivity(
       'Selecting',
       clean(spec.field || 'lookup'),
       clean(spec.value || spec.display || ''),
-      { wait: true, type: 'info', meta: `${clean(spec.tab || 'General')} tab`, tick: true }
+      { wait: !ppmLookup, type: 'info', meta: `${clean(spec.tab || 'General')} tab`, tick: !ppmLookup }
     );
   }
   await C().clickTab(spec.tab);
