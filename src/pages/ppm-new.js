@@ -35,30 +35,8 @@
       });
       return Boolean(res?.isEditor);
     } catch (_) {
-      return false;
+      return true;
     }
-  }
-
-  async function requestPpmSaveGate(b) {
-    const auto = b.state.session.auto || {};
-    try {
-      return await chrome.runtime.sendMessage({
-        type: 'PPM_REQUEST_PPM_SAVE',
-        assetCode: auto.assetCode || '',
-        ppmIndex: Math.max(0, Number(auto.ppmIndex) || 0)
-      });
-    } catch (_) {
-      return { ok: false };
-    }
-  }
-
-  async function releasePpmSaveGate(b, saveKey) {
-    try {
-      await chrome.runtime.sendMessage({
-        type: 'PPM_RELEASE_ACTION_LOCK',
-        saveKey: clean(saveKey || '')
-      });
-    } catch (_) {}
   }
 
   async function registerPpmEditor(reason) {
@@ -312,18 +290,6 @@
     const validation = b.validationMessage();
     if (validation) throw new Error(validation);
 
-    const saveKey = `${record.assetCode}|${ppmIndexOf(auto)}`;
-    const saveGate = await requestPpmSaveGate(b);
-    if (!saveGate?.ok) {
-      b.addEvent('ppm-save-blocked', {
-        assetCode: record.assetCode,
-        reason: saveGate?.reason || 'save-gate',
-        ppmIndex: ppmIndexOf(auto)
-      });
-      b.scheduleAuto(500);
-      return;
-    }
-
     b.state.session.auto = { ...auto, ppmSaveInFlight: true, ppmSaveMenuStartedAt: auto.ppmSaveMenuStartedAt || 0 };
     await b.persistSession();
 
@@ -338,7 +304,6 @@
       reason: click.reason || ''
     });
     if (!click.ok) {
-      await releasePpmSaveGate(b, saveGate?.key || saveKey);
       const started = Number(auto.ppmSaveMenuStartedAt || Date.now());
       b.state.session.auto = {
         ...b.state.session.auto,
@@ -408,12 +373,6 @@
           return;
         }
         await registerPpmEditor('await-save-new-form');
-        try {
-          await chrome.runtime.sendMessage({
-            type: 'PPM_CLEAR_ROW_SAVE_TOKEN',
-            assetCode: record.assetCode || ''
-          });
-        } catch (_) {}
         b.state.session.auto = {
           ...clearPpmSaveDispatchFlags(auto),
           phase: 'wait_ppm_new',

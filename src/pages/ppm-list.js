@@ -236,24 +236,6 @@
         { meta: code, wait: false, duration: 4000 }
       );
 
-      let createGate = { ok: false };
-      try {
-        createGate = await chrome.runtime.sendMessage({
-          type: 'PPM_REQUEST_CREATE_NEW',
-          assetCode: record.assetCode || '',
-          ppmIndex
-        });
-      } catch (_) {}
-      if (!createGate?.ok) {
-        b.addEvent('ppm-create-new-blocked', {
-          assetCode: record.assetCode,
-          ppmIndex,
-          reason: createGate?.reason || 'create-gate'
-        });
-        b.scheduleAuto(700);
-        return;
-      }
-
       const method = clickCreateNew();
       b.addEvent('ppm-create-new', {
         assetCode: record.assetCode,
