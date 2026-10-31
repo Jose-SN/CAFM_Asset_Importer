@@ -685,9 +685,9 @@ async function commitInlineSelectionWithKeyboard(spec, control) {
   await wait(0);
 }
 
-async function waitForCommittedLookup(spec, beforeFingerprint, timeoutMs = C().state.settings.lookupTimeoutMs) {
+async function waitForCommittedLookup(spec, beforeFingerprint, timeoutMs = C().state.settings.lookupTimeoutMs, control = null) {
   const evaluate = () => {
-    const live = C().nearestControl([spec.field])?.control;
+    const live = C().nearestControl([spec.field])?.control || control;
     if (!live) return null;
     const value = elementValue(live);
     const fp = lookupCommitFingerprint(live);
@@ -827,10 +827,10 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
       try { control.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); } catch (_) {}
       try { control.blur(); } catch (_) {}
       await wait(0);
-      committed = await waitForCommittedLookup(spec, beforeFingerprint, commitTimeoutMs);
+      committed = await waitForCommittedLookup(spec, beforeFingerprint, commitTimeoutMs, control);
     } else {
       await commitInlineSelectionWithKeyboard(spec, control);
-      committed = await waitForCommittedLookup(spec, beforeFingerprint, commitTimeoutMs);
+      committed = await waitForCommittedLookup(spec, beforeFingerprint, commitTimeoutMs, control);
     }
 
     if (!committed && !clickFirstNoSameTermRetry) {
@@ -848,7 +848,7 @@ async function selectInlineComboLookup(spec, control, beforeValue, beforeHidden)
         try { liveControl.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); } catch (_) {}
         try { liveControl.blur(); } catch (_) {}
         await wait(0);
-        committed = await waitForCommittedLookup(spec, beforeFingerprint, commitTimeoutMs);
+        committed = await waitForCommittedLookup(spec, beforeFingerprint, commitTimeoutMs, liveControl);
       }
     }
 
@@ -987,6 +987,7 @@ async function selectLookup(spec) {
     configure,
     startLookupAgent,
     selectLookup,
+    selectInlineComboLookup,
     lookupTextMatches,
     nearbyHiddenValues,
     hiddenCommitted,
