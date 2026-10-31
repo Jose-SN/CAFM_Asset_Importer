@@ -3,6 +3,7 @@
 
   const root = globalThis.CAFMImporter;
   const { STORAGE, DEFAULT_SETTINGS } = root.core.constants;
+  const { clean } = root.core.text;
 
   /** @type {null | Record<string, unknown>} */
   let cfg = null;

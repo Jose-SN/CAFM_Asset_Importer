@@ -314,6 +314,11 @@
       phase: 'search',
       index: next,
       assetCode: assets[next].assetCode,
+      assetEntityId: '',
+      ppmIndex: 0,
+      ppmListRunning: false,
+      ppmRegisterHandoff: '',
+      ppmRegisterHandoffNote: '',
       processedThisRun: processed,
       startedAt
     };

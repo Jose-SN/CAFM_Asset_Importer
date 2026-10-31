@@ -423,6 +423,26 @@
       && isAssetListPage()
       && ['wait_asset', 'wait_ppm', 'wait_ppm_new', 'ppm_fill', 'ppm_saving', 'ppm_await_save'].includes(phase)
     ) {
+      const handoff = clean(auto.ppmRegisterHandoff);
+      if (handoff === 'saved' || handoff === 'failed') {
+        const record = await resolveWorkflowRecord(auto);
+        const note = clean(auto.ppmRegisterHandoffNote) || '';
+        b.state.session.auto = {
+          ...auto,
+          ppmRegisterHandoff: '',
+          ppmRegisterHandoffNote: ''
+        };
+        await b.persistSession();
+        if (record && root.pages.assetSearch?.finishRow) {
+          await root.pages.assetSearch.finishRow(
+            record,
+            handoff === 'saved' ? 'saved' : 'failed',
+            note,
+            { schedule: true }
+          );
+          return;
+        }
+      }
       const record = await resolveWorkflowRecord(auto);
       root.ui.workflowSteps?.showRegisterWait(b, phase, record);
       await touchPpmPhaseProgress();
