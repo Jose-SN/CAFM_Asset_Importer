@@ -17,6 +17,8 @@
     wait_ppm: 'PPM register opened',
     ppm_ready: 'PPM list ready',
     wait_ppm_new: 'PPM Create New window opened',
+    ppm_fill: 'Fill new PPM from Excel',
+    ppm_filled: 'New PPM fields filled',
     navigate: 'Open next asset form',
     fill: 'Prepare asset form',
     filling: 'Fill asset fields from Excel',

@@ -42,7 +42,8 @@
     const auto = b.state.session.auto || {};
     if (!auto.active) return;
     const phase = clean(auto.phase || '');
-    if (phase === 'ppm_ready' || phase === 'wait_ppm_new') return;
+    if (phase === 'ppm_ready' || phase === 'ppm_fill' || phase === 'ppm_filled') return;
+    if (phase === 'wait_ppm_new' && !isPpmNewEntityPage()) return;
     const waitMs = Math.max(0, Number(delay) || 0);
     const watchdogMs = WAITING_PHASES.has(phase) ? Math.max(waitMs, 750) : waitMs;
     if (auto.active) {
@@ -221,9 +222,12 @@
       if (!record) throw new Error('No asset row is available for the active workflow.');
 
       if (auto.mode === 'ppm') {
-        if (auto.phase === 'ppm_ready') return;
-        if (auto.phase === 'wait_ppm_new') {
-          if (isPpmNewEntityPage()) return;
+        if (auto.phase === 'ppm_ready' || auto.phase === 'ppm_filled') return;
+        if (auto.phase === 'wait_ppm_new' || auto.phase === 'ppm_fill') {
+          if (isPpmNewEntityPage()) {
+            await root.pages.ppmNew.processFill(record);
+            return;
+          }
           return;
         }
         if (auto.phase === 'wait_asset' || auto.phase === 'wait_ppm') {

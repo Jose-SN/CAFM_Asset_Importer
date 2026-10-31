@@ -10,6 +10,8 @@
     'wait_ppm',
     'ppm_ready',
     'wait_ppm_new',
+    'ppm_fill',
+    'ppm_filled',
     'navigate',
     'fill',
     'filling',

@@ -36,6 +36,7 @@ const requiredNamespaces = [
   ['src/pages/asset-search.js', 'processSearch'],
   ['src/pages/asset-detail.js', 'processOpenPpm'],
   ['src/pages/ppm-list.js', 'processList'],
+  ['src/pages/ppm-new.js', 'processFill'],
   ['src/workflow/engine.js', 'runAutomatic'],
   ['src/data/field-registry.js', 'ASSET_DIRECT_FIELDS'],
   ['src/data/preflight.js', 'summarize'],
@@ -49,7 +50,7 @@ for (const [file, needle] of requiredNamespaces) {
 }
 
 const knownPhases = new Set([
-  'search', 'wait_asset', 'wait_ppm', 'ppm_ready', 'wait_ppm_new',
+  'search', 'wait_asset', 'wait_ppm', 'ppm_ready', 'wait_ppm_new', 'ppm_fill', 'ppm_filled',
   'navigate', 'fill', 'filling', 'saving', 'await_save', 'asset_close_child', 'asset_close_wait',
   'activate_open', 'activate_select',
   'activate_confirm', 'activate_wait', 'activate_wait_user',
@@ -67,7 +68,7 @@ for (const match of phaseMatches) {
 }
 
 const registry = read('src/pages/registry.js');
-const handlers = ['processActivationPage', 'fillCurrentRecord', 'processSearch', 'processOpenPpm', 'processList'];
+const handlers = ['processActivationPage', 'fillCurrentRecord', 'processSearch', 'processOpenPpm', 'processList', 'processFill'];
 for (const handler of handlers) {
   if (!registry.includes(handler)) errors.push(`registry.js missing handler reference: ${handler}`);
 }

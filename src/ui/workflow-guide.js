@@ -10,6 +10,8 @@
     wait_ppm: 'PPM register is open',
     ppm_ready: 'Matching PPM listed, or waiting to create',
     wait_ppm_new: 'Fill the new PPM form',
+    ppm_fill: 'Selecting Contract, Instruction, Last Service, Notes',
+    ppm_filled: 'PPM fields filled from Excel',
     navigate: 'Fill asset fields from Excel',
     fill: 'Validate and fill all asset tabs',
     filling: 'Complete remaining asset fields',
