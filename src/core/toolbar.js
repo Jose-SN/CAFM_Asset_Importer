@@ -116,6 +116,20 @@ function findToolbarPrintButton() {
   return null;
 }
 
+function findToolbarCopyButton() {
+  if (!isSavedAssetPage()) return null;
+  for (const doc of sameOriginDocuments()) {
+    try {
+      const exactAnchor = doc.querySelector('a[title*="create a copy of this entity"][onclick*="Toolbar.Copy"], a[onclick*="Toolbar.Copy"][title*="copy"]');
+      if (exactAnchor && visible(exactAnchor) && !exactAnchor.getAttribute('disabled')) return exactAnchor;
+      const copyIcon = doc.getElementById('ctl00_ctl00_ToolbarEx_Copy');
+      const anchor = copyIcon?.closest?.('a[onclick*="Toolbar.Copy"]');
+      if (anchor && visible(anchor) && !anchor.getAttribute('disabled')) return anchor;
+    } catch (_) {}
+  }
+  return null;
+}
+
 function findToolbarCloseButton() {
   const candidates = topAssetToolbarCandidates();
   const semantic = candidates
@@ -626,6 +640,7 @@ function findAssetPpmNavLink() {
     assetIsActive,
     sameOriginDocuments,
     elementFromLearnedFingerprint,
+    findToolbarCopyButton,
     findToolbarCloseButton,
     findChangeAssetStatusButton,
     findChangeAssetStatusDialog,

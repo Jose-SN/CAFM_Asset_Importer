@@ -35,6 +35,15 @@
     return Boolean(text);
   }
 
+  /** Copied asset editor (unsaved duplicate) — may share a positive id before first save. */
+  function isAssetCopyEditorPage() {
+    if (!isAssetPage()) return false;
+    if (isNewEntityPage()) return true;
+    const bodyPrefix = clean(document.body?.innerText || '').slice(0, 2500);
+    if (/new entity/i.test(bodyPrefix)) return true;
+    return false;
+  }
+
   function isSavedAssetPage() {
     if (!isAssetPage()) return false;
     const id = entityIdFromUrl();
@@ -123,6 +132,7 @@
     isAssetPage,
     entityIdFromUrl,
     isNewEntityPage,
+    isAssetCopyEditorPage,
     isSavedAssetPage,
     isPpmListPage,
     hasEmbeddedPpmGrid,

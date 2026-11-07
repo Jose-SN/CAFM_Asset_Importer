@@ -4,7 +4,7 @@
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
   const { wait, visible, isAssistantElement, elementValue, dispatchClick } = root.core.dom;
-  const { isNewEntityPage } = root.core.pages;
+  const { isNewEntityPage, isAssetCopyEditorPage } = root.core.pages;
   const { lookupMapping, valueEquivalent } = root.pages.assetMappings;
   const { buildAssetFillPlan, fillPlanResumeIndex } = root.pages.assetFillPlan;
   const $ = () => root.runtime.b;
@@ -226,7 +226,12 @@
     if (!record) throw new Error('No current asset row is loaded.');
     const issues = globalThis.CAFMAssetRules.validateRecord(record);
     if (issues.length) throw new Error(`Workbook row ${record.workbookRow}: ${issues.join('; ')}`);
-    if (!isNewEntityPage()) throw new Error('Open the Asset New Entity page before filling a record.');
+    const copyDraft = Boolean(
+      options.respectAutoPause
+      && b.state.session.auto?.copyFromExisting
+      && (b.state.session.auto?.copyEditorReady || isAssetCopyEditorPage())
+    );
+    if (!isNewEntityPage() && !copyDraft) throw new Error('Open the Asset New Entity page before filling a record.');
 
     const resumingAutoFill = Boolean(
       options.respectAutoPause

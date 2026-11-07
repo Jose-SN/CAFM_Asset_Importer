@@ -101,27 +101,40 @@
     }
 
     const previousEntityId = entityId;
-    const useSaveAndNew = b.state.settings.useSaveAndNew !== false;
+    const copyMode = b.state.settings.copyFromExisting === true;
+    const useSaveAndNew = !copyMode && b.state.settings.useSaveAndNew !== false;
     b.state.session.index = next;
     b.state.session.currentLookupEvidence = [];
+    const nextCode = b.state.assets[next]?.assetCode || '';
+    const warningCount = (b.state.session.statuses?.[record.assetCode]?.validationWarnings || []).length;
     b.state.session.auto = {
       active: true,
       mode: auto.mode || 'automatic',
-      phase: useSaveAndNew ? 'asset_save_and_new' : 'navigate',
+      phase: copyMode ? 'asset_copy_wait_user' : (useSaveAndNew ? 'asset_save_and_new' : 'navigate'),
       index: next,
-      assetCode: b.state.assets[next].assetCode,
+      assetCode: nextCode,
       previousAssetCode: record.assetCode,
       previousAssetEntityId: previousEntityId,
+      lastCompletedEntityId: previousEntityId,
       saveAndNewStartedAt: 0,
       saveAndCloseStartedAt: 0,
       startedAt: auto.startedAt || Date.now(),
       processedThisRun: completedIterations,
-      maxIterations: Math.max(1, Number(auto.maxIterations || 1))
+      maxIterations: Math.max(1, Number(auto.maxIterations || 1)),
+      copyFromExisting: copyMode,
+      copyEditorReady: false,
+      skipPpmWorkflow: copyMode
     };
     await b.persistSession();
     b.render();
-    const warningCount = (b.state.session.statuses?.[record.assetCode]?.validationWarnings || []).length;
-    const nextCode = b.state.assets[next]?.assetCode || '';
+    if (copyMode) {
+      b.showToast(
+        `${record.assetCode} complete (PPMs copied with asset). Open an existing saved asset from the list for ${nextCode}; automation continues with Copy.`,
+        'success',
+        16000
+      );
+      return;
+    }
     b.showToast(`${record.assetCode} complete: Asset saved and ACTIVE${warningCount ? `, ${warningCount} warning(s)` : ''}. Next: ${nextCode}.`, warningCount ? 'warn' : 'success', 14000);
     b.addEvent('asset-cycle-snackbar', { assetCode: record.assetCode, warningCount, nextAssetCode: nextCode });
 

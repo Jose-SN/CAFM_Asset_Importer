@@ -19,7 +19,12 @@
     'activate_wait_user',
     'asset_save_and_new',
     'asset_save_and_close',
-    'asset_save_and_close_wait'
+    'asset_save_and_close_wait',
+    'asset_copy_click',
+    'asset_copy_dialog_wait',
+    'asset_copy_dialog_confirm',
+    'asset_copy_wait_editor',
+    'asset_copy_wait_user'
   ]);
 
   const WAITING_PHASES = new Set([
@@ -28,7 +33,10 @@
     'activate_wait',
     'activate_wait_user',
     'navigate',
-    'asset_save_and_close_wait'
+    'asset_save_and_close_wait',
+    'asset_copy_dialog_wait',
+    'asset_copy_wait_editor',
+    'asset_copy_wait_user'
   ]);
 
   function phasePrefix(phase, prefix) {

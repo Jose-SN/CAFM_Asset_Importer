@@ -168,7 +168,9 @@ function render() {
     }
   }
 
+  const copyFromExisting = C().state.settings.copyFromExisting === true;
   const assetEntryPage = isAssetPage() && isNewEntityPage();
+  const copyStartPage = copyFromExisting && isSavedAssetPage();
   for (const id of ['fill', 'saveCurrent', 'skip', 'prev', 'next', 'markSaved']) C().state.els[id].disabled = !loaded || !assetEntryPage;
   C().state.els.editExisting.disabled = !loaded || !savedAssetPage || !savedMatch;
   C().state.els.saveExisting.disabled = !loaded || !savedAssetPage || !savedMatch;
@@ -187,7 +189,7 @@ function render() {
     C().state.els.resumeRowInput.max = String(C().state.assets.length);
     C().state.els.resumeRowInput.value = String(C().state.session.index + 1);
   }
-  C().state.els.startAuto.disabled = !C().state.assets.length || Boolean(auto?.active) || !assetEntryPage;
+  C().state.els.startAuto.disabled = !C().state.assets.length || Boolean(auto?.active) || !(assetEntryPage || copyStartPage);
   if (C().state.els.startPpmHere) C().state.els.startPpmHere.hidden = true;
   if (C().state.els.openPpmNew) C().state.els.openPpmNew.hidden = true;
   if (C().state.els.ppmQueuePreview) C().state.els.ppmQueuePreview.hidden = true;
@@ -208,6 +210,9 @@ function render() {
   if (C().state.els.autoDownloadTimeline) C().state.els.autoDownloadTimeline.checked = Boolean(C().state.settings.autoDownloadTimeline);
   if (C().state.els.autoContinueNext) C().state.els.autoContinueNext.checked = C().state.settings.autoContinueNext !== false;
   if (C().state.els.useSaveAndNew) C().state.els.useSaveAndNew.checked = C().state.settings.useSaveAndNew === true;
+  if (C().state.els.copyFromExisting) C().state.els.copyFromExisting.checked = copyFromExisting;
+  if (C().state.els.copyFromExistingWarn) C().state.els.copyFromExistingWarn.hidden = !copyFromExisting;
+  if (C().state.els.useSaveAndNew) C().state.els.useSaveAndNew.closest?.('label')?.toggleAttribute('hidden', copyFromExisting);
   if (C().state.els.lookupStepDebug) C().state.els.lookupStepDebug.checked = Boolean(C().state.settings.lookupStepDebug);
 }
 
@@ -308,6 +313,12 @@ function injectPanel() {
       button.action:disabled { opacity:.38; cursor:not-allowed; }
       .wide { grid-column:1 / -1; }
       .option { display:flex; align-items:center; gap:7px; color:#cbd4dc; margin-top:6px; font-size:11px; }
+      .option-major { display:flex; align-items:flex-start; gap:12px; margin:12px 0 4px; padding:12px 12px 10px; border:1px solid #6b5528; border-radius:10px; background:#1a160e; cursor:pointer; }
+      .option-major input[type=checkbox] { width:22px; height:22px; margin-top:2px; flex-shrink:0; accent-color:#e8b85c; cursor:pointer; }
+      .option-major-text { display:flex; flex-direction:column; gap:4px; }
+      .option-major-title { font-size:14px; font-weight:700; color:#f4d48a; line-height:1.35; }
+      .option-major-sub { font-size:11px; color:#c9b48a; line-height:1.4; font-weight:400; }
+      .copy-warn { margin:6px 0 10px; padding:11px 12px; border-radius:8px; border:1px solid #c97a2a; background:#2a1a10; color:#ffc889; font-size:12px; line-height:1.45; }
       .option input[type=number] { width:80px; background:#0f161d; border:1px solid #3b4956; color:#fff; border-radius:4px; padding:4px; }
       #autoState { color:#b8c5cf; font-size:11px; margin-top:6px; }
       #workflowGuide { margin-top:8px; padding:8px; border-radius:7px; background:#0f161d; border:1px solid #2d3944; }
@@ -392,6 +403,14 @@ function injectPanel() {
             <div id="progressFill" style="height:100%;width:0%;background:linear-gradient(90deg,#3d8bfd,#7ee2a8);transition:width .25s ease"></div>
           </div>
           <div id="progressLabel" class="muted" hidden style="margin-top:4px;font-size:10px"></div>
+          <label id="copyFromExistingWrap" class="option-major" for="copyFromExisting">
+            <input id="copyFromExisting" type="checkbox">
+            <span class="option-major-text">
+              <span class="option-major-title">Copy from existing saved asset (with PPMs)</span>
+              <span class="option-major-sub">Start on a saved asset you open from the list — not New Entity id=-1.</span>
+            </span>
+          </label>
+          <div id="copyFromExistingWarn" class="copy-warn" hidden>This will not create from asset code alone. Each row copies an existing saved asset (with PPMs), then overwrites Asset Code, Building, Notes, Financial/Risk, Spatial, and other workbook fields before Save. Linked PPM Excel rows are skipped because PPMs are copied with the asset.</div>
           <label class="option"><input id="iterateBatch" type="checkbox"> Enable multiple asset iterations</label>
           <label class="option">Asset iteration count <input id="iterationCount" type="number" min="1" max="10000" step="1" value="1" style="width:90px"></label>
           <div class="muted" style="margin:4px 0 8px">Unchecked = one complete asset cycle (save + ACTIVE), then stop. Checked = continue until the asset iteration count is reached.</div>
@@ -423,7 +442,7 @@ function injectPanel() {
     </div>
   `;
 
-  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'lookupStepDebug', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
+  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'copyFromExistingWrap', 'copyFromExisting', 'copyFromExistingWarn', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'lookupStepDebug', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
   for (const id of ids) C().state.els[id] = shadow.getElementById(id);
   root.ui.progressToast.configureToastElements({
     toast: C().state.els.toast,
@@ -529,6 +548,19 @@ function injectPanel() {
   C().state.els.useSaveAndNew.addEventListener('change', async () => {
     C().state.settings.useSaveAndNew = C().state.els.useSaveAndNew.checked;
     await C().persistSession();
+  });
+  C().state.els.copyFromExisting.addEventListener('change', async () => {
+    const enabled = C().state.els.copyFromExisting.checked;
+    C().state.settings.copyFromExisting = enabled;
+    if (enabled) {
+      C().state.settings.useSaveAndNew = false;
+      if (C().state.els.useSaveAndNew) C().state.els.useSaveAndNew.checked = false;
+    }
+    await C().persistSession();
+    render();
+    if (enabled) {
+      showToast('Copy mode on: open a template saved asset from the list, then Start automatic.', 'warn', 12000);
+    }
   });
   C().state.els.iterateBatch.addEventListener('change', async () => {
     C().state.settings.iterationEnabled = C().state.els.iterateBatch.checked;

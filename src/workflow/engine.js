@@ -6,6 +6,7 @@
   const {
     isAssetPage,
     isNewEntityPage,
+    isAssetCopyEditorPage,
     isAssetListPage,
     isSavedAssetPage,
     entityIdFromUrl,
@@ -105,10 +106,26 @@
     syncAutoOrchestrator();
   }
 
+  function copyFromExistingEnabled() {
+    return $().state.settings.copyFromExisting === true;
+  }
+
+  function isCopyWorkflowPhase(phase) {
+    const key = clean(phase || '');
+    return key.startsWith('asset_copy_');
+  }
+
   async function startAutomatic() {
     const b = $();
     if (!b.state.assets.length) return b.showToast('Load the CAFM Import workbook first.', 'warn');
-    if (!isNewEntityPage()) return b.showToast('Open the Asset New Entity page before starting automatic import.', 'warn', 8000);
+    const copyMode = copyFromExistingEnabled();
+    if (copyMode) {
+      if (!isSavedAssetPage()) {
+        return b.showToast('Copy mode: open an existing saved asset from the list, then click Start automatic.', 'warn', 10000);
+      }
+    } else if (!isNewEntityPage()) {
+      return b.showToast('Open the Asset New Entity page before starting automatic import.', 'warn', 8000);
+    }
     const record = b.currentRecord();
     if (!record) return;
     const preflight = root.data.preflight.summarize(b.state);
@@ -120,13 +137,18 @@
     const maxIterations = b.state.settings.iterationEnabled
       ? Math.max(1, Math.floor(Number(b.state.settings.iterationCount) || 1))
       : 1;
+    const startPhase = copyMode ? 'asset_copy_click' : 'fill';
     b.state.session.auto = {
-      active: true, mode: 'automatic', phase: 'fill', index: b.state.session.index,
+      active: true, mode: 'automatic', phase: startPhase, index: b.state.session.index,
       assetCode: record.assetCode, startedAt: Date.now(),
       processedThisRun: 0, maxIterations,
-      fillPlanStep: 0, fillPlanAssetCode: ''
+      fillPlanStep: 0, fillPlanAssetCode: '',
+      copyFromExisting: copyMode,
+      copyEditorReady: false,
+      skipPpmWorkflow: copyMode,
+      copySourceEntityId: copyMode ? entityIdFromUrl() : ''
     };
-    b.addEvent('run-start', { maxIterations, iterationEnabled: Boolean(b.state.settings.iterationEnabled) });
+    b.addEvent('run-start', { maxIterations, iterationEnabled: Boolean(b.state.settings.iterationEnabled), copyFromExisting: copyMode });
     await b.persistSession();
     b.render();
     scheduleAuto(100);
@@ -212,6 +234,37 @@
       if (b.state.assets[index]) b.state.session.index = index;
       const record = b.workflowRecord(auto);
       if (!record) throw new Error('No asset row is available for the active workflow.');
+
+      const copyMode = Boolean(auto.copyFromExisting || copyFromExistingEnabled());
+
+      if (copyMode && auto.phase === 'asset_copy_wait_user') {
+        if (isSavedAssetPage()) {
+          const pageId = entityIdFromUrl();
+          const lastSavedId = clean(auto.previousAssetEntityId || auto.lastCompletedEntityId || '');
+          if (lastSavedId && pageId === lastSavedId) {
+            scheduleAuto(450);
+            return;
+          }
+          b.state.session.auto = {
+            ...auto,
+            phase: 'asset_copy_click',
+            copySourceEntityId: pageId,
+            copyEditorReady: false,
+            copyStartedAt: Date.now()
+          };
+          await b.persistSession();
+          b.render();
+          b.scheduleAuto(200);
+          return;
+        }
+        scheduleAuto(450);
+        return;
+      }
+
+      if (copyMode && isCopyWorkflowPhase(auto.phase) && auto.phase !== 'asset_copy_wait_user') {
+        await root.pages.assetCopy.processAssetCopy(record);
+        return;
+      }
 
       if (auto.phase === 'asset_close_child' || auto.phase === 'asset_close_wait') {
         if (isSavedAssetPage()) {
@@ -438,9 +491,18 @@
         }
       }
 
-      if (!isAssetPage() || !isNewEntityPage()) {
+      const copyFillReady = copyMode && Boolean(auto.copyEditorReady || isNewEntityPage() || isAssetCopyEditorPage());
+      if (!isAssetPage() || (!isNewEntityPage() && !copyFillReady)) {
+        if (copyMode && auto.phase === 'asset_copy_wait_user') {
+          scheduleAuto(400);
+          return;
+        }
         if (auto.phase === 'navigate' && isAssetListPage()) {
           scheduleAuto(200);
+          return;
+        }
+        if (copyMode) {
+          scheduleAuto(350);
           return;
         }
         location.href = b.state.session.newEntityUrl || deriveNewEntityUrl();
