@@ -261,7 +261,12 @@ function injectPanel() {
   const shadow = host.attachShadow({ mode: 'open' });
   C().state.host = host;
   C().state.shadow = shadow;
-  const logo = chrome.runtime.getURL('branding/engineering_efficiency_logo.png');
+  let logo = '';
+  try {
+    if (root.core.storage?.extensionContextLive?.()) {
+      logo = chrome.runtime.getURL('branding/engineering_efficiency_logo.png');
+    }
+  } catch (_) {}
   shadow.innerHTML = `
     <style>
       :host { all: initial; }
@@ -603,11 +608,15 @@ function injectPanel() {
     try { await C().downloadDiagnostic(); }
     catch (error) { showToast(error.message || String(error), 'error', 12000); }
   });
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local') return;
-    if (changes[STORAGE.learnedStatus]) C().state.learnedStatus = changes[STORAGE.learnedStatus].newValue || null;
-    if (changes[STORAGE.learnedNew]) C().state.learnedNew = changes[STORAGE.learnedNew].newValue || null;
-  });
+  try {
+    if (root.core.storage?.extensionContextLive?.()) {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'local') return;
+        if (changes[STORAGE.learnedStatus]) C().state.learnedStatus = changes[STORAGE.learnedStatus].newValue || null;
+        if (changes[STORAGE.learnedNew]) C().state.learnedNew = changes[STORAGE.learnedNew].newValue || null;
+      });
+    }
+  } catch (_) {}
   makeDraggable();
 }
   root.ui = root.ui || {};

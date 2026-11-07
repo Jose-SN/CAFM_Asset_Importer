@@ -500,9 +500,13 @@ function startLookupAgent() {
   const observer = new MutationObserver(() => scheduleLookupAgent(200));
   try { observer.observe(document.documentElement || document, { subtree: true, childList: true, attributes: true }); } catch (_) {}
   setInterval(() => scheduleLookupAgent(0), 900);
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes[STORAGE.pendingLookup]) scheduleLookupAgent(80);
-  });
+  try {
+    if (root.core.storage?.extensionContextLive?.()) {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local' && changes[STORAGE.pendingLookup]) scheduleLookupAgent(80);
+      });
+    }
+  } catch (_) {}
 }
 
 function keyboardEvent(target, type, key, options = {}) {

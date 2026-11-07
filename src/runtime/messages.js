@@ -13,7 +13,9 @@
   }
 
   function initMessageListeners() {
-    chrome.runtime.onMessage.addListener((message) => {
+    if (!root.core.storage?.extensionContextLive?.()) return;
+    try {
+      chrome.runtime.onMessage.addListener((message) => {
       if (!message || typeof message !== 'object') return;
       const {
         state, addEvent, storageGet, persistSession, render, scheduleAuto, runAutomatic,
@@ -137,6 +139,7 @@
         }).catch(() => scheduleAuto(250));
       }
     });
+    } catch (_) {}
   }
 
   root.runtime = root.runtime || {};

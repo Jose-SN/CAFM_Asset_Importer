@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Engineering Efficiency Ltd - CAFM Asset Importer v8.0.86",
-  "version": "8.0.86",
+  "name": "Engineering Efficiency Ltd - CAFM Asset Importer v8.0.87",
+  "version": "8.0.87",
   "description": "Engineering Efficiency CAFM asset importer: fill, save, activate, and continue to the next workbook row.",
   "permissions": [
     "storage",
@@ -67,7 +67,7 @@
     }
   ],
   "action": {
-    "default_title": "Engineering Efficiency Ltd - CAFM Asset Importer v8.0.86",
+    "default_title": "Engineering Efficiency Ltd - CAFM Asset Importer v8.0.87",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

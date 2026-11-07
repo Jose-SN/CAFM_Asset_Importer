@@ -18,6 +18,7 @@
   const $ = () => root.runtime.b;
 
   function syncAutoOrchestrator() {
+    if (!root.core.storage.extensionContextLive()) return;
     const active = Boolean($().state.session.auto?.active);
     try {
       chrome.runtime.sendMessage({ type: active ? 'AUTO_ORCHESTRATOR_SYNC' : 'AUTO_ORCHESTRATOR_STOP' }).catch(() => {});
@@ -37,6 +38,10 @@
     const b = $();
     clearTimeout(b.state.autoTimer);
     b.state.autoTimer = null;
+    if (!root.core.storage.extensionContextLive()) {
+      root.core.storage.showContextReloadHint();
+      return;
+    }
     const auto = b.state.session.auto || {};
     if (!auto.active) return;
     const phase = clean(auto.phase || '');
@@ -231,6 +236,10 @@
   }
 
   async function runAutomatic() {
+    if (!root.core.storage.extensionContextLive()) {
+      root.core.storage.showContextReloadHint();
+      return;
+    }
     const b = $();
     if (b.state.busy) return;
     let auto = b.state.session.auto;

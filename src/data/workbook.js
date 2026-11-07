@@ -69,9 +69,16 @@ async function persistSession() {
       );
     }
   }
-  await storageSet({ [STORAGE.session]: C().state.session, [STORAGE.settings]: C().state.settings });
   try {
-    chrome.runtime.sendMessage({ type: 'AUTO_ORCHESTRATOR_SYNC' }).catch(() => {});
+    const saved = await storageSet({ [STORAGE.session]: C().state.session, [STORAGE.settings]: C().state.settings });
+    if (saved === false) root.core.storage.showContextReloadHint?.();
+  } catch (_) {
+    root.core.storage.showContextReloadHint?.();
+  }
+  try {
+    if (root.core.storage.extensionContextLive?.()) {
+      chrome.runtime.sendMessage({ type: 'AUTO_ORCHESTRATOR_SYNC' }).catch(() => {});
+    }
   } catch (_) {}
 }
 
