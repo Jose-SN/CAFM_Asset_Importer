@@ -222,7 +222,10 @@
 
   async function fillCurrentRecord(options = {}) {
     const b = $();
-    const record = b.currentRecord();
+    const auto = b.state.session.auto;
+    const record = options.respectAutoPause && auto?.active
+      ? (b.workflowRecord(auto) || b.currentRecord())
+      : b.currentRecord();
     if (!record) throw new Error('No current asset row is loaded.');
     const issues = globalThis.CAFMAssetRules.validateRecord(record);
     if (issues.length) throw new Error(`Workbook row ${record.workbookRow}: ${issues.join('; ')}`);

@@ -122,9 +122,15 @@ function ppmRecordOnCurrentPage() {
   return null;
 }
 
+/** Workbook row for automation — always from the loaded **CAFM Import** queue (`state.assets` / `state.allAssets`), never other Excel sheets or the CAFM page. */
 function workflowRecord(auto = C().state.session.auto) {
   const byCode = recordByAssetCode(auto?.assetCode);
-  return byCode || currentRecord();
+  if (byCode) return byCode;
+  const idx = Number(auto?.index);
+  if (Number.isFinite(idx) && idx >= 0 && idx < C().state.assets.length) {
+    return C().state.assets[idx] || null;
+  }
+  return currentRecord();
 }
 
 function recordForCurrentSavedAsset() {

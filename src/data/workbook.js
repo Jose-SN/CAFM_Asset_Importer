@@ -167,8 +167,15 @@ async function loadWorkbookFile(file) {
   };
   await persistSession();
   C().render();
+  C().addEvent?.('workbook-loaded', {
+    assetDataSheet: 'CAFM Import',
+    ppmDataSheet: 'CAFM PPM Import',
+    assetQueueRows: C().state.assets.length,
+    allAssetRows: C().state.allAssets.length,
+    fileName: cache.fileName
+  });
   const preflight = root.data.preflight.summarize(C().state);
-  C().showToast(`${C().state.assets.length} NEW-import asset row(s), ${C().state.allAssets.length} total asset row(s) available for editing, and ${C().state.ppms.length} enabled PPM row(s) loaded from ${cache.fileName}. ${root.data.preflight.formatSummary(preflight)}`, preflight.blocking.length ? 'warn' : 'success', 12000);
+  C().showToast(`${C().state.assets.length} NEW-import asset row(s), ${C().state.allAssets.length} total asset row(s) available for editing, and ${C().state.ppms.length} enabled PPM row(s) loaded from ${cache.fileName}. Asset data is read only from the CAFM Import sheet. ${root.data.preflight.formatSummary(preflight)}`, preflight.blocking.length ? 'warn' : 'success', 12000);
 }
 
 async function jumpToIndex(index) {

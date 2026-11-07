@@ -411,6 +411,7 @@
       const obj = rowToObject(row, headers);
       const explicitAssetCode = String(valueByAliases(obj, ['Asset Code']) || '').trim();
       const sameRowAsset = assetByWorkbookRow.get(row.rowNo) || null;
+      // PPM sheet Asset Code may be blank — always fall back to the matching **CAFM Import** row.
       const assetCode = explicitAssetCode || String(sameRowAsset?.assetCode || '').trim();
       const instruction = trimValue(valueByAliases(obj, ['Instruction', 'PPM Instruction']));
       const importFlag = valueByAliases(obj, ['Import?', 'Import', 'Include?']);
@@ -529,6 +530,7 @@
       const nameParts = splitLookupDisplay(nameValue);
 
       const assetRecord = {
+        importSheet: 'CAFM Import',
         workbookRow: row.rowNo,
         assetCode,
         description: trimValue(valueByAliases(obj, ['Description', 'Asset Description'])),
@@ -618,6 +620,7 @@
     }
 
     return {
+      assetDataSheet: 'CAFM Import',
       assets,
       allAssets,
       ppms: ppmParsed.ppms,

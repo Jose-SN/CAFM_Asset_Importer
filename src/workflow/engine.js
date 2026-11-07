@@ -558,10 +558,11 @@
         b.render();
       }
 
-      const issues = globalThis.CAFMAssetRules.validateRecord(b.currentRecord());
+      const fillRecord = b.workflowRecord(b.state.session.auto) || record;
+      const issues = globalThis.CAFMAssetRules.validateRecord(fillRecord);
       if (issues.length) {
         if (b.state.settings.skipInvalidRows) {
-          await b.setStatus(b.currentRecord(), 'skipped', `Invalid workbook row: ${issues.join('; ')}`);
+          await b.setStatus(fillRecord, 'skipped', `Invalid workbook row: ${issues.join('; ')}`);
           const next = b.nextPendingIndex(b.state.session.index + 1);
           if (next < 0) {
             b.state.session.auto = { active: false, phase: 'complete' };
@@ -575,22 +576,34 @@
           scheduleAuto(300);
           return;
         }
-        throw new Error(`Workbook row ${b.currentRecord().workbookRow}: ${issues.join('; ')}`);
+        throw new Error(`Workbook row ${fillRecord.workbookRow}: ${issues.join('; ')}`);
       }
 
-      b.state.session.auto = { ...b.state.session.auto, active: true, mode: auto.mode || 'automatic', phase: 'filling', index: b.state.session.index, assetCode: b.currentRecord().assetCode };
+      b.state.session.auto = {
+        ...b.state.session.auto,
+        active: true,
+        mode: auto.mode || 'automatic',
+        phase: 'filling',
+        index: b.state.session.index,
+        assetCode: fillRecord.assetCode
+      };
+      b.addEvent('asset-fill-source', {
+        assetCode: fillRecord.assetCode,
+        workbookRow: fillRecord.workbookRow,
+        importSheet: fillRecord.importSheet || 'CAFM Import'
+      });
       await b.persistSession();
       b.render();
       // Copy mode and New Entity share fillCurrentRecord — no separate fill implementation.
       const filled = await root.pages.assetNew.fillCurrentRecord({ respectAutoPause: true });
       if (filled?.cancelled || !b.state.session.auto?.active) return;
       b.state.session.manualAwaitSave = null;
-      b.state.session.auto = { ...b.state.session.auto, phase: 'saving', index: b.state.session.index, assetCode: b.currentRecord().assetCode };
+      b.state.session.auto = { ...b.state.session.auto, phase: 'saving', index: b.state.session.index, assetCode: fillRecord.assetCode };
       await b.persistSession();
       b.render();
       await b.clickSaveTracked('auto');
       if (isSavedAssetPage()) {
-        await beginPostSave(b.currentRecord(), entityIdFromUrl(), auto.mode || 'automatic', 'CAFM asset save confirmed immediately');
+        await beginPostSave(fillRecord, entityIdFromUrl(), auto.mode || 'automatic', 'CAFM asset save confirmed immediately');
       }
     } finally {
       b.state.busy = false;
