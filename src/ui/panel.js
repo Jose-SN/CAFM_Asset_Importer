@@ -410,7 +410,7 @@ function injectPanel() {
               <span class="option-major-sub">Start on a saved asset you open from the list — not New Entity id=-1.</span>
             </span>
           </label>
-          <div id="copyFromExistingWarn" class="copy-warn" hidden>Two windows + one popup: template (Copy) and copy child (Copy Settings → OK). Waits: 5s after Copy, 5s after OK, 10s refresh, fill, save, ACTIVE, 5s, Copy again on the same template for the next row. Excel PPM rows are skipped (PPMs copied with the asset).</div>
+          <div id="copyFromExistingWarn" class="copy-warn" hidden>Two windows + one popup: template (Copy) and copy child (Copy Settings). Waits: 5s after Copy, 3s after Copy PPMs checkbox in the popup, then OK (no wait after OK), fill, save, ACTIVE, 5s, Copy again on the template. Excel PPM rows are skipped (PPMs copied with the asset).</div>
           <div class="buttons" style="margin:6px 0 10px">
             <button id="clearProgressLog" class="action danger" type="button">Clear progress &amp; diagnostic log</button>
           </div>

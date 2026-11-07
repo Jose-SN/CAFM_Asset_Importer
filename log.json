@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-11-07T00:00:00.000Z",
-  "extensionVersion": "8.0.77",
+  "extensionVersion": "8.0.78",
   "description": "Diagnostic template for copy-from-existing mode. Download diagnostic JSON from the panel after a run; events accumulate in chrome.storage until Clear progress & diagnostic log.",
   "copyWorkflow": {
     "model": "two-windows-one-popup",
@@ -13,8 +13,9 @@
     },
     "waitsMs": {
       "afterCopyClick": 5000,
-      "afterCopyOkClick": 5000,
-      "afterCopyOkRefresh": 10000,
+      "copyPpmsCheckboxBeforeOk": 3000,
+      "afterCopyOkClick": 0,
+      "afterCopyOkRefresh": 0,
       "betweenCycles": 5000
     },
     "phaseOrder": [
@@ -46,7 +47,7 @@
       "asset-copy-ok-accepted",
       "asset-copy-ok-not-accepted",
       "asset-copy-post-ok-click-wait",
-      "asset-copy-post-ok-wait",
+      "asset-copy-ppm-checkbox-wait",
       "asset-copy-ready-for-fill",
       "asset-copy-asset-code-cleared",
       "asset-copy-asset-code-wait",

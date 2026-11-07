@@ -24,8 +24,10 @@
   const MAX_COPY_CLICK_ATTEMPTS = 5;
   const MAX_COPY_OK_ACCEPT_ATTEMPTS = 8;
   const COPY_AFTER_COPY_CLICK_MS = 5000;
-  const COPY_AFTER_OK_CLICK_MS = 5000;
-  const COPY_POST_OK_WAIT_MS = 10000;
+  /** Legacy export (diagnostics); post-OK waits are skipped — fill starts after OK is accepted. */
+  const COPY_AFTER_OK_CLICK_MS = 3000;
+  const COPY_POST_OK_WAIT_MS = 3000;
+  const COPY_PPM_CHECKBOX_BEFORE_OK_MS = 3000;
   const COPY_AFTER_CYCLE_MS = 5000;
   const COPY_ASSET_CODE_CLEAR_MS = 15000;
 
@@ -211,6 +213,39 @@
     return readyAt > 0 && Date.now() >= readyAt;
   }
 
+  async function beginCopyFillAfterOk(b, auto, record, sourceId, detail = 'OK accepted — waiting for Asset Code, then fill') {
+    const readyAt = Date.now();
+    b.addEvent('asset-copy-ready-for-fill', {
+      assetCode: record.assetCode,
+      copyPostOkWaitMs: COPY_POST_OK_WAIT_MS,
+      copyAfterOkClickMs: COPY_AFTER_OK_CLICK_MS,
+      skippedPostOkWaits: true
+    });
+    b.showActivity?.('Ready', 'Copy child editor', detail, {
+      wait: true,
+      meta: record.assetCode,
+      tick: true
+    });
+    b.state.session.auto = {
+      ...auto,
+      phase: 'asset_copy_wait_editor',
+      copyEditorWaitStartedAt: readyAt,
+      copyFillReadyAt: readyAt,
+      copyOkPendingVerify: false,
+      copyOkAcceptAttempts: 0,
+      copyPostOkClickWaitStartedAt: 0,
+      copyPostOkWaitStartedAt: 0,
+      copyConfirmAt: readyAt,
+      copyAssetCodeClearedLogged: false,
+      copyAssetCodeWaitStartedAt: 0
+    };
+    await b.persistSession();
+    await markCopyDialogOk(record, sourceId);
+    await expectCopyChildWindow(record, auto.copySourceEntityId || templateEntityId(auto));
+    await b.persistSession();
+    b.scheduleAuto(200);
+  }
+
   function copyClickGuardKey(record, attempt) {
     return `asset-copy-${clean(record?.assetCode || 'asset')}-${Number(attempt) || 0}`;
   }
@@ -361,7 +396,8 @@
         copyOkPendingVerify: false,
         copyPostClickWaitStartedAt: 0,
         copyPostOkClickWaitStartedAt: 0,
-        copyPostOkWaitStartedAt: 0
+        copyPostOkWaitStartedAt: 0,
+        copyPpmCheckboxCheckedAt: 0
       };
       await b.persistSession();
       b.scheduleAuto(200);
@@ -394,82 +430,23 @@
       return;
     }
 
-    if (phase === 'asset_copy_post_ok_click_wait') {
-      const started = Number(auto.copyPostOkClickWaitStartedAt || Date.now());
-      const remaining = showTimedCopyWait(
-        b,
-        record,
-        'Waiting',
-        'After Copy OK',
-        started,
-        COPY_AFTER_OK_CLICK_MS,
-        'before 10s refresh wait (popup on copy child only)',
-        'asset-copy-post-ok-click-wait'
-      );
-      if (remaining > 0) {
-        b.scheduleAuto(Math.min(remaining + 80, 1500));
-        return;
-      }
-      b.state.session.auto = {
-        ...auto,
-        phase: 'asset_copy_post_ok_wait',
-        copyPostOkWaitStartedAt: Date.now(),
-        copyConfirmAt: Date.now()
-      };
-      await b.persistSession();
-      b.scheduleAuto(120);
-      return;
-    }
-
-    if (phase === 'asset_copy_post_ok_wait') {
-      const started = Number(auto.copyPostOkWaitStartedAt || auto.copyConfirmAt || 0);
-      if (!started) {
-        b.state.session.auto = { ...auto, phase: 'asset_copy_post_ok_click_wait', copyPostOkClickWaitStartedAt: Date.now() };
-        await b.persistSession();
-        b.scheduleAuto(200);
-        return;
-      }
-      const remaining = showTimedCopyWait(
-        b,
-        record,
-        'Waiting',
-        'Copy child refresh',
-        started,
-        COPY_POST_OK_WAIT_MS,
-        'window reloads with PPMs; Asset Code should clear before fill',
-        'asset-copy-post-ok-wait'
-      );
-      if (remaining > 0) {
-        b.scheduleAuto(Math.min(remaining + 80, 1500));
-        return;
-      }
-      const readyAt = Date.now();
-      b.addEvent('asset-copy-ready-for-fill', {
-        assetCode: record.assetCode,
-        copyPostOkWaitMs: COPY_POST_OK_WAIT_MS,
-        copyAfterOkClickMs: COPY_AFTER_OK_CLICK_MS
-      });
-      b.state.session.auto = {
-        ...auto,
-        phase: 'asset_copy_wait_editor',
-        copyEditorWaitStartedAt: readyAt,
-        copyFillReadyAt: readyAt
-      };
-      await b.persistSession();
-      await expectCopyChildWindow(record, auto.copySourceEntityId || templateEntityId(auto));
-      b.scheduleAuto(250);
+    if (phase === 'asset_copy_post_ok_click_wait' || phase === 'asset_copy_post_ok_wait') {
+      const sourceId = auto.copySourceEntityId || templateEntityId(auto);
+      await beginCopyFillAfterOk(b, auto, record, sourceId, 'Skipping post-OK timer (legacy phase) — fill when editor is ready');
       return;
     }
 
     if (phase === 'asset_copy_wait_editor') {
       if (!copyOkGateSatisfied(auto)) {
-        const backPhase = Number(auto.copyPostOkWaitStartedAt || 0)
-          ? 'asset_copy_post_ok_wait'
-          : 'asset_copy_post_ok_click_wait';
-        b.state.session.auto = { ...auto, phase: backPhase };
-        await b.persistSession();
-        b.scheduleAuto(100);
-        return;
+        const readyAt = Number(auto.copyFillReadyAt || 0);
+        if (readyAt && Date.now() < readyAt) {
+          b.scheduleAuto(Math.max(80, readyAt - Date.now()));
+          return;
+        }
+        if (!readyAt) {
+          b.state.session.auto = { ...auto, copyFillReadyAt: Date.now() };
+          await b.persistSession();
+        }
       }
       if (isCopyFillEditorPage()) {
         const codeState = copyChildAssetCodeFieldState();
@@ -594,7 +571,8 @@
         copyConfirmAt: 0,
         copyFillReadyAt: 0,
         copyAssetCodeClearedLogged: false,
-        copyAssetCodeWaitStartedAt: 0
+        copyAssetCodeWaitStartedAt: 0,
+        copyPpmCheckboxCheckedAt: 0
       };
       await b.persistSession();
       b.scheduleAuto(400);
@@ -680,32 +658,18 @@
           return;
         }
         if (!stillOpen && verifyMs >= 120) {
-          const acceptedAt = Date.now();
           b.addEvent('asset-copy-ok-accepted', {
             assetCode: record.assetCode,
             verifyMs,
             okClickMethod: auto.copyOkClickMethod || '',
             acceptAttempts
           });
-          b.showActivity?.('Confirmed', 'Copy Settings OK', `CAFM accepted OK — ${COPY_AFTER_OK_CLICK_MS / 1000}s wait, then ${COPY_POST_OK_WAIT_MS / 1000}s refresh`, {
-            wait: true,
-            meta: record.assetCode,
-            tick: true
-          });
-          b.state.session.auto = {
+          const merged = {
             ...auto,
-            phase: 'asset_copy_post_ok_click_wait',
-            copyPostOkClickWaitStartedAt: acceptedAt,
-            copyDialogOkClickedAt: clickedAt || acceptedAt,
-            copyOkPendingVerify: false,
-            copyOkAcceptAttempts: 0,
-            copyConfirmAt: 0,
-            copyFillReadyAt: 0
+            copyDialogOkClickedAt: clickedAt || Date.now(),
+            copyOkClickMethod: auto.copyOkClickMethod || ''
           };
-          await b.persistSession();
-          await markCopyDialogOk(record, sourceId);
-          await b.persistSession();
-          b.scheduleAuto(450);
+          await beginCopyFillAfterOk(b, merged, record, sourceId);
           return;
         }
         if (stillOpen) {
@@ -730,9 +694,7 @@
       const control = findCopySettingsOkControl();
       if (!control?.ok) {
         if (auto.copyConfirmAt && !auto.copyOkPendingVerify) {
-          b.state.session.auto = { ...auto, phase: 'asset_copy_post_ok_wait' };
-          await b.persistSession();
-          b.scheduleAuto(200);
+          await beginCopyFillAfterOk(b, auto, record, sourceId);
           return;
         }
         b.state.session.auto = { ...auto, phase: 'asset_copy_dialog_wait', copyDialogWaitStartedAt: Date.now() };
@@ -744,13 +706,38 @@
       const ppmBox = (dialog || control.doc).querySelector?.(COPY_DIALOG_SELECTORS.ppmCheckbox)
         || control.doc.querySelector(COPY_DIALOG_SELECTORS.ppmCheckbox)
         || (dialog || control.doc).querySelector?.('input[type="checkbox"][id*="chkBoxPPMs"]');
-      if (ppmBox instanceof HTMLInputElement && !ppmBox.checked) {
-        ppmBox.checked = true;
-        for (const eventName of ['input', 'change', 'click']) {
-          ppmBox.dispatchEvent(new Event(eventName, { bubbles: true }));
+      let checkboxCheckedAt = Number(auto.copyPpmCheckboxCheckedAt || 0);
+      if (ppmBox instanceof HTMLInputElement) {
+        if (!ppmBox.checked) {
+          ppmBox.checked = true;
+          for (const eventName of ['input', 'change', 'click']) {
+            ppmBox.dispatchEvent(new Event(eventName, { bubbles: true }));
+          }
+        }
+        if (!checkboxCheckedAt) {
+          checkboxCheckedAt = Date.now();
+          b.state.session.auto = { ...auto, copyPpmCheckboxCheckedAt: checkboxCheckedAt };
+          await b.persistSession();
+          auto = b.state.session.auto || auto;
         }
       }
-      b.showActivity?.('Confirming', 'Copy Settings OK', 'OK button identified — clicking OK', {
+      const checkboxWaitLeft = COPY_PPM_CHECKBOX_BEFORE_OK_MS - (Date.now() - checkboxCheckedAt);
+      if (checkboxCheckedAt && checkboxWaitLeft > 0) {
+        b.addEvent('asset-copy-ppm-checkbox-wait', {
+          assetCode: record.assetCode,
+          waitMs: COPY_PPM_CHECKBOX_BEFORE_OK_MS,
+          remainingMs: checkboxWaitLeft
+        });
+        b.showActivity?.(
+          'Waiting',
+          'Copy PPMs checkbox',
+          `${Math.ceil(checkboxWaitLeft / 1000)}s in popup before OK click`,
+          { wait: true, meta: record.assetCode, tick: true }
+        );
+        b.scheduleAuto(Math.min(checkboxWaitLeft + 80, 1200));
+        return;
+      }
+      b.showActivity?.('Confirming', 'Copy Settings OK', 'PPMs checked — clicking OK', {
         wait: true,
         meta: `${control.ok.id || control.ok.getAttribute?.('name') || 'confirmCopy'}`,
         tick: true
@@ -803,6 +790,7 @@
     COPY_POST_OK_WAIT_MS,
     COPY_AFTER_COPY_CLICK_MS,
     COPY_AFTER_OK_CLICK_MS,
+    COPY_PPM_CHECKBOX_BEFORE_OK_MS,
     COPY_AFTER_CYCLE_MS
   });
 })();
