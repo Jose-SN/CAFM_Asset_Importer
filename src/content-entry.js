@@ -179,6 +179,20 @@
       currentPpm, currentAssetStatusText, validationMessage, addEvent
     });
     configureEvents({ state, workflowRecord, currentRecord, persistSession, showToast });
+
+    configurePanel({
+      state, counts, validateRecord, currentRecord, statusOf, linkedPpms, currentPpm, nextPendingIndex,
+      assetCodeOnPage, workflowAssetCodeOnPage, ppmRecordOnCurrentPage: () => null,
+      workflowRecord, validationMessage,
+      loadWorkbookFile, fillCurrentRecord, clickSaveTracked, fillExistingSavedAsset,
+      saveExistingAssetChanges, move, jumpToIndex, skipCurrent, markSavedAndNext,
+      persistSession, storageSet,
+      startAutomatic, pauseAutomatic, resumeAutomatic, downloadLog, clearSession, clearImporterLogAndAuto, downloadDiagnostic
+    });
+    if (isPanelPage()) {
+      injectPanel();
+    }
+
     configureMessages({
       state, addEvent, storageGet, persistSession, render, scheduleAuto, runAutomatic,
       isAssetPage,
@@ -191,7 +205,7 @@
     });
     initMessageListeners();
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && state.session.auto?.active) {
+      if (!document.hidden && state.session.auto?.active && isWorkflowPage()) {
         scheduleAuto(0);
         try {
           chrome.runtime.sendMessage({ type: 'AUTO_ORCHESTRATOR_SYNC' }).catch(() => {});
@@ -206,25 +220,14 @@
       restoreError = error;
     }
 
-    if (!isPanelPage()) {
-      if (state.session.auto?.active) scheduleAuto();
-      return;
+    if (isPanelPage()) {
+      render();
     }
-
-    configurePanel({
-      state, counts, validateRecord, currentRecord, statusOf, linkedPpms, currentPpm, nextPendingIndex,
-      assetCodeOnPage, workflowAssetCodeOnPage, ppmRecordOnCurrentPage: () => null,
-      workflowRecord, validationMessage,
-      loadWorkbookFile, fillCurrentRecord, clickSaveTracked, fillExistingSavedAsset,
-      saveExistingAssetChanges, move, jumpToIndex, skipCurrent, markSavedAndNext,
-      persistSession, storageSet,
-      startAutomatic, pauseAutomatic, resumeAutomatic, downloadLog, clearSession, clearImporterLogAndAuto, downloadDiagnostic
-    });
-    injectPanel();
-    render();
     if (restoreError) reportInitFailure(restoreError);
 
-    if (!isWorkflowPage()) return;
+    if (!isWorkflowPage()) {
+      return;
+    }
 
     if (isAssetPage() || isAssetListPage()) await runtimeMessage({ type: 'REGISTER_ASSET_TAB' });
     if (isAssetPage()) {

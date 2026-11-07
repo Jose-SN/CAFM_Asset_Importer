@@ -55,7 +55,8 @@ function showWorkflowStatus(context = {}, options = {}) {
 }
 
 function render() {
-  if (!C().state.shadow) return;
+  if (!cfg) return;
+  if (!cfg.state?.shadow) return;
   const c = C().counts();
   const record = C().currentRecord();
   const status = record ? C().statusOf(record) : 'pending';
