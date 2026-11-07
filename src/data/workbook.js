@@ -391,7 +391,36 @@ function buildDiagnosticPayload(record) {
     recentEvents,
     timingSummary: summarizeEvents(recentEvents),
     validationMessage: C().validationMessage() || '',
-    learnedControls: { status: C().state.learnedStatus || null, ppmNew: C().state.learnedNew || null }
+    learnedControls: { status: C().state.learnedStatus || null, ppmNew: C().state.learnedNew || null },
+    copyWorkflow: C().state.settings?.copyFromExisting ? {
+      model: 'two-windows-one-popup',
+      templateEntityId: auto?.copyTemplateEntityId || auto?.copySourceEntityId || '',
+      waitsMs: {
+        afterCopyClick: root.pages.assetCopy?.COPY_AFTER_COPY_CLICK_MS || 5000,
+        afterCopyOkClick: root.pages.assetCopy?.COPY_AFTER_OK_CLICK_MS || 5000,
+        afterCopyOkRefresh: root.pages.assetCopy?.COPY_POST_OK_WAIT_MS || 10000,
+        betweenCycles: root.pages.assetCopy?.COPY_AFTER_CYCLE_MS || 5000
+      },
+      phaseOrder: [
+        'asset_copy_click',
+        'asset_copy_post_click_wait',
+        'asset_copy_dialog_wait',
+        'asset_copy_dialog_confirm',
+        'asset_copy_post_ok_click_wait',
+        'asset_copy_post_ok_wait',
+        'asset_copy_wait_editor',
+        'filling',
+        'saving',
+        'await_save',
+        'asset_close_child',
+        'asset_close_wait',
+        'activate_open',
+        'activate_select',
+        'activate_confirm',
+        'activate_wait',
+        'asset_copy_post_cycle_wait'
+      ]
+    } : null
   };
 }
 

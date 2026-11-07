@@ -171,7 +171,8 @@
       copyFromExisting: copyMode,
       copyEditorReady: false,
       skipPpmWorkflow: copyMode,
-      copySourceEntityId: copyMode ? entityIdFromUrl() : ''
+      copySourceEntityId: copyMode ? entityIdFromUrl() : '',
+      copyTemplateEntityId: copyMode ? entityIdFromUrl() : ''
     };
     b.addEvent('run-start', { maxIterations, iterationEnabled: Boolean(b.state.settings.iterationEnabled), copyFromExisting: copyMode });
     await b.persistSession();
@@ -269,26 +270,14 @@
       const copyMode = copyWorkflowActive(auto);
 
       if (copyMode && auto.phase === 'asset_copy_wait_user') {
-        if (isSavedAssetPage()) {
-          const pageId = entityIdFromUrl();
-          const lastSavedId = clean(auto.previousAssetEntityId || auto.lastCompletedEntityId || '');
-          if (lastSavedId && pageId === lastSavedId) {
-            scheduleAuto(450);
-            return;
-          }
-          b.state.session.auto = {
-            ...auto,
-            phase: 'asset_copy_click',
-            copySourceEntityId: pageId,
-            copyEditorReady: false,
-            copyStartedAt: Date.now()
-          };
-          await b.persistSession();
-          b.render();
-          b.scheduleAuto(200);
-          return;
-        }
-        scheduleAuto(450);
+        b.state.session.auto = {
+          ...auto,
+          phase: 'asset_copy_post_cycle_wait',
+          copyPostCycleWaitStartedAt: Date.now()
+        };
+        await b.persistSession();
+        b.render();
+        scheduleAuto(200);
         return;
       }
 

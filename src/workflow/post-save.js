@@ -107,10 +107,11 @@
     b.state.session.currentLookupEvidence = [];
     const nextCode = b.state.assets[next]?.assetCode || '';
     const warningCount = (b.state.session.statuses?.[record.assetCode]?.validationWarnings || []).length;
+    const templateId = clean(auto.copyTemplateEntityId || auto.copySourceEntityId || '');
     b.state.session.auto = {
       active: true,
       mode: auto.mode || 'automatic',
-      phase: copyMode ? 'asset_copy_wait_user' : (useSaveAndNew ? 'asset_save_and_new' : 'navigate'),
+      phase: copyMode ? 'asset_copy_post_cycle_wait' : (useSaveAndNew ? 'asset_save_and_new' : 'navigate'),
       index: next,
       assetCode: nextCode,
       previousAssetCode: record.assetCode,
@@ -123,16 +124,32 @@
       maxIterations: Math.max(1, Number(auto.maxIterations || 1)),
       copyFromExisting: copyMode,
       copyEditorReady: false,
-      skipPpmWorkflow: copyMode
+      skipPpmWorkflow: copyMode,
+      copyTemplateEntityId: templateId,
+      copySourceEntityId: templateId || auto.copySourceEntityId || '',
+      copyPostCycleWaitStartedAt: copyMode ? Date.now() : 0
     };
     await b.persistSession();
     b.render();
     if (copyMode) {
+      b.addEvent('asset-copy-cycle-complete-next', {
+        completedAssetCode: record.assetCode,
+        nextAssetCode: nextCode,
+        templateEntityId: templateId,
+        postCycleWaitMs: root.pages.assetCopy?.COPY_AFTER_CYCLE_MS || 5000
+      });
       b.showToast(
-        `${record.assetCode} complete (PPMs copied with asset). Open an existing saved asset from the list for ${nextCode}; automation continues with Copy.`,
+        `${record.assetCode} ACTIVE. ${nextCode}: waiting 5s on template, then Copy again (same 2-window flow).`,
         'success',
-        16000
+        14000
       );
+      b.showActivity?.(
+        'Waiting',
+        'Between copy cycles',
+        '5s then Copy on template window for next row',
+        { wait: true, meta: nextCode, tick: true }
+      );
+      b.scheduleAuto(400);
       return;
     }
     b.showToast(`${record.assetCode} complete: Asset saved and ACTIVE${warningCount ? `, ${warningCount} warning(s)` : ''}. Next: ${nextCode}.`, warningCount ? 'warn' : 'success', 14000);

@@ -8,7 +8,8 @@
     isSavedAssetPage,
     isAssetCopyChildEditorPage,
     copyOfFromUrl,
-    entityIdFromUrl
+    entityIdFromUrl,
+    assetEntityUrl
   } = root.core.pages;
   const $ = () => root.runtime.b;
 
@@ -20,10 +21,50 @@
 
   const MAX_COPY_CLICK_ATTEMPTS = 5;
   const MAX_COPY_OK_ACCEPT_ATTEMPTS = 8;
-  const COPY_POST_OK_WAIT_MS = 3000;
+  const COPY_AFTER_COPY_CLICK_MS = 5000;
+  const COPY_AFTER_OK_CLICK_MS = 5000;
+  const COPY_POST_OK_WAIT_MS = 10000;
+  const COPY_AFTER_CYCLE_MS = 5000;
+  const COPY_ASSET_CODE_CLEAR_MS = 15000;
 
   function isCopyDialogPhase(phase) {
     return phase === 'asset_copy_dialog_wait' || phase === 'asset_copy_dialog_confirm';
+  }
+
+  function isCopyWaitPhase(phase) {
+    return phase === 'asset_copy_post_click_wait'
+      || phase === 'asset_copy_post_ok_click_wait'
+      || phase === 'asset_copy_post_ok_wait'
+      || phase === 'asset_copy_post_cycle_wait';
+  }
+
+  function templateEntityId(auto) {
+    return clean(auto?.copyTemplateEntityId || auto?.copySourceEntityId || '');
+  }
+
+  function copyChildAssetCodeFieldState() {
+    const code = clean(root.core.toolbar.observedAssetCode?.() || '');
+    return { empty: !code, observed: code };
+  }
+
+  function showTimedCopyWait(b, record, verb, target, startedAt, totalMs, detail, eventType) {
+    const started = Number(startedAt || Date.now());
+    const remaining = totalMs - (Date.now() - started);
+    const payload = {
+      assetCode: record.assetCode,
+      target,
+      totalMs,
+      remainingMs: Math.max(0, remaining),
+      windows: 'template + copy child (one Copy Settings popup on child)'
+    };
+    b.addEvent(eventType, payload);
+    b.showActivity?.(
+      verb,
+      target,
+      remaining > 0 ? `${Math.ceil(remaining / 1000)}s — ${detail}` : detail,
+      { wait: remaining > 0, meta: record.assetCode, tick: remaining > 0 }
+    );
+    return remaining;
   }
 
   function copyDialogHostPage() {
@@ -151,9 +192,8 @@
   }
 
   function copyOkGateSatisfied(auto) {
-    const at = Number(auto?.copyConfirmAt || 0);
-    if (!at) return false;
-    return Date.now() - at >= COPY_POST_OK_WAIT_MS;
+    const readyAt = Number(auto?.copyFillReadyAt || 0);
+    return readyAt > 0 && Date.now() >= readyAt;
   }
 
   function copyClickGuardKey(record, attempt) {
@@ -262,44 +302,191 @@
     const auto = b.state.session.auto || {};
     const phase = clean(auto.phase || '');
 
-    if (phase === 'asset_copy_post_ok_wait') {
-      const confirmedAt = Number(auto.copyConfirmAt || 0);
-      if (!confirmedAt) {
-        b.state.session.auto = { ...auto, phase: 'asset_copy_dialog_wait', copyDialogWaitStartedAt: Date.now() };
-        await b.persistSession();
-        b.scheduleAuto(200);
+    if (phase === 'asset_copy_post_cycle_wait') {
+      const templateId = templateEntityId(auto);
+      if (!templateId) throw new Error('Copy template asset ID is missing. Re-open the template saved asset and Resume.');
+      if (!isSavedAssetPage() || entityIdFromUrl() !== templateId) {
+        b.showActivity?.('Navigating', 'Template window', `Opening template asset id=${templateId} for next Copy`, {
+          wait: true,
+          meta: record.assetCode,
+          tick: true
+        });
+        b.addEvent('asset-copy-return-template', { assetCode: record.assetCode, templateEntityId: templateId });
+        location.href = assetEntityUrl(templateId);
         return;
       }
-      const remaining = COPY_POST_OK_WAIT_MS - (Date.now() - confirmedAt);
+      const started = Number(auto.copyPostCycleWaitStartedAt || Date.now());
+      const remaining = showTimedCopyWait(
+        b,
+        record,
+        'Waiting',
+        'Before next Copy',
+        started,
+        COPY_AFTER_CYCLE_MS,
+        'then Copy again on template (2 windows, 1 popup)',
+        'asset-copy-post-cycle-wait'
+      );
       if (remaining > 0) {
-        b.showActivity?.(
-          'Waiting',
-          'After Copy OK',
-          `${Math.ceil(remaining / 1000)}s before fill in the new asset window`,
-          { wait: true, meta: record.assetCode, tick: true }
-        );
+        b.scheduleAuto(Math.min(remaining + 80, 1500));
+        return;
+      }
+      b.showActivity?.('Ready', 'Next Copy cycle', 'Clicking Copy on template for next workbook row', {
+        wait: true,
+        meta: record.assetCode,
+        tick: true
+      });
+      b.addEvent('asset-copy-cycle-restart', { assetCode: record.assetCode, templateEntityId: templateId });
+      b.state.session.auto = {
+        ...auto,
+        phase: 'asset_copy_click',
+        copyClickAttempts: 0,
+        copyConfirmAt: 0,
+        copyFillReadyAt: 0,
+        copyEditorReady: false,
+        copyOkPendingVerify: false,
+        copyPostClickWaitStartedAt: 0,
+        copyPostOkClickWaitStartedAt: 0,
+        copyPostOkWaitStartedAt: 0
+      };
+      await b.persistSession();
+      b.scheduleAuto(200);
+      return;
+    }
+
+    if (phase === 'asset_copy_post_click_wait') {
+      const started = Number(auto.copyPostClickWaitStartedAt || Date.now());
+      const remaining = showTimedCopyWait(
+        b,
+        record,
+        'Waiting',
+        'After Copy click',
+        started,
+        COPY_AFTER_COPY_CLICK_MS,
+        'child window loads; Copy Settings popup may appear',
+        'asset-copy-post-click-wait'
+      );
+      if (remaining > 0) {
         b.scheduleAuto(Math.min(remaining + 80, 1500));
         return;
       }
       b.state.session.auto = {
         ...auto,
-        phase: 'asset_copy_wait_editor',
-        copyEditorWaitStartedAt: Date.now()
+        phase: 'asset_copy_dialog_wait',
+        copyDialogWaitStartedAt: Date.now()
       };
       await b.persistSession();
-      await expectCopyChildWindow(record, auto.copySourceEntityId || entityIdFromUrl());
+      b.scheduleAuto(120);
+      return;
+    }
+
+    if (phase === 'asset_copy_post_ok_click_wait') {
+      const started = Number(auto.copyPostOkClickWaitStartedAt || Date.now());
+      const remaining = showTimedCopyWait(
+        b,
+        record,
+        'Waiting',
+        'After Copy OK',
+        started,
+        COPY_AFTER_OK_CLICK_MS,
+        'before 10s refresh wait (popup on copy child only)',
+        'asset-copy-post-ok-click-wait'
+      );
+      if (remaining > 0) {
+        b.scheduleAuto(Math.min(remaining + 80, 1500));
+        return;
+      }
+      b.state.session.auto = {
+        ...auto,
+        phase: 'asset_copy_post_ok_wait',
+        copyPostOkWaitStartedAt: Date.now(),
+        copyConfirmAt: Date.now()
+      };
+      await b.persistSession();
+      b.scheduleAuto(120);
+      return;
+    }
+
+    if (phase === 'asset_copy_post_ok_wait') {
+      const started = Number(auto.copyPostOkWaitStartedAt || auto.copyConfirmAt || 0);
+      if (!started) {
+        b.state.session.auto = { ...auto, phase: 'asset_copy_post_ok_click_wait', copyPostOkClickWaitStartedAt: Date.now() };
+        await b.persistSession();
+        b.scheduleAuto(200);
+        return;
+      }
+      const remaining = showTimedCopyWait(
+        b,
+        record,
+        'Waiting',
+        'Copy child refresh',
+        started,
+        COPY_POST_OK_WAIT_MS,
+        'window reloads with PPMs; Asset Code should clear before fill',
+        'asset-copy-post-ok-wait'
+      );
+      if (remaining > 0) {
+        b.scheduleAuto(Math.min(remaining + 80, 1500));
+        return;
+      }
+      const readyAt = Date.now();
+      b.addEvent('asset-copy-ready-for-fill', {
+        assetCode: record.assetCode,
+        copyPostOkWaitMs: COPY_POST_OK_WAIT_MS,
+        copyAfterOkClickMs: COPY_AFTER_OK_CLICK_MS
+      });
+      b.state.session.auto = {
+        ...auto,
+        phase: 'asset_copy_wait_editor',
+        copyEditorWaitStartedAt: readyAt,
+        copyFillReadyAt: readyAt
+      };
+      await b.persistSession();
+      await expectCopyChildWindow(record, auto.copySourceEntityId || templateEntityId(auto));
       b.scheduleAuto(250);
       return;
     }
 
     if (phase === 'asset_copy_wait_editor') {
       if (!copyOkGateSatisfied(auto)) {
-        b.state.session.auto = { ...auto, phase: 'asset_copy_post_ok_wait' };
+        const backPhase = Number(auto.copyPostOkWaitStartedAt || 0)
+          ? 'asset_copy_post_ok_wait'
+          : 'asset_copy_post_ok_click_wait';
+        b.state.session.auto = { ...auto, phase: backPhase };
         await b.persistSession();
         b.scheduleAuto(100);
         return;
       }
       if (isAssetCopyChildEditorPage()) {
+        const codeState = copyChildAssetCodeFieldState();
+        const waitStarted = Number(auto.copyAssetCodeWaitStartedAt || 0);
+        if (!codeState.empty) {
+          const started = waitStarted || Date.now();
+          if (!waitStarted) {
+            b.state.session.auto = { ...auto, copyAssetCodeWaitStartedAt: started };
+            await b.persistSession();
+          }
+          b.addEvent('asset-copy-asset-code-wait', { observed: codeState.observed, assetCode: record.assetCode });
+          b.showActivity?.(
+            'Waiting',
+            'Asset Code empty',
+            `Field still shows “${codeState.observed}” — waiting for copy refresh`,
+            { wait: true, meta: record.assetCode, tick: true }
+          );
+          if (Date.now() - started < COPY_ASSET_CODE_CLEAR_MS) {
+            b.scheduleAuto(400);
+            return;
+          }
+          b.addEvent('asset-copy-asset-code-timeout', { observed: codeState.observed, assetCode: record.assetCode });
+        } else if (!auto.copyAssetCodeClearedLogged) {
+          b.addEvent('asset-copy-asset-code-cleared', { assetCode: record.assetCode });
+          b.showActivity?.('Ready', 'Asset Code', 'Field is empty — filling workbook details', {
+            wait: false,
+            meta: record.assetCode,
+            tick: false
+          });
+          b.state.session.auto = { ...auto, copyAssetCodeClearedLogged: true };
+          await b.persistSession();
+        }
         await resumeCopyChildEditor();
         return;
       }
@@ -339,8 +526,8 @@
       throw new Error('Open a saved asset from the list before starting copy-from-existing automation.');
     }
 
-    if (isCopyDialogPhase(phase) || phase === 'asset_copy_post_ok_wait') {
-      if (!copyDialogHostPage()) {
+    if (isCopyDialogPhase(phase) || isCopyWaitPhase(phase)) {
+      if ((isCopyDialogPhase(phase) || phase === 'asset_copy_post_ok_wait' || phase === 'asset_copy_post_ok_click_wait') && !copyDialogHostPage()) {
         const child = await getCopyChildState(record);
         const onChild = child?.found ? 'Copy Settings run in the new copy window' : 'Waiting for the copy window to open';
         b.showActivity?.('Waiting', 'Copy Settings', onChild, { wait: true, meta: record.assetCode, tick: true });
@@ -354,30 +541,48 @@
 
     if (phase === 'asset_copy_click') {
       const sourceId = entityIdFromUrl();
+      const templateId = templateEntityId(auto) || sourceId;
+      if (templateId && sourceId !== templateId) {
+        b.showActivity?.('Navigating', 'Template window', `Expected template id=${templateId}`, {
+          wait: true,
+          meta: record.assetCode,
+          tick: true
+        });
+        location.href = assetEntityUrl(templateId);
+        return;
+      }
       const copyState = root.core.toolbar.toolbarCopyButtonState();
       b.addEvent('asset-copy-click-start', {
         assetCode: record.assetCode,
         sourceEntityId: sourceId,
+        copyTemplateEntityId: templateId,
         copyButtonFound: copyState.found,
-        copyButtonDisabled: copyState.disabled
+        copyButtonDisabled: copyState.disabled,
+        model: 'two-windows-one-popup'
       });
       const attempt = Math.max(1, Number(auto.copyClickAttempts) || 1);
       try {
-        await b.runtimeMessage({ type: 'ASSET_COPY_CYCLE_START', assetCode: record.assetCode, templateEntityId: sourceId });
+        await b.runtimeMessage({ type: 'ASSET_COPY_CYCLE_START', assetCode: record.assetCode, templateEntityId: templateId });
       } catch (_) {}
       await attemptToolbarCopy(record, auto, attempt);
+      const clickAt = Date.now();
+      b.addEvent('asset-copy-click-done', { assetCode: record.assetCode, attempt, waitMs: COPY_AFTER_COPY_CLICK_MS });
       b.state.session.auto = {
         ...auto,
-        phase: 'asset_copy_dialog_wait',
-        copySourceEntityId: sourceId,
-        copyDialogWaitStartedAt: Date.now(),
-        copyLastClickAt: Date.now(),
+        phase: 'asset_copy_post_click_wait',
+        copySourceEntityId: templateId,
+        copyTemplateEntityId: templateId,
+        copyPostClickWaitStartedAt: clickAt,
+        copyLastClickAt: clickAt,
         copyClickAttempts: attempt,
         copyEditorReady: false,
-        copyConfirmAt: 0
+        copyConfirmAt: 0,
+        copyFillReadyAt: 0,
+        copyAssetCodeClearedLogged: false,
+        copyAssetCodeWaitStartedAt: 0
       };
       await b.persistSession();
-      b.scheduleAuto(650);
+      b.scheduleAuto(400);
       return;
     }
 
@@ -467,18 +672,20 @@
             okClickMethod: auto.copyOkClickMethod || '',
             acceptAttempts
           });
-          b.showActivity?.('Confirmed', 'Copy Settings OK', 'CAFM accepted OK — waiting before fill', {
+          b.showActivity?.('Confirmed', 'Copy Settings OK', `CAFM accepted OK — ${COPY_AFTER_OK_CLICK_MS / 1000}s wait, then ${COPY_POST_OK_WAIT_MS / 1000}s refresh`, {
             wait: true,
             meta: record.assetCode,
             tick: true
           });
           b.state.session.auto = {
             ...auto,
-            phase: 'asset_copy_post_ok_wait',
-            copyConfirmAt: acceptedAt,
+            phase: 'asset_copy_post_ok_click_wait',
+            copyPostOkClickWaitStartedAt: acceptedAt,
             copyDialogOkClickedAt: clickedAt || acceptedAt,
             copyOkPendingVerify: false,
-            copyOkAcceptAttempts: 0
+            copyOkAcceptAttempts: 0,
+            copyConfirmAt: 0,
+            copyFillReadyAt: 0
           };
           await b.persistSession();
           await markCopyDialogOk(record, sourceId);
@@ -577,6 +784,9 @@
     resumeCopyChildEditor,
     expectCopyChildWindow,
     copyOkGateSatisfied,
-    COPY_POST_OK_WAIT_MS
+    COPY_POST_OK_WAIT_MS,
+    COPY_AFTER_COPY_CLICK_MS,
+    COPY_AFTER_OK_CLICK_MS,
+    COPY_AFTER_CYCLE_MS
   });
 })();
