@@ -21,15 +21,88 @@
   const MAX_COPY_CLICK_ATTEMPTS = 5;
   const COPY_POST_OK_WAIT_MS = 3000;
 
-  function findCopySettingsDialog() {
+  function copySettingsDialogRoot(doc, nearEl = null) {
+    if (!doc) return null;
+    if (nearEl) {
+      const fromNear = nearEl.closest?.('#ctl00_ctl00_confirmCopy_container')
+        || nearEl.closest?.('.feedback_popup_modalBoxContainer[id*="confirmCopy"]')
+        || nearEl.closest?.('.feedback_popup_modalBoxContainer');
+      if (fromNear) return fromNear;
+    }
+    try {
+      return doc.querySelector(COPY_DIALOG_SELECTORS.container)
+        || doc.querySelector('.feedback_popup_modalBoxContainer[id*="confirmCopy"]')
+        || doc.querySelector('#ctl00_ctl00_confirmCopy_contentPanel')?.closest?.('.feedback_popup_modalBoxContainer')
+        || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function findCopySettingsOkControl() {
     for (const doc of root.core.toolbar.sameOriginDocuments()) {
       try {
-        const el = doc.querySelector(COPY_DIALOG_SELECTORS.container)
-          || doc.querySelector('.feedback_popup_modalBoxContainer[id*="confirmCopy"]');
-        if (el && visible(el)) return el;
+        const selectors = [
+          COPY_DIALOG_SELECTORS.okButton,
+          'input.feedback_popup_okButton[id*="confirmCopy"]',
+          'input.feedback_popup_okButton[name*="confirmCopy"]',
+          'input[type="button"][name*="confirmCopy"][value="OK"]',
+          'input[type="button"][id*="confirmCopy"][value="OK"]'
+        ];
+        let ok = null;
+        for (const selector of selectors) {
+          ok = doc.querySelector(selector);
+          if (ok) break;
+        }
+        if (!ok) continue;
+        const dialog = copySettingsDialogRoot(doc, ok);
+        const okVisible = visible(ok);
+        const dialogVisible = dialog ? visible(dialog) : okVisible;
+        if (!okVisible && !dialogVisible) continue;
+        return { doc, dialog, ok };
       } catch (_) {}
     }
     return null;
+  }
+
+  function findCopySettingsDialog() {
+    const found = findCopySettingsOkControl();
+    return found?.dialog || null;
+  }
+
+  function invokeCopySettingsOkPostBack(ok, doc) {
+    if (!ok) return false;
+    const win = doc?.defaultView || window;
+    try {
+      if (typeof win.__doPostBack !== 'function') return false;
+      const onclick = ok.getAttribute('onclick') || '';
+      const match = onclick.match(/__doPostBack\s*\(\s*'([^']+)'/i);
+      const target = match?.[1] || ok.getAttribute('name') || '';
+      if (!target) return false;
+      win.__doPostBack(target, '');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function clickCopySettingsOk(control) {
+    if (!control?.ok) return { ok: false, reason: 'ok-not-found' };
+    const { ok, doc } = control;
+    try { ok.scrollIntoView?.({ block: 'center', inline: 'nearest' }); } catch (_) {}
+    let method = '';
+    if (invokeCopySettingsOkPostBack(ok, doc)) {
+      method = '__doPostBack';
+    } else if (root.core.toolbar.dispatchLegacySingleClick(ok, 'copy-settings-ok', 2500)) {
+      method = 'dispatchLegacySingleClick';
+    } else {
+      dispatchClick(ok, false, 'Copy Settings OK');
+      method = 'dispatchClick';
+    }
+    try {
+      if (typeof ok.click === 'function') ok.click();
+    } catch (_) {}
+    return { ok: true, method };
   }
 
   function copyOkGateSatisfied(auto) {
@@ -256,8 +329,8 @@
 
     if (phase === 'asset_copy_dialog_wait') {
       const started = Number(auto.copyDialogWaitStartedAt || Date.now());
-      const dialog = findCopySettingsDialog();
-      if (dialog) {
+      const dialogProbe = findCopySettingsOkControl();
+      if (dialogProbe?.ok) {
         b.state.session.auto = { ...auto, phase: 'asset_copy_dialog_confirm' };
         await b.persistSession();
         b.scheduleAuto(120);
@@ -292,30 +365,48 @@
     }
 
     if (phase === 'asset_copy_dialog_confirm') {
-      const dialog = findCopySettingsDialog();
-      if (!dialog) {
+      const control = findCopySettingsOkControl();
+      if (!control?.ok) {
+        if (auto.copyConfirmAt) {
+          b.state.session.auto = { ...auto, phase: 'asset_copy_post_ok_wait' };
+          await b.persistSession();
+          b.scheduleAuto(200);
+          return;
+        }
         b.state.session.auto = { ...auto, phase: 'asset_copy_dialog_wait', copyDialogWaitStartedAt: Date.now() };
         await b.persistSession();
         b.scheduleAuto(200);
         return;
       }
-      if (auto.copyDialogOkClickedAt) {
-        b.scheduleAuto(200);
-        return;
-      }
-      const ppmBox = dialog.querySelector(COPY_DIALOG_SELECTORS.ppmCheckbox)
-        || dialog.querySelector('input[type="checkbox"][id*="chkBoxPPMs"]');
+      const dialog = control.dialog || copySettingsDialogRoot(control.doc, control.ok);
+      const ppmBox = (dialog || control.doc).querySelector?.(COPY_DIALOG_SELECTORS.ppmCheckbox)
+        || control.doc.querySelector(COPY_DIALOG_SELECTORS.ppmCheckbox)
+        || (dialog || control.doc).querySelector?.('input[type="checkbox"][id*="chkBoxPPMs"]');
       if (ppmBox instanceof HTMLInputElement && !ppmBox.checked) {
         ppmBox.checked = true;
         for (const eventName of ['input', 'change', 'click']) {
           ppmBox.dispatchEvent(new Event(eventName, { bubbles: true }));
         }
       }
-      const ok = dialog.querySelector(COPY_DIALOG_SELECTORS.okButton)
-        || [...dialog.querySelectorAll('input[type="button"],button')].find((el) => normButton(el) === 'ok');
-      if (!ok) throw new Error('OK button was not found in the Copy Settings popup.');
       const sourceId = auto.copySourceEntityId || entityIdFromUrl();
+      b.showActivity?.('Confirming', 'Copy with PPMs', record.assetCode, {
+        wait: true,
+        meta: `Copy Settings → OK, then ${COPY_POST_OK_WAIT_MS / 1000}s wait`,
+        tick: true
+      });
+      const clickResult = clickCopySettingsOk(control);
       const confirmedAt = Date.now();
+      b.addEvent('asset-copy-dialog-confirm', {
+        assetCode: record.assetCode,
+        copyPpmsChecked: Boolean(ppmBox?.checked),
+        copyPostOkWaitMs: COPY_POST_OK_WAIT_MS,
+        okButtonId: control.ok.id || '',
+        okClickMethod: clickResult.method || '',
+        okClickOk: clickResult.ok
+      });
+      if (!clickResult.ok) {
+        throw new Error('Copy Settings OK button could not be clicked.');
+      }
       b.state.session.auto = {
         ...auto,
         phase: 'asset_copy_post_ok_wait',
@@ -323,20 +414,9 @@
         copyDialogOkClickedAt: confirmedAt
       };
       await b.persistSession();
-      b.addEvent('asset-copy-dialog-confirm', {
-        assetCode: record.assetCode,
-        copyPpmsChecked: Boolean(ppmBox?.checked),
-        copyPostOkWaitMs: COPY_POST_OK_WAIT_MS
-      });
-      b.showActivity?.('Confirming', 'Copy with PPMs', record.assetCode, {
-        wait: true,
-        meta: `Copy Settings → OK, then ${COPY_POST_OK_WAIT_MS / 1000}s wait`,
-        tick: true
-      });
-      dispatchClick(ok, false, 'Copy OK');
       await markCopyDialogOk(record, sourceId);
       await b.persistSession();
-      b.scheduleAuto(400);
+      b.scheduleAuto(450);
       return;
     }
 
@@ -345,14 +425,12 @@
     b.scheduleAuto(100);
   }
 
-  function normButton(el) {
-    return clean(el?.value || el?.textContent || '').toLowerCase();
-  }
-
   root.pages = root.pages || {};
   root.pages.assetCopy = Object.freeze({
     processAssetCopy,
     findCopySettingsDialog,
+    findCopySettingsOkControl,
+    clickCopySettingsOk,
     resumeCopyChildEditor,
     expectCopyChildWindow,
     copyOkGateSatisfied,
