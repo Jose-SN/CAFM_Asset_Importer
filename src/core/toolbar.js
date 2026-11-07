@@ -116,18 +116,128 @@ function findToolbarPrintButton() {
   return null;
 }
 
-function findToolbarCopyButton() {
-  if (!isSavedAssetPage()) return null;
+const ASSET_COPY_SELECTOR = 'a[title="Click to create a copy of this entity"][onclick*="Toolbar.Copy"]';
+
+function isToolbarControlDisabled(element) {
+  if (!element) return false;
+  if (element.hasAttribute('disabled')) return true;
+  if (String(element.getAttribute('aria-disabled') || '').toLowerCase() === 'true') return true;
+  if (element.classList?.contains('disabled') || element.classList?.contains('x-item-disabled')) return true;
+  try {
+    if (getComputedStyle(element).pointerEvents === 'none') return true;
+  } catch (_) {}
+  return false;
+}
+
+function findToolbarCopyAnchor() {
+  if (!isSavedAssetPage()) return { anchor: null, doc: null, icon: null };
   for (const doc of sameOriginDocuments()) {
     try {
-      const exactAnchor = doc.querySelector('a[title*="create a copy of this entity"][onclick*="Toolbar.Copy"], a[onclick*="Toolbar.Copy"][title*="copy"]');
-      if (exactAnchor && visible(exactAnchor) && !exactAnchor.getAttribute('disabled')) return exactAnchor;
+      let anchor = doc.querySelector(ASSET_COPY_SELECTOR)
+        || doc.querySelector('a[onclick*="Toolbar.Copy"][title*="copy"]');
       const copyIcon = doc.getElementById('ctl00_ctl00_ToolbarEx_Copy');
-      const anchor = copyIcon?.closest?.('a[onclick*="Toolbar.Copy"]');
-      if (anchor && visible(anchor) && !anchor.getAttribute('disabled')) return anchor;
+      if (!anchor && copyIcon) {
+        anchor = copyIcon.closest?.('a[onclick*="Toolbar.Copy"]')
+          || (copyIcon.parentElement?.matches?.('a') ? copyIcon.parentElement : null);
+      }
+      if (anchor && !isAssistantElement(anchor)) return { anchor, doc, icon: copyIcon };
     } catch (_) {}
   }
+  return { anchor: null, doc: null, icon: null };
+}
+
+function toolbarCopyButtonState(anchor = null) {
+  const found = anchor || findToolbarCopyAnchor().anchor;
+  if (!found) return { found: false, disabled: null, visible: false, title: '', onclick: '' };
+  return {
+    found: true,
+    disabled: isToolbarControlDisabled(found),
+    visible: visible(found),
+    title: found.getAttribute('title') || '',
+    onclick: found.getAttribute('onclick') || ''
+  };
+}
+
+function toolbarCopyCallable(doc = document) {
+  try {
+    const win = doc?.defaultView || window;
+    if (typeof win.Toolbar !== 'undefined' && typeof win.Toolbar.Copy === 'function') return win;
+  } catch (_) {}
+  try {
+    if (typeof Toolbar !== 'undefined' && typeof Toolbar.Copy === 'function') return window;
+  } catch (_) {}
   return null;
+}
+
+function findToolbarCopyButton() {
+  const { anchor } = findToolbarCopyAnchor();
+  if (!anchor || isToolbarControlDisabled(anchor)) return null;
+  return anchor;
+}
+
+function clickToolbarCopy(guardKey = 'asset-toolbar-copy') {
+  const { anchor, doc } = findToolbarCopyAnchor();
+  const state = toolbarCopyButtonState(anchor);
+  if (!anchor) {
+    const toolbarWin = toolbarCopyCallable(doc);
+    if (toolbarWin) {
+      try {
+        toolbarWin.Toolbar.Copy();
+        return { ok: true, method: 'Toolbar.Copy-no-anchor', pending: false, ...state };
+      } catch (error) {
+        return { ok: false, reason: 'copy-not-found', message: String(error?.message || error), ...state };
+      }
+    }
+    return { ok: false, reason: 'copy-not-found', message: 'Copy toolbar control was not found.', ...state };
+  }
+  if (state.disabled) {
+    return {
+      ok: false,
+      reason: 'copy-disabled',
+      message: 'CAFM Copy is disabled on this asset (toolbar shows Copy greyed out). Wait until the form is editable, or close other editors, then Resume.',
+      ...state
+    };
+  }
+  const toolbarWin = toolbarCopyCallable(doc);
+  const cooldownMs = 2500;
+  const now = Date.now();
+  const last = Number(C().state.legacyClickTimes?.[guardKey] || 0);
+  const withinCooldown = last && now - last < cooldownMs;
+
+  try { anchor.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); } catch (_) {}
+
+  let method = '';
+  let clickCalled = false;
+
+  if (visible(anchor) && !withinCooldown) {
+    dispatchLegacySingleClick(anchor, guardKey, cooldownMs);
+    clickCalled = true;
+    method = 'visible-anchor-click';
+  } else if (toolbarWin && !withinCooldown) {
+    try {
+      toolbarWin.Toolbar.Copy();
+      clickCalled = true;
+      method = 'Toolbar.Copy-direct';
+      if (!C().state.legacyClickTimes) C().state.legacyClickTimes = Object.create(null);
+      C().state.legacyClickTimes[guardKey] = now;
+    } catch (error) {
+      return { ok: false, reason: 'copy-invoke-failed', message: String(error?.message || error), ...state };
+    }
+  } else if (!withinCooldown) {
+    dispatchClick(anchor, false, 'Copy');
+    clickCalled = true;
+    method = 'hidden-anchor-click';
+  } else {
+    return { ok: false, reason: 'copy-cooldown', message: 'Copy was clicked recently; waiting for CAFM Copy Settings.', pending: true, ...state };
+  }
+
+  return {
+    ok: clickCalled,
+    method,
+    pending: false,
+    clickCalled,
+    ...state
+  };
 }
 
 function findToolbarCloseButton() {
@@ -641,6 +751,9 @@ function findAssetPpmNavLink() {
     sameOriginDocuments,
     elementFromLearnedFingerprint,
     findToolbarCopyButton,
+    findToolbarCopyAnchor,
+    toolbarCopyButtonState,
+    clickToolbarCopy,
     findToolbarCloseButton,
     findChangeAssetStatusButton,
     findChangeAssetStatusDialog,

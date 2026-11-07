@@ -170,7 +170,7 @@ function render() {
 
   const copyFromExisting = C().state.settings.copyFromExisting === true;
   const assetEntryPage = isAssetPage() && isNewEntityPage();
-  const copyStartPage = copyFromExisting && isSavedAssetPage();
+  const canStartAutomatic = copyFromExisting ? isSavedAssetPage() : assetEntryPage;
   for (const id of ['fill', 'saveCurrent', 'skip', 'prev', 'next', 'markSaved']) C().state.els[id].disabled = !loaded || !assetEntryPage;
   C().state.els.editExisting.disabled = !loaded || !savedAssetPage || !savedMatch;
   C().state.els.saveExisting.disabled = !loaded || !savedAssetPage || !savedMatch;
@@ -189,7 +189,7 @@ function render() {
     C().state.els.resumeRowInput.max = String(C().state.assets.length);
     C().state.els.resumeRowInput.value = String(C().state.session.index + 1);
   }
-  C().state.els.startAuto.disabled = !C().state.assets.length || Boolean(auto?.active) || !(assetEntryPage || copyStartPage);
+  C().state.els.startAuto.disabled = !C().state.assets.length || Boolean(auto?.active) || !canStartAutomatic;
   if (C().state.els.startPpmHere) C().state.els.startPpmHere.hidden = true;
   if (C().state.els.openPpmNew) C().state.els.openPpmNew.hidden = true;
   if (C().state.els.ppmQueuePreview) C().state.els.ppmQueuePreview.hidden = true;
@@ -555,11 +555,20 @@ function injectPanel() {
     if (enabled) {
       C().state.settings.useSaveAndNew = false;
       if (C().state.els.useSaveAndNew) C().state.els.useSaveAndNew.checked = false;
+    } else if (C().state.session.auto && !C().state.session.auto.active) {
+      C().state.session.auto = {
+        ...C().state.session.auto,
+        copyFromExisting: false,
+        skipPpmWorkflow: false,
+        copyEditorReady: false
+      };
     }
     await C().persistSession();
     render();
     if (enabled) {
       showToast('Copy mode on: open a template saved asset from the list, then Start automatic.', 'warn', 12000);
+    } else {
+      showToast('Standard mode: open Asset New Entity (id=-1), then Start automatic.', 'info', 8000);
     }
   });
   C().state.els.iterateBatch.addEventListener('change', async () => {

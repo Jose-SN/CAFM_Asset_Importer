@@ -3,7 +3,7 @@
 
   const root = globalThis.CAFMImporter;
   const { clean } = root.core.text;
-  const { wait, visible, dispatchClick, waitForDom } = root.core.dom;
+  const { visible, dispatchClick } = root.core.dom;
   const { isSavedAssetPage, isAssetCopyEditorPage, entityIdFromUrl } = root.core.pages;
   const $ = () => root.runtime.b;
 
@@ -13,16 +13,46 @@
     okButton: '#ctl00_ctl00_confirmCopy_ctl03'
   });
 
+  const MAX_COPY_CLICK_ATTEMPTS = 5;
+
   function findCopySettingsDialog() {
-    const container = document.querySelector(COPY_DIALOG_SELECTORS.container);
-    if (container && visible(container)) return container;
     for (const doc of root.core.toolbar.sameOriginDocuments()) {
       try {
-        const el = doc.querySelector(COPY_DIALOG_SELECTORS.container);
+        const el = doc.querySelector(COPY_DIALOG_SELECTORS.container)
+          || doc.querySelector('.feedback_popup_modalBoxContainer[id*="confirmCopy"]');
         if (el && visible(el)) return el;
       } catch (_) {}
     }
     return null;
+  }
+
+  function copyClickGuardKey(record, attempt) {
+    return `asset-copy-${clean(record?.assetCode || 'asset')}-${Number(attempt) || 0}`;
+  }
+
+  async function attemptToolbarCopy(record, auto, attempt = 1) {
+    const b = $();
+    const guardKey = copyClickGuardKey(record, attempt);
+    const click = root.core.toolbar.clickToolbarCopy(guardKey);
+    b.addEvent('asset-copy-click', {
+      assetCode: record.assetCode,
+      attempt,
+      ...click
+    });
+    if (!click.ok) {
+      if (click.reason === 'copy-disabled') {
+        b.showToast(click.message || 'CAFM Copy is disabled on this asset.', 'warn', 14000);
+        throw new Error(click.message || 'CAFM Copy toolbar button is disabled.');
+      }
+      if (click.reason === 'copy-cooldown') return { ok: false, pending: true, click };
+      throw new Error(click.message || 'CAFM Copy toolbar button was not found on this saved asset.');
+    }
+    b.showActivity?.('Clicking', 'Copy', record.assetCode, {
+      wait: true,
+      meta: `${click.method || 'toolbar'} · attempt ${attempt}`,
+      tick: true
+    });
+    return { ok: true, click };
   }
 
   async function processAssetCopy(record) {
@@ -74,36 +104,27 @@
     }
 
     if (phase === 'asset_copy_click') {
-      const copyBtn = root.core.toolbar.findToolbarCopyButton();
       const sourceId = entityIdFromUrl();
+      const copyState = root.core.toolbar.toolbarCopyButtonState();
       b.addEvent('asset-copy-click-start', {
         assetCode: record.assetCode,
         sourceEntityId: sourceId,
-        copyButtonFound: Boolean(copyBtn)
+        copyButtonFound: copyState.found,
+        copyButtonDisabled: copyState.disabled
       });
+      const attempt = Math.max(1, Number(auto.copyClickAttempts) || 1);
+      await attemptToolbarCopy(record, auto, attempt);
       b.state.session.auto = {
         ...auto,
         phase: 'asset_copy_dialog_wait',
         copySourceEntityId: sourceId,
         copyDialogWaitStartedAt: Date.now(),
+        copyLastClickAt: Date.now(),
+        copyClickAttempts: attempt,
         copyEditorReady: false
       };
       await b.persistSession();
-      let copyClicked = false;
-      if (copyBtn) {
-        dispatchClick(copyBtn, false, 'Copy');
-        copyClicked = true;
-      } else {
-        try {
-          if (typeof Toolbar !== 'undefined' && typeof Toolbar.Copy === 'function') {
-            Toolbar.Copy();
-            copyClicked = true;
-          }
-        } catch (_) {}
-      }
-      if (!copyClicked) throw new Error('CAFM Copy toolbar button was not found on this saved asset.');
-      b.showActivity?.('Clicking', 'Copy', record.assetCode, { wait: true, meta: `Template ${sourceId}`, tick: true });
-      b.scheduleAuto(500);
+      b.scheduleAuto(650);
       return;
     }
 
@@ -116,11 +137,30 @@
         b.scheduleAuto(120);
         return;
       }
+      const attempts = Number(auto.copyClickAttempts) || 1;
+      const sinceClick = Date.now() - Number(auto.copyLastClickAt || started);
+      if (sinceClick > 1400 && attempts < MAX_COPY_CLICK_ATTEMPTS) {
+        const nextAttempt = attempts + 1;
+        await attemptToolbarCopy(record, auto, nextAttempt);
+        b.state.session.auto = {
+          ...auto,
+          copyClickAttempts: nextAttempt,
+          copyLastClickAt: Date.now(),
+          copyDialogWaitStartedAt: started
+        };
+        await b.persistSession();
+        b.scheduleAuto(700);
+        return;
+      }
       const dialogBudgetMs = Math.max(5000, Number(b.state.settings.lookupTimeoutMs) || 20000);
       if (Date.now() - started > dialogBudgetMs) {
-        throw new Error('Copy Settings popup did not appear after clicking Copy.');
+        throw new Error('Copy Settings popup did not appear after clicking CAFM Copy. Check that Copy is enabled on the toolbar.');
       }
-      b.showActivity?.('Waiting', 'Copy Settings popup', 'Up to 5s for CAFM dialog', { wait: true, meta: record.assetCode, tick: true });
+      const copyState = root.core.toolbar.toolbarCopyButtonState();
+      const detail = copyState.disabled
+        ? 'Copy is disabled — enable it in CAFM, then Resume'
+        : `Attempt ${attempts}/${MAX_COPY_CLICK_ATTEMPTS} · waiting for Copy Settings`;
+      b.showActivity?.('Waiting', 'Copy Settings popup', detail, { wait: true, meta: record.assetCode, tick: true });
       b.scheduleAuto(350);
       return;
     }
@@ -161,7 +201,7 @@
       return;
     }
 
-    b.state.session.auto = { ...auto, phase: 'asset_copy_click', copyStartedAt: Date.now() };
+    b.state.session.auto = { ...auto, phase: 'asset_copy_click', copyStartedAt: Date.now(), copyClickAttempts: 0 };
     await b.persistSession();
     b.scheduleAuto(100);
   }

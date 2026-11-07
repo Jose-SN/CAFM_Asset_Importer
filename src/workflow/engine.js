@@ -110,9 +110,32 @@
     return $().state.settings.copyFromExisting === true;
   }
 
+  function copyWorkflowActive(auto) {
+    if (!copyFromExistingEnabled()) return false;
+    return Boolean(auto?.copyFromExisting) || isCopyWorkflowPhase(auto?.phase);
+  }
+
   function isCopyWorkflowPhase(phase) {
     const key = clean(phase || '');
     return key.startsWith('asset_copy_');
+  }
+
+  function clearCopyWorkflowFlags(auto) {
+    if (!auto) return auto;
+    if (copyFromExistingEnabled()) return auto;
+    const phase = clean(auto.phase || '');
+    const next = {
+      ...auto,
+      copyFromExisting: false,
+      skipPpmWorkflow: false,
+      copyEditorReady: false
+    };
+    if (isCopyWorkflowPhase(phase)) {
+      next.phase = 'fill';
+      next.fillPlanStep = 0;
+      next.fillPlanAssetCode = '';
+    }
+    return next;
   }
 
   async function startAutomatic() {
@@ -210,8 +233,14 @@
   async function runAutomatic() {
     const b = $();
     if (b.state.busy) return;
-    const auto = b.state.session.auto;
+    let auto = b.state.session.auto;
     if (!auto?.active) return;
+    const normalized = clearCopyWorkflowFlags(auto);
+    if (normalized !== auto) {
+      b.state.session.auto = normalized;
+      await b.persistSession();
+      auto = normalized;
+    }
     b.state.busy = true;
     try {
       const waitingPhase = WAITING_PHASES.has(clean(auto.phase || ''));
@@ -235,7 +264,7 @@
       const record = b.workflowRecord(auto);
       if (!record) throw new Error('No asset row is available for the active workflow.');
 
-      const copyMode = Boolean(auto.copyFromExisting || copyFromExistingEnabled());
+      const copyMode = copyWorkflowActive(auto);
 
       if (copyMode && auto.phase === 'asset_copy_wait_user') {
         if (isSavedAssetPage()) {

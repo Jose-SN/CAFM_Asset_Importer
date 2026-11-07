@@ -228,6 +228,7 @@
     if (issues.length) throw new Error(`Workbook row ${record.workbookRow}: ${issues.join('; ')}`);
     const copyDraft = Boolean(
       options.respectAutoPause
+      && b.state.settings.copyFromExisting === true
       && b.state.session.auto?.copyFromExisting
       && (b.state.session.auto?.copyEditorReady || isAssetCopyEditorPage())
     );
