@@ -20,6 +20,7 @@
     asset_copy_click: 'Click Copy on the template saved asset',
     asset_copy_dialog_wait: 'Wait for Copy Settings popup',
     asset_copy_dialog_confirm: 'Ensure Copy PPMs is checked, then OK',
+    asset_copy_post_ok_wait: 'Wait 3 seconds after Copy OK',
     asset_copy_wait_editor: 'Wait for the copied asset editor to load',
     asset_copy_wait_user: 'Open the next template saved asset from the list',
     ppm_open_list: 'Open PPM register for this asset',

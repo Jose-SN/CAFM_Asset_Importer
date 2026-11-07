@@ -6,7 +6,6 @@
   const { visible, dispatchClick } = root.core.dom;
   const {
     isSavedAssetPage,
-    isAssetCopyEditorPage,
     isAssetCopyChildEditorPage,
     copyOfFromUrl,
     entityIdFromUrl
@@ -20,6 +19,7 @@
   });
 
   const MAX_COPY_CLICK_ATTEMPTS = 5;
+  const COPY_POST_OK_WAIT_MS = 3000;
 
   function findCopySettingsDialog() {
     for (const doc of root.core.toolbar.sameOriginDocuments()) {
@@ -32,8 +32,27 @@
     return null;
   }
 
+  function copyOkGateSatisfied(auto) {
+    const at = Number(auto?.copyConfirmAt || 0);
+    if (!at) return false;
+    return Date.now() - at >= COPY_POST_OK_WAIT_MS;
+  }
+
   function copyClickGuardKey(record, attempt) {
     return `asset-copy-${clean(record?.assetCode || 'asset')}-${Number(attempt) || 0}`;
+  }
+
+  async function markCopyDialogOk(record, templateEntityId) {
+    const b = $();
+    try {
+      await b.runtimeMessage({
+        type: 'ASSET_COPY_DIALOG_OK',
+        assetCode: record.assetCode,
+        templateEntityId: clean(templateEntityId || '')
+      });
+    } catch (error) {
+      b.addEvent('asset-copy-dialog-ok-message-error', { message: String(error?.message || error) });
+    }
   }
 
   async function expectCopyChildWindow(record, templateEntityId) {
@@ -64,17 +83,19 @@
     const auto = b.state.session.auto || {};
     if (!auto.active || !auto.copyFromExisting) return false;
     if (!isAssetCopyChildEditorPage()) return false;
+    if (!copyOkGateSatisfied(auto)) return false;
     const phase = clean(auto.phase || '');
     if (auto.copyEditorReady && phase === 'filling') {
       b.scheduleAuto(100);
       return true;
     }
-    if (!['asset_copy_wait_editor', 'asset_copy_dialog_wait', 'asset_copy_dialog_confirm'].includes(phase)) return false;
+    if (phase !== 'asset_copy_wait_editor') return false;
     b.addEvent('asset-copy-child-resume', {
       assetCode: auto.assetCode || payload.assetCode || '',
       copyOf: copyOfFromUrl(),
       phase: auto.phase,
-      childTabId: payload.childTabId ?? null
+      childTabId: payload.childTabId ?? null,
+      copyConfirmAt: auto.copyConfirmAt
     });
     b.state.session.auto = {
       ...auto,
@@ -123,7 +144,43 @@
     const auto = b.state.session.auto || {};
     const phase = clean(auto.phase || '');
 
+    if (phase === 'asset_copy_post_ok_wait') {
+      const confirmedAt = Number(auto.copyConfirmAt || 0);
+      if (!confirmedAt) {
+        b.state.session.auto = { ...auto, phase: 'asset_copy_dialog_wait', copyDialogWaitStartedAt: Date.now() };
+        await b.persistSession();
+        b.scheduleAuto(200);
+        return;
+      }
+      const remaining = COPY_POST_OK_WAIT_MS - (Date.now() - confirmedAt);
+      if (remaining > 0) {
+        b.showActivity?.(
+          'Waiting',
+          'After Copy OK',
+          `${Math.ceil(remaining / 1000)}s before fill in the new asset window`,
+          { wait: true, meta: record.assetCode, tick: true }
+        );
+        b.scheduleAuto(Math.min(remaining + 80, 1500));
+        return;
+      }
+      b.state.session.auto = {
+        ...auto,
+        phase: 'asset_copy_wait_editor',
+        copyEditorWaitStartedAt: Date.now()
+      };
+      await b.persistSession();
+      await expectCopyChildWindow(record, auto.copySourceEntityId || entityIdFromUrl());
+      b.scheduleAuto(250);
+      return;
+    }
+
     if (phase === 'asset_copy_wait_editor') {
+      if (!copyOkGateSatisfied(auto)) {
+        b.state.session.auto = { ...auto, phase: 'asset_copy_post_ok_wait' };
+        await b.persistSession();
+        b.scheduleAuto(100);
+        return;
+      }
       if (isAssetCopyChildEditorPage()) {
         await resumeCopyChildEditor();
         return;
@@ -131,7 +188,7 @@
       if (isSavedAssetPage()) {
         const started = Number(auto.copyEditorWaitStartedAt || Date.now());
         const child = await getCopyChildState(record);
-        if (child?.found) {
+        if (child?.found && child.copyOf) {
           b.showActivity?.('Waiting', 'Copied asset window', 'Fill + Save run in the new window', {
             wait: true,
             meta: record.assetCode,
@@ -153,12 +210,7 @@
         b.scheduleAuto(400);
         return;
       }
-      const started = Number(auto.copyEditorWaitStartedAt || Date.now());
-      if (isAssetCopyEditorPage() && !isSavedAssetPage()) {
-        await resumeCopyChildEditor();
-        return;
-      }
-      if (Date.now() - started > b.state.settings.saveTimeoutMs) {
+      if (Date.now() - Number(auto.copyEditorWaitStartedAt || Date.now()) > b.state.settings.saveTimeoutMs) {
         throw new Error('CAFM did not open the copied asset editor before the safety timeout.');
       }
       b.scheduleAuto(350);
@@ -183,7 +235,9 @@
         copyButtonDisabled: copyState.disabled
       });
       const attempt = Math.max(1, Number(auto.copyClickAttempts) || 1);
-      await expectCopyChildWindow(record, sourceId);
+      try {
+        await b.runtimeMessage({ type: 'ASSET_COPY_CYCLE_START', assetCode: record.assetCode, templateEntityId: sourceId });
+      } catch (_) {}
       await attemptToolbarCopy(record, auto, attempt);
       b.state.session.auto = {
         ...auto,
@@ -192,7 +246,8 @@
         copyDialogWaitStartedAt: Date.now(),
         copyLastClickAt: Date.now(),
         copyClickAttempts: attempt,
-        copyEditorReady: false
+        copyEditorReady: false,
+        copyConfirmAt: 0
       };
       await b.persistSession();
       b.scheduleAuto(650);
@@ -201,18 +256,6 @@
 
     if (phase === 'asset_copy_dialog_wait') {
       const started = Number(auto.copyDialogWaitStartedAt || Date.now());
-      const childEarly = await getCopyChildState(record);
-      if (childEarly?.found) {
-        b.state.session.auto = {
-          ...auto,
-          phase: 'asset_copy_wait_editor',
-          copyEditorWaitStartedAt: Date.now(),
-          copyChildTabId: childEarly.tabId
-        };
-        await b.persistSession();
-        b.scheduleAuto(200);
-        return;
-      }
       const dialog = findCopySettingsDialog();
       if (dialog) {
         b.state.session.auto = { ...auto, phase: 'asset_copy_dialog_confirm' };
@@ -256,6 +299,10 @@
         b.scheduleAuto(200);
         return;
       }
+      if (auto.copyDialogOkClickedAt) {
+        b.scheduleAuto(200);
+        return;
+      }
       const ppmBox = dialog.querySelector(COPY_DIALOG_SELECTORS.ppmCheckbox)
         || dialog.querySelector('input[type="checkbox"][id*="chkBoxPPMs"]');
       if (ppmBox instanceof HTMLInputElement && !ppmBox.checked) {
@@ -267,21 +314,29 @@
       const ok = dialog.querySelector(COPY_DIALOG_SELECTORS.okButton)
         || [...dialog.querySelectorAll('input[type="button"],button')].find((el) => normButton(el) === 'ok');
       if (!ok) throw new Error('OK button was not found in the Copy Settings popup.');
-      b.addEvent('asset-copy-dialog-confirm', {
-        assetCode: record.assetCode,
-        copyPpmsChecked: Boolean(ppmBox?.checked)
-      });
-      await expectCopyChildWindow(record, auto.copySourceEntityId || entityIdFromUrl());
+      const sourceId = auto.copySourceEntityId || entityIdFromUrl();
+      const confirmedAt = Date.now();
       b.state.session.auto = {
         ...auto,
-        phase: 'asset_copy_wait_editor',
-        copyEditorWaitStartedAt: Date.now(),
-        copyConfirmAt: Date.now()
+        phase: 'asset_copy_post_ok_wait',
+        copyConfirmAt: confirmedAt,
+        copyDialogOkClickedAt: confirmedAt
       };
       await b.persistSession();
-      b.showActivity?.('Confirming', 'Copy with PPMs', record.assetCode, { wait: true, meta: 'Copy Settings → OK', tick: true });
+      b.addEvent('asset-copy-dialog-confirm', {
+        assetCode: record.assetCode,
+        copyPpmsChecked: Boolean(ppmBox?.checked),
+        copyPostOkWaitMs: COPY_POST_OK_WAIT_MS
+      });
+      b.showActivity?.('Confirming', 'Copy with PPMs', record.assetCode, {
+        wait: true,
+        meta: `Copy Settings → OK, then ${COPY_POST_OK_WAIT_MS / 1000}s wait`,
+        tick: true
+      });
       dispatchClick(ok, false, 'Copy OK');
-      b.scheduleAuto(600);
+      await markCopyDialogOk(record, sourceId);
+      await b.persistSession();
+      b.scheduleAuto(400);
       return;
     }
 
@@ -299,6 +354,8 @@
     processAssetCopy,
     findCopySettingsDialog,
     resumeCopyChildEditor,
-    expectCopyChildWindow
+    expectCopyChildWindow,
+    copyOkGateSatisfied,
+    COPY_POST_OK_WAIT_MS
   });
 })();

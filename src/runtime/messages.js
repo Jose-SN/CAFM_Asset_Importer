@@ -70,6 +70,11 @@
       if (message.type === 'EE_ASSET_COPY_CHILD_READY') {
         storageGet([STORAGE.session]).then(async (stored) => {
           if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
+          const auto = state.session.auto || {};
+          if (!root.pages.assetCopy?.copyOkGateSatisfied?.(auto)) {
+            scheduleAuto(400);
+            return;
+          }
           try {
             await root.pages.assetCopy?.resumeCopyChildEditor?.(message);
           } catch (_) {

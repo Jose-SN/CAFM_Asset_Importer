@@ -23,6 +23,7 @@
     'asset_copy_click',
     'asset_copy_dialog_wait',
     'asset_copy_dialog_confirm',
+    'asset_copy_post_ok_wait',
     'asset_copy_wait_editor',
     'asset_copy_wait_user'
   ]);
@@ -35,6 +36,7 @@
     'navigate',
     'asset_save_and_close_wait',
     'asset_copy_dialog_wait',
+    'asset_copy_post_ok_wait',
     'asset_copy_wait_editor',
     'asset_copy_wait_user'
   ]);

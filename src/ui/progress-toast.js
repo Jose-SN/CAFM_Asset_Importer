@@ -31,6 +31,7 @@
     asset_copy_click: 'Click Copy on template asset',
     asset_copy_dialog_wait: 'Wait for Copy Settings popup',
     asset_copy_dialog_confirm: 'Copy PPMs → OK',
+    asset_copy_post_ok_wait: 'Wait after Copy OK (3s)',
     asset_copy_wait_editor: 'Wait for copied asset editor',
     asset_copy_wait_user: 'Open next template saved asset',
     run_complete_finalize: 'Finish run and return to asset list',

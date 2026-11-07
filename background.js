@@ -44,14 +44,20 @@ async function collectWorkflowTabIds(session) {
   const auto = session?.auto || {};
   const copyPhases = new Set([
     'asset_copy_click', 'asset_copy_dialog_wait', 'asset_copy_dialog_confirm',
-    'asset_copy_wait_editor', 'filling', 'saving', 'await_save',
+    'asset_copy_post_ok_wait', 'asset_copy_wait_editor', 'filling', 'saving', 'await_save',
     'asset_close_child', 'asset_close_wait',
     'activate_open', 'activate_select', 'activate_confirm', 'activate_wait', 'activate_wait_user'
   ]);
-  if (auto.copyFromExisting && copyPhases.has(String(auto.phase || ''))) {
+  const copyChildHoldPhases = new Set([
+    'asset_copy_click', 'asset_copy_dialog_wait', 'asset_copy_dialog_confirm', 'asset_copy_post_ok_wait'
+  ]);
+  const phase = String(auto.phase || '');
+  if (auto.copyFromExisting && copyPhases.has(phase)) {
     const track = await getAssetCopyTrack();
-    if (typeof track?.childTabId === 'number') tabIds.add(track.childTabId);
     if (typeof track?.parentTabId === 'number') tabIds.add(track.parentTabId);
+    if (!copyChildHoldPhases.has(phase) && typeof track?.childTabId === 'number') {
+      tabIds.add(track.childTabId);
+    }
   }
   if (String(auto.assetEntityId || '').trim()) {
     const tabs = await chrome.tabs.query({});
@@ -185,6 +191,14 @@ async function notifyAssetCopyChildReady(tabId, track) {
   } catch (_) {}
 }
 
+async function maybeNotifyCopyChildReady(track) {
+  if (!track?.copyDialogOkConfirmed) return false;
+  if (typeof track.childTabId !== 'number') return false;
+  if (!isAssetCopyChildUrl(track.childUrl || '')) return false;
+  await notifyAssetCopyChildReady(track.childTabId, track);
+  return true;
+}
+
 async function registerAssetCopyChildTab(tab) {
   if (!tab || typeof tab.id !== 'number') return false;
   const track = await getAssetCopyTrack();
@@ -192,12 +206,8 @@ async function registerAssetCopyChildTab(tab) {
   if (typeof track.parentTabId === 'number' && tab.id === track.parentTabId) return false;
 
   const url = String(tab.url || tab.pendingUrl || '');
-  const expectOpen = Number(track.expectChildUntil || 0) > Date.now();
-  const openerMatch = typeof tab.openerTabId === 'number' && tab.openerTabId === track.parentTabId;
   const copyChildUrl = url && isAssetCopyChildUrl(url);
-  const newWindowMatch = expectOpen && typeof track.parentWindowId === 'number' && tab.windowId !== track.parentWindowId
-    && ASSET_EDITOR_URL.test(url) && assetIdFromTabUrl(url) === '-1';
-  if (!copyChildUrl && !openerMatch && !newWindowMatch) return false;
+  if (!copyChildUrl) return false;
 
   track.childTabId = tab.id;
   track.childWindowId = tab.windowId ?? null;
@@ -205,12 +215,13 @@ async function registerAssetCopyChildTab(tab) {
   track.copyOf = copyOfFromTabUrl(url) || track.copyOf || '';
   await saveAssetCopyTrack(track);
 
-  try {
-    await chrome.windows.update(tab.windowId, { focused: true });
-    await chrome.tabs.update(tab.id, { active: true });
-  } catch (_) {}
-
-  await notifyAssetCopyChildReady(tab.id, track);
+  if (track.copyDialogOkConfirmed) {
+    try {
+      await chrome.windows.update(tab.windowId, { focused: true });
+      await chrome.tabs.update(tab.id, { active: true });
+    } catch (_) {}
+    await maybeNotifyCopyChildReady(track);
+  }
   return true;
 }
 
@@ -1022,6 +1033,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'ASSET_COPY_CYCLE_START') {
+    const senderTab = sender.tab;
+    const assetCode = String(message.assetCode || '').trim();
+    const templateEntityId = String(message.templateEntityId || '').trim();
+    if (!senderTab || typeof senderTab.id !== 'number' || !assetCode) {
+      sendResponseSafe(sendResponse, { ok: false, reason: 'missing-tab-or-asset' });
+      return false;
+    }
+    (async () => {
+      await saveAssetCopyTrack({
+        assetCode,
+        templateEntityId,
+        parentTabId: senderTab.id,
+        parentWindowId: senderTab.windowId ?? null,
+        expectChildUntil: 0,
+        childTabId: null,
+        childUrl: '',
+        copyOf: '',
+        copyDialogOkConfirmed: false,
+        copyDialogOkAt: 0
+      });
+      sendResponseSafe(sendResponse, { ok: true });
+    })().catch((error) => sendResponseSafe(sendResponse, { ok: false, reason: String(error?.message || error) }));
+    return true;
+  }
+
   if (message.type === 'ASSET_EXPECT_COPY_CHILD') {
     const senderTab = sender.tab;
     const assetCode = String(message.assetCode || '').trim();
@@ -1032,18 +1069,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return false;
     }
     (async () => {
+      const existing = await getAssetCopyTrack();
       const track = {
         assetCode,
         templateEntityId,
         parentTabId: senderTab.id,
         parentWindowId: senderTab.windowId ?? null,
         expectChildUntil: Date.now() + expectMs,
-        childTabId: null,
-        childUrl: '',
-        copyOf: ''
+        childTabId: existing?.childTabId ?? null,
+        childUrl: existing?.childUrl || '',
+        copyOf: existing?.copyOf || '',
+        copyDialogOkConfirmed: Boolean(existing?.copyDialogOkConfirmed),
+        copyDialogOkAt: Number(existing?.copyDialogOkAt || 0)
       };
       await saveAssetCopyTrack(track);
       sendResponseSafe(sendResponse, { ok: true, expectChildUntil: track.expectChildUntil });
+    })().catch((error) => sendResponseSafe(sendResponse, { ok: false, reason: String(error?.message || error) }));
+    return true;
+  }
+
+  if (message.type === 'ASSET_COPY_DIALOG_OK') {
+    const assetCode = String(message.assetCode || '').trim();
+    (async () => {
+      const track = await getAssetCopyTrack();
+      if (!track || (assetCode && track.assetCode !== assetCode)) {
+        sendResponseSafe(sendResponse, { ok: false, reason: 'track-not-found' });
+        return;
+      }
+      track.copyDialogOkConfirmed = true;
+      track.copyDialogOkAt = Date.now();
+      await saveAssetCopyTrack(track);
+      await maybeNotifyCopyChildReady(track);
+      sendResponseSafe(sendResponse, { ok: true, childTabId: track.childTabId ?? null });
     })().catch((error) => sendResponseSafe(sendResponse, { ok: false, reason: String(error?.message || error) }));
     return true;
   }
@@ -1078,7 +1135,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         track.childUrl = tab.url || '';
         track.copyOf = copyOfFromTabUrl(tab.url);
         await saveAssetCopyTrack(track);
-        await notifyAssetCopyChildReady(tab.id, track);
+        if (track.copyDialogOkConfirmed) await maybeNotifyCopyChildReady(track);
         sendResponseSafe(sendResponse, {
           ok: true,
           found: true,
