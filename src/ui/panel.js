@@ -327,7 +327,11 @@ function injectPanel() {
       .guide-val { color:#e8eef3; word-break:break-word; }
       .guide-line.guide-now .guide-val { color:#9ed4ff; font-weight:600; }
       .guide-line.guide-next .guide-val { color:#b9efca; }
-      .toast { position:fixed; right:18px; bottom:18px; z-index:2147483647; min-width:420px; max-width:780px; width:max-content; padding:12px 16px; border-radius:9px; color:#fff; background:#26333e; box-shadow:0 10px 32px rgba(0,0,0,.36); display:none; font:13px/1.4 Arial,sans-serif; }
+      .toast { position:fixed; z-index:2147483647; min-width:320px; max-width:780px; width:max-content; padding:12px 16px; border-radius:9px; color:#fff; background:#26333e; box-shadow:0 10px 32px rgba(0,0,0,.36); display:none; font:13px/1.4 Arial,sans-serif; }
+      .toast-progress { right:18px; bottom:18px; min-width:420px; z-index:2147483646; }
+      .toast-alert { z-index:2147483647; max-width:min(520px, calc(100vw - 36px)); }
+      .toast-alert-left { left:18px; bottom:18px; right:auto; }
+      .toast-alert-right { right:18px; bottom:118px; left:auto; }
       .toast.show { display:block; }
       .toast.success { background:#1c5134; }
       .toast.warn { background:#6a5319; }
@@ -438,20 +442,29 @@ function injectPanel() {
         <div class="footer">Move this panel by dragging the header. Site and calculated/read-only fields are not overwritten.</div>
       </div>
     </div>
-    <div id="toast" class="toast">
+    <div id="toast" class="toast toast-progress">
       <div id="toastTitle" class="toast-title"></div>
       <div id="toastMeta" class="toast-meta" hidden></div>
       <div id="toastDetail" class="toast-detail" hidden></div>
     </div>
+    <div id="toastAlert" class="toast toast-alert">
+      <div id="toastAlertTitle" class="toast-title"></div>
+      <div id="toastAlertMeta" class="toast-meta" hidden></div>
+      <div id="toastAlertDetail" class="toast-detail" hidden></div>
+    </div>
   `;
 
-  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'copyFromExistingWrap', 'copyFromExisting', 'copyFromExistingWarn', 'clearProgressLog', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'lookupStepDebug', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
+  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'copyFromExistingWrap', 'copyFromExisting', 'copyFromExistingWarn', 'clearProgressLog', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'lookupStepDebug', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail', 'toastAlert', 'toastAlertTitle', 'toastAlertMeta', 'toastAlertDetail'];
   for (const id of ids) C().state.els[id] = shadow.getElementById(id);
   root.ui.progressToast.configureToastElements({
-    toast: C().state.els.toast,
-    toastTitle: C().state.els.toastTitle,
-    toastMeta: C().state.els.toastMeta,
-    toastDetail: C().state.els.toastDetail
+    progressToast: C().state.els.toast,
+    progressTitle: C().state.els.toastTitle,
+    progressMeta: C().state.els.toastMeta,
+    progressDetail: C().state.els.toastDetail,
+    alertToast: C().state.els.toastAlert,
+    alertTitle: C().state.els.toastAlertTitle,
+    alertMeta: C().state.els.toastAlertMeta,
+    alertDetail: C().state.els.toastAlertDetail
   });
   C().state.els.dragHandle = C().state.els.head;
   if (!isAssetPage()) C().state.els.panel.classList.add('ppm-workflow');

@@ -4,7 +4,7 @@
   const root = globalThis.CAFMImporter;
   const { clean } = root.core.text;
 
-  /** @type {null | { toast: HTMLElement, toastTitle: HTMLElement, toastMeta: HTMLElement, toastDetail: HTMLElement }} */
+  /** @type {null | { progress: object, alert: object }} */
   let els = null;
   let tickTimer = null;
   let waitStartedAt = 0;
@@ -87,7 +87,23 @@
   }
 
   function configureToastElements(elements) {
-    els = elements ? Object.freeze({ ...elements }) : null;
+    if (!elements) {
+      els = null;
+      return;
+    }
+    const progress = {
+      toast: elements.progressToast || elements.toast,
+      title: elements.progressTitle || elements.toastTitle,
+      meta: elements.progressMeta || elements.toastMeta,
+      detail: elements.progressDetail || elements.toastDetail
+    };
+    const alert = {
+      toast: elements.alertToast,
+      title: elements.alertTitle,
+      meta: elements.alertMeta,
+      detail: elements.alertDetail
+    };
+    els = Object.freeze({ progress, alert });
   }
 
   function stopTick() {
@@ -103,7 +119,8 @@
   }
 
   function paint(type = 'info') {
-    if (!els?.toast || !els.toastTitle) return;
+    const p = els?.progress;
+    if (!p?.toast || !p.title) return;
     const title = current
       ? `${current.verb}: ${current.target}`
       : '';
@@ -115,20 +132,28 @@
         ? `${detail} · waiting ${sec}s`
         : `Waiting for response · ${sec}s`;
     }
-    els.toastTitle.textContent = title;
-    if (els.toastMeta) {
-      els.toastMeta.textContent = meta;
-      els.toastMeta.hidden = !meta;
+    p.title.textContent = title;
+    if (p.meta) {
+      p.meta.textContent = meta;
+      p.meta.hidden = !meta;
     }
-    if (els.toastDetail) {
-      els.toastDetail.textContent = detail;
-      els.toastDetail.hidden = !detail;
+    if (p.detail) {
+      p.detail.textContent = detail;
+      p.detail.hidden = !detail;
     }
-    els.toast.className = `toast show ${type}${current?.wait ? ' progress' : ''}`;
+    p.toast.className = `toast toast-progress show ${type}${current?.wait ? ' progress' : ''}`;
   }
 
   function showActivity(verb, target, detail = '', options = {}) {
-    if (!els?.toast) return;
+    const type = clean(options.type || 'info');
+    if (type === 'error' || type === 'warn') {
+      const msg = detail
+        ? `${clean(verb || 'Notice')}: ${clean(target || '')} — ${clean(detail)}`
+        : `${clean(verb || 'Notice')}: ${clean(target || '')}`;
+      showToast(msg, type, Number(options.duration) || (type === 'error' ? 12000 : 9000));
+      if (type === 'error') return;
+    }
+    if (!els?.progress?.toast) return;
     const wait = options.wait !== false;
     waitStartedAt = Date.now();
     current = {
@@ -143,39 +168,47 @@
     if (wait && options.tick !== false) {
       tickTimer = setInterval(() => paint(options.type || 'info'), 1000);
     }
+    const progressEl = els.progress.toast;
     if (options.duration > 0) {
-      clearTimeout(els.toast._timer);
-      els.toast._timer = setTimeout(() => {
+      clearTimeout(progressEl._timer);
+      progressEl._timer = setTimeout(() => {
         if (current?.verb === verb && current?.target === clean(target || '')) {
           current = null;
           stopTick();
-          if (els.toast) els.toast.className = 'toast';
+          if (progressEl) progressEl.className = 'toast toast-progress';
         }
       }, options.duration);
     } else {
-      clearTimeout(els.toast._timer);
-      els.toast._timer = null;
+      clearTimeout(progressEl._timer);
+      progressEl._timer = null;
     }
   }
 
+  function alertPlacementClass(type) {
+    const key = clean(type || 'info');
+    if (key === 'error' || key === 'warn') return 'toast-alert-left';
+    return 'toast-alert-right';
+  }
+
   function showToast(message, type = 'info', duration = 4500) {
-    if (!els?.toast || !els.toastTitle) return;
-    stopTick();
-    current = null;
-    els.toastTitle.textContent = clean(message);
-    if (els.toastMeta) {
-      els.toastMeta.textContent = '';
-      els.toastMeta.hidden = true;
+    const a = els?.alert;
+    if (!a?.toast || !a.title) return;
+    a.title.textContent = clean(message);
+    if (a.meta) {
+      a.meta.textContent = '';
+      a.meta.hidden = true;
     }
-    if (els.toastDetail) {
-      els.toastDetail.textContent = '';
-      els.toastDetail.hidden = true;
+    if (a.detail) {
+      a.detail.textContent = '';
+      a.detail.hidden = true;
     }
-    els.toast.className = `toast show ${type}`;
-    clearTimeout(els.toast._timer);
-    els.toast._timer = null;
+    const placement = alertPlacementClass(type);
+    a.toast.className = `toast toast-alert show ${type} ${placement}`;
+    clearTimeout(a.toast._timer);
     if (duration > 0) {
-      els.toast._timer = setTimeout(() => { els.toast.className = 'toast'; }, duration);
+      a.toast._timer = setTimeout(() => {
+        a.toast.className = 'toast toast-alert';
+      }, duration);
     }
   }
 
