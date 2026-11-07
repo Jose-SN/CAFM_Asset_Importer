@@ -92,4 +92,6 @@ Before live CAFM testing, run `powershell -File tools/dev.ps1` (or the individua
 
 **Versioning:** Bump only `manifest.json` `"version"`, then run `node tools/sync-version-from-manifest.js` (or `tools/dev.ps1`, which runs sync first). That updates `src/core/constants.js`, `VERSION.txt`, extension name/title, `popup.html`, and `log.json` template.
 
+**Repo `log.json`:** The extension does not write this file. To drop a large saved diagnostic copy from the project, run `node tools/clear-log-json.js` (`{}`) or `node tools/clear-log-json.js --delete`. Clear panel actions only reset in-browser events.
+
 **Extension updates:** When `manifest.json` version changes, install/update clears `chrome.storage.local`, `chrome.storage.session`, IndexedDB workbook cache, background tab/orchestrator state, and page `localStorage` / `sessionStorage` on CAFM tabs, then resets in-memory importer state. Reload the workbook after updating.
