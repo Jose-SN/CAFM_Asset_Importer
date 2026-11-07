@@ -27,6 +27,7 @@
     'asset_copy_post_ok_click_wait',
     'asset_copy_post_ok_wait',
     'asset_copy_wait_editor',
+    'asset_copy_post_active_wait',
     'asset_copy_post_cycle_wait',
     'asset_copy_wait_user'
   ]);
@@ -43,6 +44,7 @@
     'asset_copy_post_ok_click_wait',
     'asset_copy_post_ok_wait',
     'asset_copy_wait_editor',
+    'asset_copy_post_active_wait',
     'asset_copy_post_cycle_wait',
     'asset_copy_wait_user'
   ]);

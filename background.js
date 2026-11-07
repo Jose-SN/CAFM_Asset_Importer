@@ -44,7 +44,7 @@ async function collectWorkflowTabIds(session) {
   const auto = session?.auto || {};
   const copyPhases = new Set([
     'asset_copy_click', 'asset_copy_post_click_wait', 'asset_copy_dialog_wait', 'asset_copy_dialog_confirm',
-    'asset_copy_post_ok_click_wait', 'asset_copy_post_ok_wait', 'asset_copy_wait_editor', 'asset_copy_post_cycle_wait',
+    'asset_copy_post_ok_click_wait', 'asset_copy_post_ok_wait', 'asset_copy_wait_editor', 'asset_copy_post_active_wait', 'asset_copy_post_cycle_wait',
     'filling', 'saving', 'await_save',
     'asset_close_child', 'asset_close_wait',
     'activate_open', 'activate_select', 'activate_confirm', 'activate_wait', 'activate_wait_user'

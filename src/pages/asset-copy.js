@@ -27,8 +27,10 @@
   const COPY_AFTER_OK_CLICK_MS = 5000;
   const COPY_POST_OK_WAIT_MS = 0;
   const COPY_PPM_CHECKBOX_BEFORE_OK_MS = 3000;
-  /** Pause on template after child save+ACTIVE before next Copy (let template show unsaved / settle). */
-  const COPY_AFTER_CYCLE_MS = 10000;
+  /** Wait on child window after ACTIVE before focusing template for next Copy. */
+  const COPY_AFTER_ACTIVE_MS = 5000;
+  /** Optional extra pause on template before Copy (0 = go straight to Copy after active wait). */
+  const COPY_AFTER_CYCLE_MS = 0;
   const COPY_ASSET_CODE_CLEAR_MS = 15000;
 
   function isCopyDialogPhase(phase) {
@@ -39,6 +41,7 @@
     return phase === 'asset_copy_post_click_wait'
       || phase === 'asset_copy_post_ok_click_wait'
       || phase === 'asset_copy_post_ok_wait'
+      || phase === 'asset_copy_post_active_wait'
       || phase === 'asset_copy_post_cycle_wait';
   }
 
@@ -515,6 +518,48 @@
 
     if (await recoverCopyWorkflowAfterOk(b, auto, record, phase)) return;
 
+    if (phase === 'asset_copy_post_active_wait') {
+      const templateId = templateEntityId(auto);
+      const onChildSaved = isSavedAssetPage() && (!templateId || entityIdFromUrl() !== templateId);
+      if (!onChildSaved) {
+        b.scheduleAuto(450);
+        return;
+      }
+      const started = Number(auto.copyPostActiveWaitStartedAt || Date.now());
+      const remaining = showTimedCopyWait(
+        b,
+        record,
+        'Waiting',
+        'Copy child window',
+        started,
+        COPY_AFTER_ACTIVE_MS,
+        'after ACTIVE — keep window open, no Close',
+        'asset-copy-post-active-wait'
+      );
+      if (remaining > 0) {
+        b.scheduleAuto(Math.min(remaining + 80, 1500));
+        return;
+      }
+      announceCopyStep(
+        b,
+        record,
+        'Ready',
+        'Template Copy',
+        'Child left open — template window will click Copy next'
+      );
+      b.state.session.auto = {
+        ...auto,
+        phase: 'asset_copy_post_cycle_wait',
+        copyPostCycleWaitStartedAt: COPY_AFTER_CYCLE_MS > 0 ? Date.now() : 0
+      };
+      await b.persistSession();
+      try {
+        await b.runtimeMessage({ type: 'ASSET_COPY_FOCUS_TEMPLATE' });
+      } catch (_) {}
+      b.scheduleAuto(200);
+      return;
+    }
+
     if (phase === 'asset_copy_post_cycle_wait') {
       const templateId = templateEntityId(auto);
       if (!templateId) throw new Error('Copy template asset ID is missing. Re-open the template saved asset and Resume.');
@@ -531,20 +576,22 @@
         location.href = assetEntityUrl(templateId);
         return;
       }
-      const started = Number(auto.copyPostCycleWaitStartedAt || Date.now());
-      const remaining = showTimedCopyWait(
-        b,
-        record,
-        'Waiting',
-        'Template window',
-        started,
-        COPY_AFTER_CYCLE_MS,
-        'child saved+ACTIVE — wait for template, then toolbar Copy',
-        'asset-copy-post-cycle-wait'
-      );
-      if (remaining > 0) {
-        b.scheduleAuto(Math.min(remaining + 80, 1500));
-        return;
+      if (COPY_AFTER_CYCLE_MS > 0) {
+        const started = Number(auto.copyPostCycleWaitStartedAt || Date.now());
+        const remaining = showTimedCopyWait(
+          b,
+          record,
+          'Waiting',
+          'Template window',
+          started,
+          COPY_AFTER_CYCLE_MS,
+          'before toolbar Copy on template',
+          'asset-copy-post-cycle-wait'
+        );
+        if (remaining > 0) {
+          b.scheduleAuto(Math.min(remaining + 80, 1500));
+          return;
+        }
       }
       try {
         await b.runtimeMessage({ type: 'ASSET_COPY_FOCUS_TEMPLATE' });
@@ -993,6 +1040,7 @@
     COPY_AFTER_COPY_CLICK_MS,
     COPY_AFTER_OK_CLICK_MS,
     COPY_PPM_CHECKBOX_BEFORE_OK_MS,
+    COPY_AFTER_ACTIVE_MS,
     COPY_AFTER_CYCLE_MS
   });
 })();

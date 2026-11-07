@@ -14,21 +14,24 @@
     if (observed && norm(observed) !== norm(record.assetCode)) {
       throw new Error(`Saved asset page shows ${observed}, but ${record.assetCode} was expected.`);
     }
-    b.addEvent('asset-saved', { assetCode: record.assetCode, entityId });
+    const copyMode = root.workflow.engine.copyWorkflowActive(b.state.session.auto || {});
+    b.addEvent('asset-saved', { assetCode: record.assetCode, entityId, copyMode, copySkipEditorClose: copyMode });
     await b.setStatus(record, 'asset_saved', `${note}; activation pending`, {
       cafmEntityId: entityId,
       assetActivated: false,
       assetActivatedAt: '',
       assetStatusEvidence: b.currentAssetStatusText()
     });
+    const postSavePhase = copyMode ? 'activate_open' : 'asset_close_child';
     b.state.session.auto = {
       ...(b.state.session.auto || {}),
       active: true,
       mode,
-      phase: 'asset_close_child',
+      phase: postSavePhase,
       index: b.state.session.index,
       assetCode: record.assetCode,
       assetEntityId: entityId,
+      copySkipEditorClose: copyMode,
       activationStartedAt: 0,
       activationConfirmStartedAt: 0,
       error: ''
@@ -36,7 +39,12 @@
     b.state.session.manualAwaitSave = null;
     await b.persistSession();
     b.render();
-    b.showToast(`${record.assetCode} saved. Closing editor, then changing status to Active.`, 'success', 8000);
+    if (copyMode) {
+      b.showToast(`${record.assetCode} saved. Keep this window open → Change Asset Status → ACTIVE → OK.`, 'success', 9000);
+      b.addEvent('asset-copy-skip-editor-close', { assetCode: record.assetCode, entityId, reason: 'copy-mode-activate-in-place' });
+    } else {
+      b.showToast(`${record.assetCode} saved. Closing editor, then changing status to Active.`, 'success', 8000);
+    }
     b.scheduleAuto(250);
   }
 
@@ -112,7 +120,7 @@
     b.state.session.auto = {
       active: true,
       mode: auto.mode || 'automatic',
-      phase: copyMode ? 'asset_copy_post_cycle_wait' : (useSaveAndNew ? 'asset_save_and_new' : 'navigate'),
+      phase: copyMode ? 'asset_copy_post_active_wait' : (useSaveAndNew ? 'asset_save_and_new' : 'navigate'),
       index: next,
       assetCode: nextCode,
       previousAssetCode: record.assetCode,
@@ -128,7 +136,8 @@
       skipPpmWorkflow: copyMode,
       copyTemplateEntityId: templateId,
       copySourceEntityId: templateId || auto.copySourceEntityId || '',
-      copyPostCycleWaitStartedAt: copyMode ? Date.now() : 0
+      copyPostActiveWaitStartedAt: copyMode ? Date.now() : 0,
+      copyPostCycleWaitStartedAt: 0
     };
     await b.persistSession();
     b.render();
@@ -139,24 +148,25 @@
         templateEntityId: templateId,
         postCycleWaitMs: root.pages.assetCopy?.COPY_AFTER_CYCLE_MS || 5000
       });
-      const waitSec = Math.ceil((root.pages.assetCopy?.COPY_AFTER_CYCLE_MS || 10000) / 1000);
+      const activeWaitMs = root.pages.assetCopy?.COPY_AFTER_ACTIVE_MS || 5000;
       b.showToast(
-        `${record.assetCode} ACTIVE. Child saved — switch focus to template (unsaved template row). Wait ${waitSec}s, then toolbar Copy (not Create New). Next row: ${nextCode}.`,
+        `${record.assetCode} ACTIVE. Child window stays open — wait ${activeWaitMs / 1000}s here, then toolbar Copy on template for ${nextCode}.`,
         'success',
         16000
       );
       b.showActivity?.(
         'Waiting',
-        'Template window',
-        `${waitSec}s on template after ACTIVE — then toolbar Copy for ${nextCode}`,
+        'Copy child window',
+        `${activeWaitMs / 1000}s after ACTIVE (no close) — then template Copy`,
         { wait: true, meta: nextCode, tick: true }
       );
       b.addEvent('asset-copy-window-handoff', {
         completedOn: 'copy child window',
-        nextAction: 'template toolbar Copy',
+        nextAction: 'wait then template toolbar Copy',
         nextAssetCode: nextCode,
         templateEntityId: templateId,
-        waitMs: root.pages.assetCopy?.COPY_AFTER_CYCLE_MS || 10000
+        waitMs: activeWaitMs,
+        childWindowKeptOpen: true
       });
       b.scheduleAuto(400);
       return;

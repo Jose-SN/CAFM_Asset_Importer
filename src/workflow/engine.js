@@ -334,6 +334,31 @@
       }
 
       if (auto.phase === 'asset_close_child' || auto.phase === 'asset_close_wait') {
+        if (copyWorkflowActive(auto) || auto.copySkipEditorClose) {
+          b.addEvent('asset-copy-skip-close-redirect', {
+            assetCode: record.assetCode,
+            fromPhase: auto.phase,
+            toPhase: 'activate_open'
+          });
+          b.state.session.auto = {
+            ...auto,
+            phase: 'activate_open',
+            copySkipEditorClose: true,
+            assetCloseStartedAt: 0,
+            assetCloseRequestedAt: 0
+          };
+          await b.persistSession();
+          if (!isSavedAssetPage() && auto.assetEntityId) {
+            location.href = assetEntityUrl(auto.assetEntityId);
+            return;
+          }
+          if (isSavedAssetPage()) {
+            await root.pages.assetSaved.processActivationPage(record);
+            return;
+          }
+          scheduleAuto(300);
+          return;
+        }
         if (isSavedAssetPage()) {
           await root.pages.assetSaved.processAssetCloseAfterSave(record);
           return;
