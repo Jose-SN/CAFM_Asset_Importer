@@ -210,15 +210,52 @@ async function markSavedAndNext(note = 'Confirmed saved') {
   C().render();
 }
 
+async function clearImporterLogAndAuto() {
+  if (!confirm('Clear automatic import state and diagnostic log (events)? Your loaded workbook and row statuses stay in place.')) return;
+  C().state.session.events = [];
+  C().state.session.auto = null;
+  C().state.session.manualAwaitSave = null;
+  C().state.session.currentLookupEvidence = [];
+  C().state.lastLoggedPhase = '';
+  try {
+    await chrome.runtime.sendMessage({ type: 'ASSET_COPY_TRACK_CLEAR' });
+  } catch (_) {}
+  try {
+    await chrome.runtime.sendMessage({ type: 'AUTO_ORCHESTRATOR_STOP' });
+  } catch (_) {}
+  await persistSession();
+  C().render();
+  C().showToast?.('Importer progress and diagnostic log cleared.', 'info', 5000);
+}
+
 async function clearSession() {
-  if (!confirm('Clear the loaded workbook and importer progress? This does not delete anything from CAFM.')) return;
+  if (!confirm('Clear the loaded workbook, importer progress, and diagnostic log? This does not delete anything from CAFM.')) return;
   await clearLargeWorkbook();
   await storageRemove([STORAGE.session, STORAGE.pendingLookup]);
   C().state.assets = [];
   C().state.allAssets = [];
   C().state.ppms = [];
   C().state.cache = null;
-  C().state.session = { fileName: '', fileSize: 0, fileModified: 0, index: 0, statuses: {}, newEntityUrl: deriveNewEntityUrl(), auto: null, manualAwaitSave: null, currentLookupEvidence: [] };
+  C().state.session = {
+    fileName: '',
+    fileSize: 0,
+    fileModified: 0,
+    index: 0,
+    statuses: {},
+    newEntityUrl: deriveNewEntityUrl(),
+    auto: null,
+    manualAwaitSave: null,
+    currentLookupEvidence: [],
+    events: []
+  };
+  C().state.lastLoggedPhase = '';
+  try {
+    await chrome.runtime.sendMessage({ type: 'ASSET_COPY_TRACK_CLEAR' });
+  } catch (_) {}
+  try {
+    await chrome.runtime.sendMessage({ type: 'AUTO_ORCHESTRATOR_STOP' });
+  } catch (_) {}
+  await persistSession();
   C().render();
 }
 
@@ -381,6 +418,7 @@ function nextPendingIndex(start = C().state.session.index + 1) {
     skipCurrent,
     markSavedAndNext,
     clearSession,
+    clearImporterLogAndAuto,
     downloadLog,
     downloadDiagnostic,
     buildDiagnosticPayload,

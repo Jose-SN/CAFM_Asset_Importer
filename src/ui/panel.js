@@ -411,6 +411,9 @@ function injectPanel() {
             </span>
           </label>
           <div id="copyFromExistingWarn" class="copy-warn" hidden>This will not create from asset code alone. Each row copies an existing saved asset (with PPMs), then overwrites Asset Code, Building, Notes, Financial/Risk, Spatial, and other workbook fields before Save. Linked PPM Excel rows are skipped because PPMs are copied with the asset.</div>
+          <div class="buttons" style="margin:6px 0 10px">
+            <button id="clearProgressLog" class="action danger" type="button">Clear progress &amp; diagnostic log</button>
+          </div>
           <label class="option"><input id="iterateBatch" type="checkbox"> Enable multiple asset iterations</label>
           <label class="option">Asset iteration count <input id="iterationCount" type="number" min="1" max="10000" step="1" value="1" style="width:90px"></label>
           <div class="muted" style="margin:4px 0 8px">Unchecked = one complete asset cycle (save + ACTIVE), then stop. Checked = continue until the asset iteration count is reached.</div>
@@ -442,7 +445,7 @@ function injectPanel() {
     </div>
   `;
 
-  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'copyFromExistingWrap', 'copyFromExisting', 'copyFromExistingWarn', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'lookupStepDebug', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
+  const ids = ['panel', 'head', 'contextSub', 'workbookSection', 'currentSection', 'manualSection', 'autoSection', 'sessionSection', 'collapse', 'fileInput', 'fileName', 'total', 'saved', 'remaining', 'issues', 'preflightReport', 'row', 'queueNav', 'status', 'assetCode', 'validation', 'lookupSummary', 'fill', 'saveCurrent', 'editExisting', 'saveExisting', 'prev', 'next', 'skip', 'markSaved', 'startPpmHere', 'openPpmNew', 'ppmQueuePreview', 'startAuto', 'pauseAuto', 'resumeAuto', 'resumeRowWrap', 'resumeRowInput', 'resumeRowGo', 'autoState', 'workflowGuide', 'guideDone', 'guideNow', 'guideNext', 'progressTrack', 'progressFill', 'progressLabel', 'copyFromExistingWrap', 'copyFromExisting', 'copyFromExistingWarn', 'clearProgressLog', 'iterateBatch', 'iterationCount', 'includeNotes', 'includeSpatial', 'skipInvalid', 'lookupStepDebug', 'autoDownloadTimeline', 'autoContinueNext', 'useSaveAndNew', 'downloadLog', 'downloadDiagnostic', 'clear', 'toast', 'toastTitle', 'toastMeta', 'toastDetail'];
   for (const id of ids) C().state.els[id] = shadow.getElementById(id);
   root.ui.progressToast.configureToastElements({
     toast: C().state.els.toast,
@@ -516,6 +519,7 @@ function injectPanel() {
   });
   C().state.els.downloadLog.addEventListener('click', () => C().downloadLog());
   C().state.els.clear.addEventListener('click', () => C().clearSession());
+  C().state.els.clearProgressLog.addEventListener('click', () => C().clearImporterLogAndAuto());
   C().state.els.includeNotes.addEventListener('change', async () => {
     C().state.settings.includeNotes = C().state.els.includeNotes.checked;
     await C().persistSession();

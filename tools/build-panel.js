@@ -22,7 +22,7 @@ const CFG_CALLS = [
   'loadWorkbookFile', 'fillCurrentRecord', 'clickSaveTracked', 'fillExistingSavedAsset',
   'saveExistingAssetChanges', 'move', 'skipCurrent', 'markSavedAndNext',
   'startPpmForCurrentPage', 'clickPpmNewToolbar', 'startAutomatic', 'pauseAutomatic',
-  'downloadLog', 'downloadDiagnostic', 'clearSession'
+  'downloadLog', 'downloadDiagnostic', 'clearSession', 'clearImporterLogAndAuto'
 ];
 
 function extractFunction(code, name) {
@@ -104,7 +104,7 @@ for (const name of CFG_CALLS) {
 }
 
 // Event listener callbacks passed by reference.
-for (const name of ['skipCurrent', 'startAutomatic', 'pauseAutomatic', 'downloadLog', 'clearSession', 'downloadDiagnostic']) {
+for (const name of ['skipCurrent', 'startAutomatic', 'pauseAutomatic', 'downloadLog', 'clearSession', 'clearImporterLogAndAuto', 'downloadDiagnostic']) {
   transformed = transformed.replace(
     new RegExp(`addEventListener\\('click', ${name}\\)`, 'g'),
     `addEventListener('click', () => C().${name}())`

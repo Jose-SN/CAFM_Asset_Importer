@@ -32,6 +32,7 @@
     skipCurrent,
     markSavedAndNext,
     clearSession,
+    clearImporterLogAndAuto,
     downloadLog,
     downloadDiagnostic,
     downloadAssetTimeline,
@@ -217,7 +218,7 @@
       loadWorkbookFile, fillCurrentRecord, clickSaveTracked, fillExistingSavedAsset,
       saveExistingAssetChanges, move, jumpToIndex, skipCurrent, markSavedAndNext,
       persistSession, storageSet,
-      startAutomatic, pauseAutomatic, resumeAutomatic, downloadLog, clearSession, downloadDiagnostic
+      startAutomatic, pauseAutomatic, resumeAutomatic, downloadLog, clearSession, clearImporterLogAndAuto, downloadDiagnostic
     });
     injectPanel();
     render();

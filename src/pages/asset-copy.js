@@ -19,7 +19,16 @@
   });
 
   const MAX_COPY_CLICK_ATTEMPTS = 5;
+  const MAX_COPY_OK_ACCEPT_ATTEMPTS = 8;
   const COPY_POST_OK_WAIT_MS = 3000;
+
+  function isCopyDialogPhase(phase) {
+    return phase === 'asset_copy_dialog_wait' || phase === 'asset_copy_dialog_confirm';
+  }
+
+  function copyDialogHostPage() {
+    return isSavedAssetPage() || isAssetCopyChildEditorPage();
+  }
 
   function copySettingsDialogRoot(doc, nearEl = null) {
     if (!doc) return null;
@@ -39,27 +48,63 @@
     }
   }
 
+  function findCopySettingsOkElement(doc) {
+    if (!doc) return null;
+    const selectors = [
+      COPY_DIALOG_SELECTORS.okButton,
+      'input.feedback_popup_okButton[id*="confirmCopy"]',
+      'input.feedback_popup_okButton[name*="confirmCopy"]',
+      'input[type="button"][name="ctl00$ctl00$confirmCopy$ctl03"]',
+      'input[type="button"][name*="confirmCopy"][value="OK"]',
+      'input[type="button"][id*="confirmCopy"][value="OK"]',
+      'input.feedback_popup_okButton[value="OK"]'
+    ];
+    for (const selector of selectors) {
+      const el = doc.querySelector(selector);
+      if (el) return el;
+    }
+    try {
+      const named = doc.getElementsByName('ctl00$ctl00$confirmCopy$ctl03');
+      if (named?.length) return named[0];
+    } catch (_) {}
+    return null;
+  }
+
+  function copySettingsDialogOpen() {
+    const found = findCopySettingsOkControl();
+    if (found?.ok) return found;
+    for (const doc of root.core.toolbar.sameOriginDocuments()) {
+      try {
+        const container = doc.querySelector(COPY_DIALOG_SELECTORS.container)
+          || doc.querySelector('.feedback_popup_modalBoxContainer[id*="confirmCopy"]');
+        if (container && visible(container)) return { doc, dialog: container, ok: findCopySettingsOkElement(doc) };
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  function copySettingsDialogStillVisible() {
+    const open = copySettingsDialogOpen();
+    if (!open) return false;
+    if (open.ok) return true;
+    return Boolean(open.dialog && visible(open.dialog));
+  }
+
   function findCopySettingsOkControl() {
     for (const doc of root.core.toolbar.sameOriginDocuments()) {
       try {
-        const selectors = [
-          COPY_DIALOG_SELECTORS.okButton,
-          'input.feedback_popup_okButton[id*="confirmCopy"]',
-          'input.feedback_popup_okButton[name*="confirmCopy"]',
-          'input[type="button"][name*="confirmCopy"][value="OK"]',
-          'input[type="button"][id*="confirmCopy"][value="OK"]'
-        ];
-        let ok = null;
-        for (const selector of selectors) {
-          ok = doc.querySelector(selector);
-          if (ok) break;
-        }
+        const ok = findCopySettingsOkElement(doc);
         if (!ok) continue;
         const dialog = copySettingsDialogRoot(doc, ok);
         const okVisible = visible(ok);
-        const dialogVisible = dialog ? visible(dialog) : okVisible;
-        if (!okVisible && !dialogVisible) continue;
-        return { doc, dialog, ok };
+        const dialogVisible = dialog ? visible(dialog) : false;
+        const containerPresent = Boolean(
+          dialog
+          || doc.querySelector(COPY_DIALOG_SELECTORS.container)
+          || doc.querySelector('.feedback_popup_modalBoxContainer[id*="confirmCopy"]')
+        );
+        if (!okVisible && !dialogVisible && !containerPresent) continue;
+        return { doc, dialog, ok, identified: true, okButtonId: ok.id || '', okButtonName: ok.getAttribute?.('name') || '' };
       } catch (_) {}
     }
     return null;
@@ -290,10 +335,19 @@
       return;
     }
 
-    if (!isSavedAssetPage()) {
-      if (phase === 'asset_copy_click' || phase === 'asset_copy_dialog_wait' || phase === 'asset_copy_dialog_confirm') {
-        throw new Error('Open a saved asset from the list before starting copy-from-existing automation.');
+    if (phase === 'asset_copy_click' && !isSavedAssetPage()) {
+      throw new Error('Open a saved asset from the list before starting copy-from-existing automation.');
+    }
+
+    if (isCopyDialogPhase(phase) || phase === 'asset_copy_post_ok_wait') {
+      if (!copyDialogHostPage()) {
+        const child = await getCopyChildState(record);
+        const onChild = child?.found ? 'Copy Settings run in the new copy window' : 'Waiting for the copy window to open';
+        b.showActivity?.('Waiting', 'Copy Settings', onChild, { wait: true, meta: record.assetCode, tick: true });
+        b.scheduleAuto(400);
+        return;
       }
+    } else if (!isSavedAssetPage()) {
       b.scheduleAuto(300);
       return;
     }
@@ -329,16 +383,39 @@
 
     if (phase === 'asset_copy_dialog_wait') {
       const started = Number(auto.copyDialogWaitStartedAt || Date.now());
+      const onChild = isAssetCopyChildEditorPage();
       const dialogProbe = findCopySettingsOkControl();
+      const okIdentified = Boolean(dialogProbe?.ok);
+      const identifyPayload = {
+        assetCode: record.assetCode,
+        okIdentified,
+        okButtonId: dialogProbe?.okButtonId || dialogProbe?.ok?.id || '',
+        okButtonName: dialogProbe?.okButtonName || dialogProbe?.ok?.getAttribute?.('name') || '',
+        page: onChild ? 'copy-child' : 'template',
+        url: location.href
+      };
+      if (JSON.stringify(auto.copyOkIdentifyDebug || {}) !== JSON.stringify(identifyPayload)) {
+        b.addEvent(okIdentified ? 'asset-copy-ok-identified' : 'asset-copy-ok-not-identified', identifyPayload);
+        b.state.session.auto = { ...auto, copyOkIdentifyDebug: identifyPayload };
+        await b.persistSession();
+      }
+      b.showActivity?.(
+        okIdentified ? 'Ready' : 'Waiting',
+        'Copy Settings OK',
+        okIdentified
+          ? `OK button identified (${identifyPayload.okButtonId || identifyPayload.okButtonName || 'confirmCopy'})`
+          : `OK button not identified yet — check the ${onChild ? 'copy' : 'template'} window popup`,
+        { wait: !okIdentified, meta: record.assetCode, tick: !okIdentified }
+      );
       if (dialogProbe?.ok) {
-        b.state.session.auto = { ...auto, phase: 'asset_copy_dialog_confirm' };
+        b.state.session.auto = { ...auto, phase: 'asset_copy_dialog_confirm', copyOkPendingVerify: false };
         await b.persistSession();
         b.scheduleAuto(120);
         return;
       }
       const attempts = Number(auto.copyClickAttempts) || 1;
       const sinceClick = Date.now() - Number(auto.copyLastClickAt || started);
-      if (sinceClick > 1400 && attempts < MAX_COPY_CLICK_ATTEMPTS) {
+      if (isSavedAssetPage() && sinceClick > 1400 && attempts < MAX_COPY_CLICK_ATTEMPTS) {
         const nextAttempt = attempts + 1;
         await attemptToolbarCopy(record, auto, nextAttempt);
         b.state.session.auto = {
@@ -353,21 +430,84 @@
       }
       const dialogBudgetMs = Math.max(5000, Number(b.state.settings.lookupTimeoutMs) || 20000);
       if (Date.now() - started > dialogBudgetMs) {
-        throw new Error('Copy Settings popup did not appear after clicking CAFM Copy. Check that Copy is enabled on the toolbar.');
+        throw new Error(
+          okIdentified
+            ? 'Copy Settings OK was detected but could not be confirmed.'
+            : 'Copy Settings popup did not appear after clicking CAFM Copy. Check that Copy is enabled on the toolbar.'
+        );
       }
-      const copyState = root.core.toolbar.toolbarCopyButtonState();
+      const copyState = isSavedAssetPage() ? root.core.toolbar.toolbarCopyButtonState() : { disabled: false };
       const detail = copyState.disabled
         ? 'Copy is disabled — enable it in CAFM, then Resume'
-        : `Attempt ${attempts}/${MAX_COPY_CLICK_ATTEMPTS} · waiting for Copy Settings`;
+        : onChild
+          ? 'Popup should be in this copy window'
+          : `Attempt ${attempts}/${MAX_COPY_CLICK_ATTEMPTS} · waiting for Copy Settings in the copy window`;
       b.showActivity?.('Waiting', 'Copy Settings popup', detail, { wait: true, meta: record.assetCode, tick: true });
       b.scheduleAuto(350);
       return;
     }
 
     if (phase === 'asset_copy_dialog_confirm') {
+      const sourceId = auto.copySourceEntityId || copyOfFromUrl() || entityIdFromUrl();
+      const acceptAttempts = Number(auto.copyOkAcceptAttempts || 0);
+
+      if (auto.copyOkPendingVerify) {
+        const stillOpen = copySettingsDialogStillVisible();
+        const clickedAt = Number(auto.copyDialogOkClickedAt || 0);
+        const verifyMs = Date.now() - clickedAt;
+        if (!stillOpen && verifyMs < 120) {
+          b.scheduleAuto(180);
+          return;
+        }
+        if (!stillOpen && verifyMs >= 120) {
+          const acceptedAt = Date.now();
+          b.addEvent('asset-copy-ok-accepted', {
+            assetCode: record.assetCode,
+            verifyMs,
+            okClickMethod: auto.copyOkClickMethod || '',
+            acceptAttempts
+          });
+          b.showActivity?.('Confirmed', 'Copy Settings OK', 'CAFM accepted OK — waiting before fill', {
+            wait: true,
+            meta: record.assetCode,
+            tick: true
+          });
+          b.state.session.auto = {
+            ...auto,
+            phase: 'asset_copy_post_ok_wait',
+            copyConfirmAt: acceptedAt,
+            copyDialogOkClickedAt: clickedAt || acceptedAt,
+            copyOkPendingVerify: false,
+            copyOkAcceptAttempts: 0
+          };
+          await b.persistSession();
+          await markCopyDialogOk(record, sourceId);
+          await b.persistSession();
+          b.scheduleAuto(450);
+          return;
+        }
+        if (stillOpen) {
+          b.addEvent('asset-copy-ok-not-accepted', {
+            assetCode: record.assetCode,
+            verifyMs,
+            okClickMethod: auto.copyOkClickMethod || '',
+            acceptAttempts
+          });
+          b.showActivity?.(
+            'Warning',
+            'Copy Settings OK',
+            'Click triggered but CAFM did not accept OK — retrying',
+            { wait: true, meta: record.assetCode, tick: true, type: 'warn' }
+          );
+          if (acceptAttempts >= MAX_COPY_OK_ACCEPT_ATTEMPTS) {
+            throw new Error('Copy Settings OK was clicked but CAFM did not close the popup before the retry limit.');
+          }
+        }
+      }
+
       const control = findCopySettingsOkControl();
       if (!control?.ok) {
-        if (auto.copyConfirmAt) {
+        if (auto.copyConfirmAt && !auto.copyOkPendingVerify) {
           b.state.session.auto = { ...auto, phase: 'asset_copy_post_ok_wait' };
           await b.persistSession();
           b.scheduleAuto(200);
@@ -388,35 +528,38 @@
           ppmBox.dispatchEvent(new Event(eventName, { bubbles: true }));
         }
       }
-      const sourceId = auto.copySourceEntityId || entityIdFromUrl();
-      b.showActivity?.('Confirming', 'Copy with PPMs', record.assetCode, {
+      b.showActivity?.('Confirming', 'Copy Settings OK', 'OK button identified — clicking OK', {
         wait: true,
-        meta: `Copy Settings → OK, then ${COPY_POST_OK_WAIT_MS / 1000}s wait`,
+        meta: `${control.ok.id || control.ok.getAttribute?.('name') || 'confirmCopy'}`,
         tick: true
       });
       const clickResult = clickCopySettingsOk(control);
-      const confirmedAt = Date.now();
+      const clickedAt = Date.now();
+      const nextAcceptAttempts = acceptAttempts + 1;
       b.addEvent('asset-copy-dialog-confirm', {
         assetCode: record.assetCode,
         copyPpmsChecked: Boolean(ppmBox?.checked),
         copyPostOkWaitMs: COPY_POST_OK_WAIT_MS,
         okButtonId: control.ok.id || '',
+        okButtonName: control.ok.getAttribute?.('name') || '',
         okClickMethod: clickResult.method || '',
-        okClickOk: clickResult.ok
+        okClickOk: clickResult.ok,
+        acceptAttempt: nextAcceptAttempts
       });
       if (!clickResult.ok) {
         throw new Error('Copy Settings OK button could not be clicked.');
       }
       b.state.session.auto = {
         ...auto,
-        phase: 'asset_copy_post_ok_wait',
-        copyConfirmAt: confirmedAt,
-        copyDialogOkClickedAt: confirmedAt
+        phase: 'asset_copy_dialog_confirm',
+        copyOkPendingVerify: true,
+        copyDialogOkClickedAt: clickedAt,
+        copyOkClickMethod: clickResult.method || '',
+        copyOkAcceptAttempts: nextAcceptAttempts,
+        copyConfirmAt: 0
       };
       await b.persistSession();
-      await markCopyDialogOk(record, sourceId);
-      await b.persistSession();
-      b.scheduleAuto(450);
+      b.scheduleAuto(420);
       return;
     }
 

@@ -48,15 +48,18 @@ async function collectWorkflowTabIds(session) {
     'asset_close_child', 'asset_close_wait',
     'activate_open', 'activate_select', 'activate_confirm', 'activate_wait', 'activate_wait_user'
   ]);
-  const copyChildHoldPhases = new Set([
-    'asset_copy_click', 'asset_copy_dialog_wait', 'asset_copy_dialog_confirm', 'asset_copy_post_ok_wait'
+  const copyParentOnlyPhases = new Set(['asset_copy_click']);
+  const copyDialogPhases = new Set([
+    'asset_copy_dialog_wait', 'asset_copy_dialog_confirm', 'asset_copy_post_ok_wait'
   ]);
   const phase = String(auto.phase || '');
   if (auto.copyFromExisting && copyPhases.has(phase)) {
     const track = await getAssetCopyTrack();
     if (typeof track?.parentTabId === 'number') tabIds.add(track.parentTabId);
-    if (!copyChildHoldPhases.has(phase) && typeof track?.childTabId === 'number') {
-      tabIds.add(track.childTabId);
+    if (typeof track?.childTabId === 'number') {
+      if (copyDialogPhases.has(phase) || !copyParentOnlyPhases.has(phase)) {
+        tabIds.add(track.childTabId);
+      }
     }
   }
   if (String(auto.assetEntityId || '').trim()) {
@@ -1033,6 +1036,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'ASSET_COPY_TRACK_CLEAR') {
+    (async () => {
+      await saveAssetCopyTrack(null);
+      sendResponseSafe(sendResponse, { ok: true });
+    })().catch((error) => sendResponseSafe(sendResponse, { ok: false, reason: String(error?.message || error) }));
+    return true;
+  }
+
   if (message.type === 'ASSET_COPY_CYCLE_START') {
     const senderTab = sender.tab;
     const assetCode = String(message.assetCode || '').trim();
@@ -1047,7 +1058,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         templateEntityId,
         parentTabId: senderTab.id,
         parentWindowId: senderTab.windowId ?? null,
-        expectChildUntil: 0,
+        expectChildUntil: Date.now() + 120000,
         childTabId: null,
         childUrl: '',
         copyOf: '',
