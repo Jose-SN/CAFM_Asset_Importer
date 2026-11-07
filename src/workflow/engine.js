@@ -523,6 +523,11 @@
           return;
         }
         if (copyMode) {
+          const onChildFill = Boolean(root.pages.assetCopy?.isCopyFillEditorPage?.());
+          if (!onChildFill && (auto.phase === 'filling' || auto.phase === 'saving' || auto.phase === 'await_save')) {
+            scheduleAuto(800);
+            return;
+          }
           scheduleAuto(350);
           return;
         }

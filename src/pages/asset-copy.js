@@ -212,7 +212,59 @@
     return readyAt > 0 && Date.now() >= readyAt;
   }
 
-  async function beginCopyFillAfterOk(b, auto, record, sourceId, detail = 'OK accepted — waiting for Asset Code, then fill') {
+  async function kickCopyChildFill(b, record) {
+    try {
+      await b.runtimeMessage({
+        type: 'ASSET_COPY_KICK_FILL',
+        assetCode: record.assetCode,
+        workbookRow: record.workbookRow
+      });
+    } catch (_) {}
+  }
+
+  async function startCopyChildFill(b, auto, record) {
+    const readyAt = Date.now();
+    const rowIndex = Math.max(0, Number(auto.index ?? b.state.session.index) || 0);
+    b.state.session.index = rowIndex;
+    b.state.session.auto = {
+      ...auto,
+      active: true,
+      mode: auto.mode || 'automatic',
+      copyFromExisting: true,
+      phase: 'filling',
+      copyEditorReady: true,
+      copyEditorReadyAt: readyAt,
+      copyFillReadyAt: readyAt,
+      copyEditorWaitStartedAt: readyAt,
+      index: rowIndex,
+      assetCode: record.assetCode,
+      fillPlanStep: 0,
+      fillPlanAssetCode: '',
+      copyOkPendingVerify: false,
+      copyAssetCodeClearedLogged: true
+    };
+    await b.persistSession();
+    b.render();
+    b.addEvent('asset-copy-fill-start', {
+      assetCode: record.assetCode,
+      workbookRow: record.workbookRow,
+      onChild: isCopyFillEditorPage(),
+      url: location.href
+    });
+    b.showActivity?.(
+      'Filling',
+      record.assetCode,
+      'Workbook fields (same as New Entity — overwrites copied template)',
+      { wait: true, meta: `Row ${record.workbookRow}`, tick: true }
+    );
+    await kickCopyChildFill(b, record);
+    if (isCopyFillEditorPage()) {
+      b.scheduleAuto(50);
+    }
+    return true;
+  }
+
+  async function beginCopyFillAfterOk(b, auto, record, sourceId, detail = 'Copy editor ready — fill from workbook') {
     const readyAt = Date.now();
     b.addEvent('asset-copy-ready-for-fill', {
       assetCode: record.assetCode,
@@ -220,32 +272,32 @@
       copyAfterOkClickMs: COPY_AFTER_OK_CLICK_MS,
       skippedPostOkWaits: true
     });
-    b.showActivity?.('Ready', 'Copy child editor', detail, {
-      wait: true,
-      meta: record.assetCode,
-      tick: true
-    });
-    b.state.session.auto = {
+    await markCopyDialogOk(record, sourceId);
+    await expectCopyChildWindow(record, auto.copySourceEntityId || templateEntityId(auto));
+    const merged = {
       ...auto,
-      phase: 'asset_copy_wait_editor',
-      copyEditorWaitStartedAt: readyAt,
-      copyFillReadyAt: readyAt,
       copyOkPendingVerify: false,
       copyOkAcceptAttempts: 0,
       copyPostOkClickWaitStartedAt: 0,
       copyPostOkWaitStartedAt: 0,
       copyConfirmAt: readyAt,
+      copyFillReadyAt: readyAt
+    };
+    if (isCopyFillEditorPage()) {
+      b.showActivity?.('Ready', 'Copy child editor', detail, { wait: false, meta: record.assetCode, tick: false });
+      await startCopyChildFill(b, merged, record);
+      return;
+    }
+    b.showActivity?.('Ready', 'Copy child editor', detail, { wait: true, meta: record.assetCode, tick: true });
+    b.state.session.auto = {
+      ...merged,
+      phase: 'asset_copy_wait_editor',
+      copyEditorWaitStartedAt: readyAt,
       copyAssetCodeClearedLogged: false,
       copyAssetCodeWaitStartedAt: 0
     };
     await b.persistSession();
-    await markCopyDialogOk(record, sourceId);
-    await expectCopyChildWindow(record, auto.copySourceEntityId || templateEntityId(auto));
-    await b.persistSession();
-    if (isCopyFillEditorPage()) {
-      await resumeCopyChildEditor();
-      return;
-    }
+    await kickCopyChildFill(b, record);
     b.scheduleAuto(200);
   }
 
@@ -264,7 +316,11 @@
       if (!copyPhaseStuckAfterOk(phase, auto) && phase !== 'asset_copy_wait_editor') return false;
       if (phase === 'asset_copy_wait_editor' || phase === 'filling') {
         if (copyOkGateSatisfied(auto)) {
-          return resumeCopyChildEditor();
+          if (phase === 'filling' && auto.copyEditorReady) {
+            b.scheduleAuto(80);
+            return true;
+          }
+          return startCopyChildFill(b, auto, record);
         }
         return false;
       }
@@ -371,36 +427,30 @@
   async function resumeCopyChildEditor(payload = {}) {
     const b = $();
     const auto = b.state.session.auto || {};
+    const record = b.workflowRecord(auto);
+    if (!record) return false;
     if (!auto.active || !auto.copyFromExisting) return false;
     if (!isCopyFillEditorPage()) return false;
     if (!copyOkGateSatisfied(auto)) return false;
     const phase = clean(auto.phase || '');
     if (auto.copyEditorReady && phase === 'filling') {
-      b.scheduleAuto(100);
+      b.scheduleAuto(80);
+      await kickCopyChildFill(b, record);
       return true;
     }
-    if (phase !== 'asset_copy_wait_editor') return false;
+    if (phase !== 'asset_copy_wait_editor' && phase !== 'filling') return false;
     b.addEvent('asset-copy-child-resume', {
-      assetCode: auto.assetCode || payload.assetCode || '',
+      assetCode: record.assetCode,
       copyOf: copyOfFromUrl(),
       phase: auto.phase,
       childTabId: payload.childTabId ?? null,
       copyConfirmAt: auto.copyConfirmAt
     });
-    b.state.session.auto = {
+    await startCopyChildFill(b, {
       ...auto,
-      phase: 'filling',
-      copyEditorReady: true,
-      copyEditorReadyAt: Date.now(),
       copyChildTabId: payload.childTabId ?? auto.copyChildTabId ?? null,
-      copySourceEntityId: auto.copySourceEntityId || payload.templateEntityId || copyOfFromUrl(),
-      fillPlanStep: 0,
-      fillPlanAssetCode: ''
-    };
-    await b.persistSession();
-    b.render();
-    b.showToast(`Copied asset editor ready (CopyOf ${copyOfFromUrl() || '—'}). Filling workbook fields…`, 'info', 7000);
-    b.scheduleAuto(200);
+      copySourceEntityId: auto.copySourceEntityId || payload.templateEntityId || copyOfFromUrl()
+    }, record);
     return true;
   }
 
@@ -588,36 +638,17 @@
       }
       if (isCopyFillEditorPage()) {
         const codeState = copyChildAssetCodeFieldState();
-        const waitStarted = Number(auto.copyAssetCodeWaitStartedAt || 0);
-        if (!codeState.empty) {
-          const started = waitStarted || Date.now();
-          if (!waitStarted) {
-            b.state.session.auto = { ...auto, copyAssetCodeWaitStartedAt: started };
-            await b.persistSession();
-          }
-          b.addEvent('asset-copy-asset-code-wait', { observed: codeState.observed, assetCode: record.assetCode });
-          b.showActivity?.(
-            'Waiting',
-            'Asset Code empty',
-            `Field still shows “${codeState.observed}” — waiting for copy refresh`,
-            { wait: true, meta: record.assetCode, tick: true }
-          );
-          if (Date.now() - started < COPY_ASSET_CODE_CLEAR_MS) {
-            b.scheduleAuto(400);
-            return;
-          }
-          b.addEvent('asset-copy-asset-code-timeout', { observed: codeState.observed, assetCode: record.assetCode });
-        } else if (!auto.copyAssetCodeClearedLogged) {
-          b.addEvent('asset-copy-asset-code-cleared', { assetCode: record.assetCode });
-          b.showActivity?.('Ready', 'Asset Code', 'Field is empty — filling workbook details', {
-            wait: false,
-            meta: record.assetCode,
-            tick: false
-          });
-          b.state.session.auto = { ...auto, copyAssetCodeClearedLogged: true };
+        b.addEvent('asset-copy-asset-code-cleared', {
+          assetCode: record.assetCode,
+          observed: codeState.observed || '',
+          fillOverwrites: true
+        });
+        if (!copyOkGateSatisfied(auto)) {
+          b.state.session.auto = { ...auto, copyFillReadyAt: Date.now() };
           await b.persistSession();
+          auto = b.state.session.auto || auto;
         }
-        await resumeCopyChildEditor();
+        await startCopyChildFill(b, auto, record);
         return;
       }
       if (isSavedAssetPage()) {

@@ -1178,6 +1178,52 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'ASSET_COPY_KICK_FILL') {
+    const assetCode = String(message.assetCode || '').trim();
+    (async () => {
+      const track = await getAssetCopyTrack();
+      if (!track || (assetCode && track.assetCode !== assetCode)) {
+        sendResponseSafe(sendResponse, { ok: false, reason: 'track-not-found' });
+        return;
+      }
+      let childId = typeof track.childTabId === 'number' ? track.childTabId : null;
+      if (childId == null) {
+        const tabs = await chrome.tabs.query({});
+        for (const tab of tabs) {
+          if (typeof tab.id !== 'number') continue;
+          if (tab.id === track.parentTabId) continue;
+          if (!isAssetCopyChildUrl(tab.url, track)) continue;
+          childId = tab.id;
+          track.childTabId = tab.id;
+          track.childUrl = tab.url || '';
+          track.copyOf = copyOfFromTabUrl(tab.url) || track.copyOf || '';
+          await saveAssetCopyTrack(track);
+          break;
+        }
+      }
+      if (childId == null) {
+        sendResponseSafe(sendResponse, { ok: false, reason: 'child-tab-missing' });
+        return;
+      }
+      try {
+        const tab = await chrome.tabs.get(childId);
+        if (typeof tab.windowId === 'number') {
+          try { await chrome.windows.update(tab.windowId, { focused: true }); } catch (_) {}
+        }
+        await chrome.tabs.update(childId, { active: true });
+      } catch (_) {}
+      try {
+        await chrome.tabs.sendMessage(childId, {
+          type: 'RUN_AUTO_STEP',
+          phase: 'filling',
+          source: 'copy-kick-fill'
+        });
+      } catch (_) {}
+      sendResponseSafe(sendResponse, { ok: true, childTabId: childId });
+    })().catch((error) => sendResponseSafe(sendResponse, { ok: false, reason: String(error?.message || error) }));
+    return true;
+  }
+
   if (message.type === 'ASSET_COPY_CHILD_STATE') {
     const assetCode = String(message.assetCode || '').trim();
     (async () => {
