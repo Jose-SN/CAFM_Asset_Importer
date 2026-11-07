@@ -585,7 +585,10 @@ function injectPanel() {
     await C().persistSession();
     render();
   });
-  C().state.els.downloadDiagnostic.addEventListener('click', () => C().downloadDiagnostic());
+  C().state.els.downloadDiagnostic.addEventListener('click', async () => {
+    try { await C().downloadDiagnostic(); }
+    catch (error) { showToast(error.message || String(error), 'error', 12000); }
+  });
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
     if (changes[STORAGE.learnedStatus]) C().state.learnedStatus = changes[STORAGE.learnedStatus].newValue || null;

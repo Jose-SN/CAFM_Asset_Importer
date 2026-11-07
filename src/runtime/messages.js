@@ -20,6 +20,24 @@
         isAssetPage, assetEntityUrl, entityIdFromUrl, isSavedAssetPage, showToast
       } = C();
 
+      if (message.type === 'EE_IMPORTER_DIAGNOSTIC_CLEARED') {
+        const clearedAt = Number(message.eventsClearedAt || Date.now());
+        state.session.events = [];
+        state.session.eventsClearedAt = clearedAt;
+        state.lastLoggedPhase = '';
+        const scope = String(message.scope || 'progress');
+        if (scope === 'progress') {
+          state.session.auto = null;
+          state.session.manualAwaitSave = null;
+          state.session.currentLookupEvidence = [];
+          clearTimeout(state.autoTimer);
+          state.autoTimer = null;
+        }
+        render?.();
+        root.ui.progressToast.stopTick?.();
+        return;
+      }
+
       if (message.type === 'EE_EXTENSION_VERSION_RESET') {
         try { sessionStorage.clear(); localStorage.clear(); } catch (_) {}
         state.assets = [];

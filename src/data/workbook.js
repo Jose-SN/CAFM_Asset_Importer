@@ -32,6 +32,18 @@
   }
 
 async function persistSession() {
+  try {
+    const stored = await storageGet([STORAGE.session]);
+    const remote = stored[STORAGE.session];
+    const remoteCleared = Number(remote?.eventsClearedAt || 0);
+    const localCleared = Number(C().state.session.eventsClearedAt || 0);
+    const localEventCount = (C().state.session.events || []).length;
+    if (remoteCleared && remoteCleared >= localCleared && !remote?.events?.length && localEventCount > 0) {
+      C().state.session.events = [];
+      C().state.session.eventsClearedAt = remoteCleared;
+      if (remote.auto == null) C().state.session.auto = null;
+    }
+  } catch (_) {}
   const phase = clean(C().state.session.auto?.phase || '');
   if (phase && phase !== C().state.lastLoggedPhase) {
     C().state.lastLoggedPhase = phase;
@@ -210,22 +222,60 @@ async function markSavedAndNext(note = 'Confirmed saved') {
   C().render();
 }
 
+function runtimeClearDiagnostic(scope = 'progress') {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage({ type: 'CLEAR_IMPORTER_DIAGNOSTIC_LOG', scope }, (response) => {
+        resolve(response || { ok: false });
+      });
+    } catch (_) {
+      resolve({ ok: false });
+    }
+  });
+}
+
+function applyDiagnosticClearedLocally(eventsClearedAt, scope = 'progress') {
+  C().state.session.events = [];
+  C().state.session.eventsClearedAt = eventsClearedAt;
+  C().state.lastLoggedPhase = '';
+  if (scope === 'progress') {
+    C().state.session.auto = null;
+    C().state.session.manualAwaitSave = null;
+    C().state.session.currentLookupEvidence = [];
+    clearTimeout(C().state.autoTimer);
+    C().state.autoTimer = null;
+  }
+}
+
+async function refreshSessionEventsFromStorage() {
+  const stored = await storageGet([STORAGE.session]);
+  const remote = stored[STORAGE.session];
+  if (!remote) return 0;
+  const remoteEvents = Array.isArray(remote.events) ? remote.events : [];
+  C().state.session.events = remoteEvents;
+  if (remote.eventsClearedAt) C().state.session.eventsClearedAt = remote.eventsClearedAt;
+  if (remote.auto == null) C().state.session.auto = remote.auto;
+  return remoteEvents.length;
+}
+
 async function clearImporterLogAndAuto() {
   if (!confirm('Clear automatic import state and diagnostic log (events)? Your loaded workbook and row statuses stay in place.')) return;
-  C().state.session.events = [];
-  C().state.session.auto = null;
-  C().state.session.manualAwaitSave = null;
-  C().state.session.currentLookupEvidence = [];
-  C().state.lastLoggedPhase = '';
-  try {
-    await chrome.runtime.sendMessage({ type: 'ASSET_COPY_TRACK_CLEAR' });
-  } catch (_) {}
-  try {
-    await chrome.runtime.sendMessage({ type: 'AUTO_ORCHESTRATOR_STOP' });
-  } catch (_) {}
+  const cleared = await runtimeClearDiagnostic('progress');
+  if (!cleared?.ok) {
+    C().showToast?.('Could not clear diagnostic log in storage. Try again after reloading CAFM tabs.', 'error', 12000);
+    return;
+  }
+  applyDiagnosticClearedLocally(cleared.eventsClearedAt || Date.now(), 'progress');
   await persistSession();
+  const count = await refreshSessionEventsFromStorage();
   C().render();
-  C().showToast?.('Importer progress and diagnostic log cleared.', 'info', 5000);
+  C().showToast?.(
+    count === 0
+      ? 'Diagnostic log cleared (0 events). Download diagnostic JSON again for a fresh file. A saved project log.json on disk is not changed automatically.'
+      : `Diagnostic log may not have cleared fully (${count} events remain). Close other CAFM tabs and try again.`,
+    count === 0 ? 'info' : 'warn',
+    count === 0 ? 7000 : 12000
+  );
 }
 
 async function clearSession() {
@@ -249,12 +299,8 @@ async function clearSession() {
     events: []
   };
   C().state.lastLoggedPhase = '';
-  try {
-    await chrome.runtime.sendMessage({ type: 'ASSET_COPY_TRACK_CLEAR' });
-  } catch (_) {}
-  try {
-    await chrome.runtime.sendMessage({ type: 'AUTO_ORCHESTRATOR_STOP' });
-  } catch (_) {}
+  await runtimeClearDiagnostic('progress');
+  applyDiagnosticClearedLocally(Date.now(), 'progress');
   await persistSession();
   C().render();
 }
@@ -372,7 +418,8 @@ function downloadAssetTimeline(record, options = {}) {
   return fileName;
 }
 
-function downloadDiagnostic() {
+async function downloadDiagnostic() {
+  await refreshSessionEventsFromStorage();
   const record = C().workflowRecord(C().state.session.auto) || C().currentRecord();
   downloadAssetTimeline(record, { diagnostic: true });
 }

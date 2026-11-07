@@ -109,6 +109,41 @@ async function syncAutoOrchestrator() {
   return { active: true, ...result };
 }
 
+async function broadcastImporterDiagnosticCleared(payload) {
+  const tabs = await chrome.tabs.query({});
+  let notified = 0;
+  for (const tab of tabs) {
+    if (typeof tab.id !== 'number' || !isConceptUrl(tab.url)) continue;
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: 'EE_IMPORTER_DIAGNOSTIC_CLEARED', ...payload });
+      notified += 1;
+    } catch (_) {}
+  }
+  return notified;
+}
+
+async function clearImporterDiagnosticLog(scope = 'progress') {
+  const data = await chrome.storage.local.get(SESSION_KEY);
+  const session = { ...(data[SESSION_KEY] || {}) };
+  const eventsClearedAt = Date.now();
+  session.events = [];
+  session.eventsClearedAt = eventsClearedAt;
+  if (scope === 'progress') {
+    session.auto = null;
+    session.manualAwaitSave = null;
+    session.currentLookupEvidence = [];
+  }
+  await chrome.storage.local.set({ [SESSION_KEY]: session });
+  await saveAssetCopyTrack(null);
+  await chrome.alarms.clear(AUTO_ALARM);
+  const notified = await broadcastImporterDiagnosticCleared({
+    scope,
+    eventsClearedAt,
+    eventCount: 0
+  });
+  return { ok: true, eventsClearedAt, eventCount: 0, tabsNotified: notified };
+}
+
 async function handlePpmEditorUrlUpdate(tabId, url) {
   if (!isPpmEditorUrl(url)) return;
   const ppmEntityId = assetIdFromTabUrl(url);
@@ -724,6 +759,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     Promise.resolve(navigator.storage?.persist?.())
       .then((persisted) => sendResponseSafe(sendResponse, { ok: true, persisted: Boolean(persisted) }))
       .catch(() => sendResponseSafe(sendResponse, { ok: true, persisted: false }));
+    return true;
+  }
+
+  if (message.type === 'CLEAR_IMPORTER_DIAGNOSTIC_LOG') {
+    const scope = String(message.scope || 'progress');
+    clearImporterDiagnosticLog(scope)
+      .then((info) => sendResponseSafe(sendResponse, info))
+      .catch((error) => sendResponseSafe(sendResponse, { ok: false, error: String(error?.message || error) }));
     return true;
   }
 
