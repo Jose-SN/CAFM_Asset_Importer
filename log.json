@@ -1,13 +1,15 @@
 {
   "generatedAt": "2026-11-07T00:00:00.000Z",
-  "extensionVersion": "8.0.76",
+  "extensionVersion": "8.0.77",
   "description": "Diagnostic template for copy-from-existing mode. Download diagnostic JSON from the panel after a run; events accumulate in chrome.storage until Clear progress & diagnostic log.",
   "copyWorkflow": {
     "model": "two-windows-one-popup",
     "windows": {
       "template": "Saved asset you open once — Copy toolbar runs here each cycle",
       "copyChild": "ViewFASSETItem.aspx?id=-1&CopyOf=… — Copy Settings popup, fill, save",
-      "popups": ["Copy Settings (confirmCopy) on copy child only"]
+      "popups": [
+        "Copy Settings (confirmCopy) on copy child only"
+      ]
     },
     "waitsMs": {
       "afterCopyClick": 5000,

@@ -38,9 +38,13 @@ function dispatchLegacySingleClick(target, guardKey = '', cooldownMs = 12000) {
   }
 }
 
-function observedAssetCode() {
+function observedAssetCodeFieldValue() {
   const found = nearestControl(['Asset Code']);
-  const value = clean(found?.control?.value || found?.control?.textContent || '');
+  return clean(found?.control?.value || found?.control?.textContent || '');
+}
+
+function observedAssetCode() {
+  const value = observedAssetCodeFieldValue();
   if (value) return value;
   const text = clean(document.body?.innerText || '');
   const match = text.match(/\bWCH-[A-Z0-9_\-/]+\b/i);
@@ -746,6 +750,7 @@ function findAssetPpmNavLink() {
     configure,
     dispatchLegacySingleClick,
     observedAssetCode,
+    observedAssetCodeFieldValue,
     currentAssetStatusText,
     assetIsActive,
     sameOriginDocuments,

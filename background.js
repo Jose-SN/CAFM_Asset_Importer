@@ -199,9 +199,15 @@ function copyOfFromTabUrl(url) {
   try { return String(new URL(String(url || '')).searchParams.get('CopyOf') || '').trim(); } catch (_) { return ''; }
 }
 
-function isAssetCopyChildUrl(url) {
+function isAssetCopyChildUrl(url, track = null) {
   if (!ASSET_EDITOR_URL.test(String(url || ''))) return false;
-  return assetIdFromTabUrl(url) === '-1' && Boolean(copyOfFromTabUrl(url));
+  const id = assetIdFromTabUrl(url);
+  const copyOf = copyOfFromTabUrl(url);
+  if (id === '-1' && copyOf) return true;
+  if (id === '-1' && track?.copyDialogOkConfirmed && Number(track.expectChildUntil || 0) > Date.now()) {
+    return true;
+  }
+  return false;
 }
 
 async function getAssetCopyTrack() {
@@ -234,7 +240,7 @@ async function notifyAssetCopyChildReady(tabId, track) {
 async function maybeNotifyCopyChildReady(track) {
   if (!track?.copyDialogOkConfirmed) return false;
   if (typeof track.childTabId !== 'number') return false;
-  if (!isAssetCopyChildUrl(track.childUrl || '')) return false;
+  if (!isAssetCopyChildUrl(track.childUrl || '', track)) return false;
   await notifyAssetCopyChildReady(track.childTabId, track);
   return true;
 }
@@ -243,11 +249,22 @@ async function registerAssetCopyChildTab(tab) {
   if (!tab || typeof tab.id !== 'number') return false;
   const track = await getAssetCopyTrack();
   if (!track || Number(track.expectChildUntil || 0) < Date.now()) return false;
-  if (typeof track.parentTabId === 'number' && tab.id === track.parentTabId) return false;
 
   const url = String(tab.url || tab.pendingUrl || '');
-  const copyChildUrl = url && isAssetCopyChildUrl(url);
+  const copyChildUrl = url && isAssetCopyChildUrl(url, track);
   if (!copyChildUrl) return false;
+
+  if (typeof track.parentTabId === 'number' && tab.id === track.parentTabId) {
+    track.childTabId = tab.id;
+    track.childWindowId = tab.windowId ?? null;
+    track.childUrl = url;
+    track.copyOf = copyOfFromTabUrl(url) || track.copyOf || '';
+    await saveAssetCopyTrack(track);
+    if (track.copyDialogOkConfirmed) {
+      await maybeNotifyCopyChildReady(track);
+    }
+    return true;
+  }
 
   track.childTabId = tab.id;
   track.childWindowId = tab.windowId ?? null;
@@ -1185,8 +1202,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const tabs = await chrome.tabs.query({});
       for (const tab of tabs) {
         if (typeof tab.id !== 'number') continue;
-        if (tab.id === track.parentTabId) continue;
-        if (!isAssetCopyChildUrl(tab.url)) continue;
+        if (!isAssetCopyChildUrl(tab.url, track)) continue;
         track.childTabId = tab.id;
         track.childUrl = tab.url || '';
         track.copyOf = copyOfFromTabUrl(tab.url);

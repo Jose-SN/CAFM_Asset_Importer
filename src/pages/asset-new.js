@@ -230,7 +230,7 @@
       options.respectAutoPause
       && b.state.settings.copyFromExisting === true
       && b.state.session.auto?.copyFromExisting
-      && (b.state.session.auto?.copyEditorReady || isAssetCopyChildEditorPage())
+      && (b.state.session.auto?.copyEditorReady || root.pages.assetCopy?.isCopyFillEditorPage?.() || isAssetCopyChildEditorPage())
     );
     if (!isNewEntityPage() && !copyDraft) throw new Error('Open the Asset New Entity page before filling a record.');
 

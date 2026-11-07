@@ -6,9 +6,6 @@
   const {
     isAssetPage,
     isNewEntityPage,
-    isAssetCopyEditorPage,
-    isAssetCopyChildEditorPage,
-    copyOfFromUrl,
     isAssetListPage,
     isSavedAssetPage,
     entityIdFromUrl,
@@ -511,7 +508,9 @@
         }
       }
 
-      const onCopyFillSurface = isAssetCopyChildEditorPage() || (isNewEntityPage() && Boolean(copyOfFromUrl()));
+      const onCopyFillSurface = copyMode
+        ? Boolean(root.pages.assetCopy?.isCopyFillEditorPage?.())
+        : isNewEntityPage();
       const canFillNewEntity = !copyMode && isNewEntityPage();
       const copyFillReady = copyMode && Boolean(auto.copyEditorReady) && onCopyFillSurface;
       if (!isAssetPage() || (!canFillNewEntity && !copyFillReady)) {

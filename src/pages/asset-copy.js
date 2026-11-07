@@ -7,6 +7,8 @@
   const {
     isSavedAssetPage,
     isAssetCopyChildEditorPage,
+    isAssetCopyEditorPage,
+    isAssetPage,
     copyOfFromUrl,
     entityIdFromUrl,
     assetEntityUrl
@@ -43,8 +45,21 @@
   }
 
   function copyChildAssetCodeFieldState() {
-    const code = clean(root.core.toolbar.observedAssetCode?.() || '');
+    const code = clean(root.core.toolbar.observedAssetCodeFieldValue?.() || '');
     return { empty: !code, observed: code };
+  }
+
+  function isCopyFillEditorPage() {
+    if (!isAssetPage()) return false;
+    if (isAssetCopyChildEditorPage()) return true;
+    if (isAssetCopyEditorPage()) return true;
+    if (isSavedAssetPage()) {
+      const code = copyChildAssetCodeFieldState().observed;
+      if (code) return false;
+      const bodyPrefix = clean(document.body?.innerText || '').slice(0, 2000);
+      return /new entity/i.test(bodyPrefix);
+    }
+    return false;
   }
 
   function showTimedCopyWait(b, record, verb, target, startedAt, totalMs, detail, eventType) {
@@ -240,7 +255,7 @@
     const b = $();
     const auto = b.state.session.auto || {};
     if (!auto.active || !auto.copyFromExisting) return false;
-    if (!isAssetCopyChildEditorPage()) return false;
+    if (!isCopyFillEditorPage()) return false;
     if (!copyOkGateSatisfied(auto)) return false;
     const phase = clean(auto.phase || '');
     if (auto.copyEditorReady && phase === 'filling') {
@@ -456,7 +471,7 @@
         b.scheduleAuto(100);
         return;
       }
-      if (isAssetCopyChildEditorPage()) {
+      if (isCopyFillEditorPage()) {
         const codeState = copyChildAssetCodeFieldState();
         const waitStarted = Number(auto.copyAssetCodeWaitStartedAt || 0);
         if (!codeState.empty) {
@@ -784,6 +799,7 @@
     resumeCopyChildEditor,
     expectCopyChildWindow,
     copyOkGateSatisfied,
+    isCopyFillEditorPage,
     COPY_POST_OK_WAIT_MS,
     COPY_AFTER_COPY_CLICK_MS,
     COPY_AFTER_OK_CLICK_MS,

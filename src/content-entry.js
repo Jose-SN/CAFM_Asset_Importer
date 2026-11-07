@@ -229,7 +229,7 @@
     if (isAssetPage() || isAssetListPage()) await runtimeMessage({ type: 'REGISTER_ASSET_TAB' });
     if (isAssetPage()) {
       await handlePostReloadSaveState();
-      if (state.session.auto?.active && CI.core.pages.isAssetCopyChildEditorPage()) {
+      if (state.session.auto?.active && CI.pages.assetCopy?.isCopyFillEditorPage?.()) {
         const auto = state.session.auto || {};
         if (CI.pages.assetCopy.copyOkGateSatisfied(auto)) {
           try {
