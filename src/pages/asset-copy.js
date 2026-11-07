@@ -22,11 +22,10 @@
   });
 
   const MAX_COPY_CLICK_ATTEMPTS = 5;
-  const MAX_COPY_OK_ACCEPT_ATTEMPTS = 8;
   const COPY_AFTER_COPY_CLICK_MS = 5000;
-  /** Legacy export (diagnostics); post-OK waits are skipped — fill starts after OK is accepted. */
-  const COPY_AFTER_OK_CLICK_MS = 3000;
-  const COPY_POST_OK_WAIT_MS = 3000;
+  /** After OK click: wait for page refresh, then fill (CAFM does not signal acceptance). */
+  const COPY_AFTER_OK_CLICK_MS = 5000;
+  const COPY_POST_OK_WAIT_MS = 0;
   const COPY_PPM_CHECKBOX_BEFORE_OK_MS = 3000;
   const COPY_AFTER_CYCLE_MS = 5000;
   const COPY_ASSET_CODE_CLEAR_MS = 15000;
@@ -144,7 +143,7 @@
   function copySettingsDialogStillVisible() {
     const open = copySettingsDialogOpen();
     if (!open) return false;
-    if (open.ok) return true;
+    if (open.ok && visible(open.ok)) return true;
     return Boolean(open.dialog && visible(open.dialog));
   }
 
@@ -161,7 +160,7 @@
           || doc.querySelector(COPY_DIALOG_SELECTORS.container)
           || doc.querySelector('.feedback_popup_modalBoxContainer[id*="confirmCopy"]')
         );
-        if (!okVisible && !dialogVisible && !containerPresent) continue;
+        if (!okVisible && !dialogVisible) continue;
         return { doc, dialog, ok, identified: true, okButtonId: ok.id || '', okButtonName: ok.getAttribute?.('name') || '' };
       } catch (_) {}
     }
@@ -243,7 +242,90 @@
     await markCopyDialogOk(record, sourceId);
     await expectCopyChildWindow(record, auto.copySourceEntityId || templateEntityId(auto));
     await b.persistSession();
+    if (isCopyFillEditorPage()) {
+      await resumeCopyChildEditor();
+      return;
+    }
     b.scheduleAuto(200);
+  }
+
+  function copyPhaseStuckAfterOk(phase, auto) {
+    return isCopyDialogPhase(phase)
+      || phase === 'asset_copy_post_ok_click_wait'
+      || phase === 'asset_copy_post_ok_wait'
+      || Boolean(auto?.copyOkPendingVerify)
+      || Number(auto?.copyDialogOkClickedAt || 0) > 0;
+  }
+
+  async function recoverCopyWorkflowAfterOk(b, auto, record, phase) {
+    if (!auto.active || !auto.copyFromExisting) return false;
+
+    if (isCopyFillEditorPage() && !copySettingsDialogStillVisible()) {
+      if (!copyPhaseStuckAfterOk(phase, auto) && phase !== 'asset_copy_wait_editor') return false;
+      if (phase === 'asset_copy_wait_editor' || phase === 'filling') {
+        if (copyOkGateSatisfied(auto)) {
+          return resumeCopyChildEditor();
+        }
+        return false;
+      }
+      const sourceId = auto.copySourceEntityId || copyOfFromUrl() || templateEntityId(auto);
+      b.addEvent('asset-copy-child-refresh-recover', {
+        assetCode: record.assetCode,
+        phase,
+        copyOf: copyOfFromUrl(),
+        url: location.href
+      });
+      await beginCopyFillAfterOk(
+        b,
+        { ...auto, copyOkPendingVerify: false },
+        record,
+        sourceId,
+        'Copy editor open — fill from workbook'
+      );
+      return true;
+    }
+
+    if (isSavedAssetPage() && isCopyDialogPhase(phase)) {
+      const child = await getCopyChildState(record);
+      if (!child?.found) return false;
+      const hasCopyOf = Boolean(clean(child.copyOf || copyOfFromUrl(child.url || '')));
+      if (!hasCopyOf) return false;
+      if (copyOkGateSatisfied(auto) && (phase === 'asset_copy_wait_editor' || phase === 'filling')) {
+        b.showActivity?.('Waiting', 'Copy child fill', 'Child fills this row from the workbook', {
+          wait: true,
+          meta: record.assetCode,
+          tick: true
+        });
+        b.scheduleAuto(450);
+        return true;
+      }
+      const sourceId = auto.copySourceEntityId || child.copyOf || templateEntityId(auto);
+      b.addEvent('asset-copy-parent-sync-child', {
+        assetCode: record.assetCode,
+        childTabId: child.tabId,
+        childUrl: child.url || '',
+        phase
+      });
+      await beginCopyFillAfterOk(
+        b,
+        { ...auto, copyOkPendingVerify: false, copyDialogOkClickedAt: auto.copyDialogOkClickedAt || Date.now() },
+        record,
+        sourceId,
+        'Copy child open — template waiting for fill on child'
+      );
+      return true;
+    }
+
+    return false;
+  }
+
+  async function recoverCopyChildAfterOkRefresh() {
+    const b = $();
+    const auto = b.state.session.auto || {};
+    if (!auto.active || !auto.copyFromExisting) return false;
+    const record = b.workflowRecord(auto);
+    if (!record) return false;
+    return recoverCopyWorkflowAfterOk(b, auto, record, clean(auto.phase || ''));
   }
 
   function copyClickGuardKey(record, attempt) {
@@ -352,6 +434,8 @@
     const auto = b.state.session.auto || {};
     const phase = clean(auto.phase || '');
 
+    if (await recoverCopyWorkflowAfterOk(b, auto, record, phase)) return;
+
     if (phase === 'asset_copy_post_cycle_wait') {
       const templateId = templateEntityId(auto);
       if (!templateId) throw new Error('Copy template asset ID is missing. Re-open the template saved asset and Resume.');
@@ -430,9 +514,63 @@
       return;
     }
 
-    if (phase === 'asset_copy_post_ok_click_wait' || phase === 'asset_copy_post_ok_wait') {
+    if (phase === 'asset_copy_post_ok_wait') {
       const sourceId = auto.copySourceEntityId || templateEntityId(auto);
-      await beginCopyFillAfterOk(b, auto, record, sourceId, 'Skipping post-OK timer (legacy phase) — fill when editor is ready');
+      await beginCopyFillAfterOk(b, auto, record, sourceId, 'Legacy phase — fill when editor is ready');
+      return;
+    }
+
+    if (phase === 'asset_copy_post_ok_click_wait') {
+      const sourceId = auto.copySourceEntityId || templateEntityId(auto);
+      const started = Number(auto.copyPostOkClickWaitStartedAt || auto.copyDialogOkClickedAt || 0);
+      if (!started) {
+        b.state.session.auto = {
+          ...auto,
+          copyPostOkClickWaitStartedAt: Date.now(),
+          copyOkPendingVerify: false
+        };
+        await b.persistSession();
+        b.scheduleAuto(120);
+        return;
+      }
+      if (isCopyFillEditorPage()) {
+        await beginCopyFillAfterOk(
+          b,
+          { ...auto, copyOkPendingVerify: false },
+          record,
+          sourceId,
+          'Copy editor open after OK — fill from workbook'
+        );
+        return;
+      }
+      const remaining = showTimedCopyWait(
+        b,
+        record,
+        'Waiting',
+        'After Copy OK',
+        started,
+        COPY_AFTER_OK_CLICK_MS,
+        'page refresh (no CAFM accept signal) — then fill',
+        'asset-copy-post-ok-click-wait'
+      );
+      if (remaining > 0) {
+        b.scheduleAuto(Math.min(remaining + 80, 1500));
+        return;
+      }
+      b.addEvent('asset-copy-ok-accepted', {
+        assetCode: record.assetCode,
+        verifyMs: Date.now() - started,
+        okClickMethod: auto.copyOkClickMethod || '',
+        acceptAttempts: Number(auto.copyOkAcceptAttempts || 0),
+        assumeAccepted: true
+      });
+      await beginCopyFillAfterOk(
+        b,
+        { ...auto, copyOkPendingVerify: false },
+        record,
+        sourceId,
+        'OK grace elapsed — fill from workbook'
+      );
       return;
     }
 
@@ -650,52 +788,39 @@
       const acceptAttempts = Number(auto.copyOkAcceptAttempts || 0);
 
       if (auto.copyOkPendingVerify) {
-        const stillOpen = copySettingsDialogStillVisible();
-        const clickedAt = Number(auto.copyDialogOkClickedAt || 0);
-        const verifyMs = Date.now() - clickedAt;
-        if (!stillOpen && verifyMs < 120) {
-          b.scheduleAuto(180);
-          return;
-        }
-        if (!stillOpen && verifyMs >= 120) {
-          b.addEvent('asset-copy-ok-accepted', {
-            assetCode: record.assetCode,
-            verifyMs,
-            okClickMethod: auto.copyOkClickMethod || '',
-            acceptAttempts
-          });
-          const merged = {
-            ...auto,
-            copyDialogOkClickedAt: clickedAt || Date.now(),
-            copyOkClickMethod: auto.copyOkClickMethod || ''
-          };
-          await beginCopyFillAfterOk(b, merged, record, sourceId);
-          return;
-        }
-        if (stillOpen) {
-          b.addEvent('asset-copy-ok-not-accepted', {
-            assetCode: record.assetCode,
-            verifyMs,
-            okClickMethod: auto.copyOkClickMethod || '',
-            acceptAttempts
-          });
-          b.showActivity?.(
-            'Warning',
-            'Copy Settings OK',
-            'Click triggered but CAFM did not accept OK — retrying',
-            { wait: true, meta: record.assetCode, tick: true, type: 'warn' }
-          );
-          if (acceptAttempts >= MAX_COPY_OK_ACCEPT_ATTEMPTS) {
-            throw new Error('Copy Settings OK was clicked but CAFM did not close the popup before the retry limit.');
-          }
-        }
+        const clickedAt = Number(auto.copyDialogOkClickedAt || Date.now());
+        b.state.session.auto = {
+          ...auto,
+          phase: 'asset_copy_post_ok_click_wait',
+          copyPostOkClickWaitStartedAt: clickedAt,
+          copyOkPendingVerify: false
+        };
+        await b.persistSession();
+        b.scheduleAuto(120);
+        return;
       }
 
       const control = findCopySettingsOkControl();
       if (!control?.ok) {
+        if (isCopyFillEditorPage() && !copySettingsDialogStillVisible()) {
+          await beginCopyFillAfterOk(b, { ...auto, copyOkPendingVerify: false }, record, sourceId);
+          return;
+        }
         if (auto.copyConfirmAt && !auto.copyOkPendingVerify) {
           await beginCopyFillAfterOk(b, auto, record, sourceId);
           return;
+        }
+        if (isSavedAssetPage()) {
+          const child = await getCopyChildState(record);
+          if (child?.found && clean(child.copyOf || '')) {
+            await beginCopyFillAfterOk(
+              b,
+              { ...auto, copyOkPendingVerify: false, copyDialogOkClickedAt: auto.copyDialogOkClickedAt || Date.now() },
+              record,
+              sourceId
+            );
+            return;
+          }
         }
         b.state.session.auto = { ...auto, phase: 'asset_copy_dialog_wait', copyDialogWaitStartedAt: Date.now() };
         await b.persistSession();
@@ -760,15 +885,22 @@
       }
       b.state.session.auto = {
         ...auto,
-        phase: 'asset_copy_dialog_confirm',
-        copyOkPendingVerify: true,
+        phase: 'asset_copy_post_ok_click_wait',
+        copyOkPendingVerify: false,
         copyDialogOkClickedAt: clickedAt,
+        copyPostOkClickWaitStartedAt: clickedAt,
         copyOkClickMethod: clickResult.method || '',
         copyOkAcceptAttempts: nextAcceptAttempts,
         copyConfirmAt: 0
       };
       await b.persistSession();
-      b.scheduleAuto(420);
+      b.showActivity?.(
+        'Waiting',
+        'After Copy OK',
+        `${COPY_AFTER_OK_CLICK_MS / 1000}s for refresh — then fill (no CAFM response)`,
+        { wait: true, meta: record.assetCode, tick: true }
+      );
+      b.scheduleAuto(350);
       return;
     }
 
@@ -784,6 +916,7 @@
     findCopySettingsOkControl,
     clickCopySettingsOk,
     resumeCopyChildEditor,
+    recoverCopyChildAfterOkRefresh,
     expectCopyChildWindow,
     copyOkGateSatisfied,
     isCopyFillEditorPage,

@@ -230,12 +230,9 @@
     if (isAssetPage()) {
       await handlePostReloadSaveState();
       if (state.session.auto?.active && CI.pages.assetCopy?.isCopyFillEditorPage?.()) {
-        const auto = state.session.auto || {};
-        if (CI.pages.assetCopy.copyOkGateSatisfied(auto)) {
-          try {
-            await CI.pages.assetCopy.resumeCopyChildEditor();
-          } catch (_) {}
-        }
+        try {
+          await CI.pages.assetCopy.recoverCopyChildAfterOkRefresh?.();
+        } catch (_) {}
       }
     }
     const autoObserver = new MutationObserver(() => {
