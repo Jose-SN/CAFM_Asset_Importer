@@ -101,7 +101,8 @@
     }
 
     const previousEntityId = entityId;
-    const copyMode = b.state.settings.copyFromExisting === true;
+    const copyMode = root.workflow.engine.copyWorkflowActive(auto)
+      || (b.state.settings.copyFromExisting === true && Boolean(auto.copyFromExisting !== false));
     const useSaveAndNew = !copyMode && b.state.settings.useSaveAndNew !== false;
     b.state.session.index = next;
     b.state.session.currentLookupEvidence = [];
@@ -138,17 +139,25 @@
         templateEntityId: templateId,
         postCycleWaitMs: root.pages.assetCopy?.COPY_AFTER_CYCLE_MS || 5000
       });
+      const waitSec = Math.ceil((root.pages.assetCopy?.COPY_AFTER_CYCLE_MS || 10000) / 1000);
       b.showToast(
-        `${record.assetCode} ACTIVE. ${nextCode}: waiting 5s on template, then Copy again (same 2-window flow).`,
+        `${record.assetCode} ACTIVE. Child saved — switch focus to template (unsaved template row). Wait ${waitSec}s, then toolbar Copy (not Create New). Next row: ${nextCode}.`,
         'success',
-        14000
+        16000
       );
       b.showActivity?.(
         'Waiting',
-        'Between copy cycles',
-        '5s then Copy on template window for next row',
+        'Template window',
+        `${waitSec}s on template after ACTIVE — then toolbar Copy for ${nextCode}`,
         { wait: true, meta: nextCode, tick: true }
       );
+      b.addEvent('asset-copy-window-handoff', {
+        completedOn: 'copy child window',
+        nextAction: 'template toolbar Copy',
+        nextAssetCode: nextCode,
+        templateEntityId: templateId,
+        waitMs: root.pages.assetCopy?.COPY_AFTER_CYCLE_MS || 10000
+      });
       b.scheduleAuto(400);
       return;
     }

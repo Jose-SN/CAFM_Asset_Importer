@@ -1132,6 +1132,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'ASSET_COPY_FOCUS_TEMPLATE') {
+    (async () => {
+      const track = await getAssetCopyTrack();
+      const parentTabId = typeof track?.parentTabId === 'number' ? track.parentTabId : (typeof sender.tab?.id === 'number' ? sender.tab.id : null);
+      if (typeof parentTabId !== 'number') {
+        sendResponseSafe(sendResponse, { ok: false, reason: 'no-parent-tab' });
+        return;
+      }
+      const tab = await chrome.tabs.get(parentTabId).catch(() => null);
+      if (!tab) {
+        sendResponseSafe(sendResponse, { ok: false, reason: 'parent-tab-gone' });
+        return;
+      }
+      await chrome.tabs.update(parentTabId, { active: true });
+      if (typeof tab.windowId === 'number') {
+        await chrome.windows.update(tab.windowId, { focused: true });
+      }
+      sendResponseSafe(sendResponse, { ok: true, parentTabId });
+    })().catch((error) => sendResponseSafe(sendResponse, { ok: false, reason: String(error?.message || error) }));
+    return true;
+  }
+
   if (message.type === 'ASSET_EXPECT_COPY_CHILD') {
     const senderTab = sender.tab;
     const assetCode = String(message.assetCode || '').trim();

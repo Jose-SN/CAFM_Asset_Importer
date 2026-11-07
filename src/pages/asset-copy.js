@@ -27,7 +27,8 @@
   const COPY_AFTER_OK_CLICK_MS = 5000;
   const COPY_POST_OK_WAIT_MS = 0;
   const COPY_PPM_CHECKBOX_BEFORE_OK_MS = 3000;
-  const COPY_AFTER_CYCLE_MS = 5000;
+  /** Pause on template after child save+ACTIVE before next Copy (let template show unsaved / settle). */
+  const COPY_AFTER_CYCLE_MS = 10000;
   const COPY_ASSET_CODE_CLEAR_MS = 15000;
 
   function isCopyDialogPhase(phase) {
@@ -43,6 +44,34 @@
 
   function templateEntityId(auto) {
     return clean(auto?.copyTemplateEntityId || auto?.copySourceEntityId || '');
+  }
+
+  function copyWindowLabel() {
+    if (isCopyFillEditorPage()) return 'copy child window';
+    const auto = $().state.session.auto || {};
+    const tid = templateEntityId(auto);
+    if (isSavedAssetPage() && tid && entityIdFromUrl() === tid) return 'template window';
+    if (isSavedAssetPage()) return 'saved asset window';
+    if (isAssetPage()) return 'asset editor window';
+    return 'CAFM window';
+  }
+
+  function announceCopyStep(b, record, verb, target, detail, extra = {}) {
+    const windowRole = copyWindowLabel();
+    b.addEvent('asset-copy-window-step', {
+      windowRole,
+      verb,
+      target,
+      detail,
+      assetCode: record?.assetCode || '',
+      url: location.href,
+      ...extra
+    });
+    b.showActivity?.(verb, `${target} · ${windowRole}`, detail, {
+      wait: /wait/i.test(verb),
+      meta: record?.assetCode || '',
+      tick: /wait/i.test(verb)
+    });
   }
 
   function copyChildAssetCodeFieldState() {
@@ -490,11 +519,14 @@
       const templateId = templateEntityId(auto);
       if (!templateId) throw new Error('Copy template asset ID is missing. Re-open the template saved asset and Resume.');
       if (!isSavedAssetPage() || entityIdFromUrl() !== templateId) {
-        b.showActivity?.('Navigating', 'Template window', `Opening template asset id=${templateId} for next Copy`, {
-          wait: true,
-          meta: record.assetCode,
-          tick: true
-        });
+        announceCopyStep(
+          b,
+          record,
+          'Switching',
+          'Template window',
+          `Opening template id=${templateId} — Copy runs here (not Create New)`,
+          { templateEntityId: templateId }
+        );
         b.addEvent('asset-copy-return-template', { assetCode: record.assetCode, templateEntityId: templateId });
         location.href = assetEntityUrl(templateId);
         return;
@@ -504,21 +536,27 @@
         b,
         record,
         'Waiting',
-        'Before next Copy',
+        'Template window',
         started,
         COPY_AFTER_CYCLE_MS,
-        'then Copy again on template (2 windows, 1 popup)',
+        'child saved+ACTIVE — wait for template, then toolbar Copy',
         'asset-copy-post-cycle-wait'
       );
       if (remaining > 0) {
         b.scheduleAuto(Math.min(remaining + 80, 1500));
         return;
       }
-      b.showActivity?.('Ready', 'Next Copy cycle', 'Clicking Copy on template for next workbook row', {
-        wait: true,
-        meta: record.assetCode,
-        tick: true
-      });
+      try {
+        await b.runtimeMessage({ type: 'ASSET_COPY_FOCUS_TEMPLATE' });
+      } catch (_) {}
+      announceCopyStep(
+        b,
+        record,
+        'Clicking',
+        'Toolbar Copy',
+        `Next workbook row on template window (not Create New)`,
+        { templateEntityId: templateId }
+      );
       b.addEvent('asset-copy-cycle-restart', { assetCode: record.assetCode, templateEntityId: templateId });
       b.state.session.auto = {
         ...auto,
@@ -704,14 +742,14 @@
       const sourceId = entityIdFromUrl();
       const templateId = templateEntityId(auto) || sourceId;
       if (templateId && sourceId !== templateId) {
-        b.showActivity?.('Navigating', 'Template window', `Expected template id=${templateId}`, {
-          wait: true,
-          meta: record.assetCode,
-          tick: true
-        });
+        announceCopyStep(b, record, 'Switching', 'Template window', `Wrong window — opening template id=${templateId}`);
         location.href = assetEntityUrl(templateId);
         return;
       }
+      try {
+        await b.runtimeMessage({ type: 'ASSET_COPY_FOCUS_TEMPLATE' });
+      } catch (_) {}
+      announceCopyStep(b, record, 'Clicking', 'Toolbar Copy', 'Template window — opens copy child popup');
       const copyState = root.core.toolbar.toolbarCopyButtonState();
       b.addEvent('asset-copy-click-start', {
         assetCode: record.assetCode,

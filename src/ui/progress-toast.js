@@ -35,7 +35,7 @@
     asset_copy_post_ok_click_wait: 'Wait 5s after OK (refresh) → fill',
     asset_copy_post_ok_wait: 'After OK → fill',
     asset_copy_wait_editor: 'Asset Code empty → fill',
-    asset_copy_post_cycle_wait: 'Wait 5s → Copy next row',
+    asset_copy_post_cycle_wait: 'Template: wait 10s → Copy next row',
     asset_copy_wait_user: 'Legacy: auto cycle hand-off',
     run_complete_finalize: 'Finish run and return to asset list',
     ppm_open_list: 'Open PPM register',

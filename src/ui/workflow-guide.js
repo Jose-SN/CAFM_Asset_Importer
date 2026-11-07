@@ -24,7 +24,7 @@
     asset_copy_post_ok_click_wait: 'Wait 5 seconds after OK (refresh), then fill',
     asset_copy_post_ok_wait: 'Fill copy editor',
     asset_copy_wait_editor: 'Asset Code empty, then fill workbook fields',
-    asset_copy_post_cycle_wait: 'Wait 5 seconds, Copy again on same template',
+    asset_copy_post_cycle_wait: 'Wait 10s on template window, then Copy again (not Create New)',
     asset_copy_wait_user: 'Legacy hand-off (auto-continues to next Copy)',
     ppm_open_list: 'Open PPM register for this asset',
     ppm_wait_new: 'Wait for New PPM editor window',

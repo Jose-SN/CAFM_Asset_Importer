@@ -115,8 +115,44 @@
   }
 
   function copyWorkflowActive(auto) {
-    if (!copyFromExistingEnabled()) return false;
-    return Boolean(auto?.copyFromExisting) || isCopyWorkflowPhase(auto?.phase);
+    if (!auto) return false;
+    if (Boolean(auto.copyFromExisting)) return true;
+    if (isCopyWorkflowPhase(auto?.phase)) return true;
+    return false;
+  }
+
+  async function redirectCopyRunFromNewEntityPath(b, auto, record, fromPhase) {
+    const templateId = clean(auto.copyTemplateEntityId || auto.copySourceEntityId || '');
+    b.addEvent('asset-copy-blocked-new-entity-path', {
+      fromPhase,
+      templateEntityId: templateId,
+      assetCode: record?.assetCode || auto.assetCode || '',
+      url: location.href
+    });
+    b.showToast(
+      `Copy mode: blocked "${fromPhase.replace(/_/g, ' ')}" (Create New path). Using template Copy after wait.`,
+      'warn',
+      12000
+    );
+    b.showActivity?.(
+      'Copy mode',
+      'Template window',
+      'Next step: wait on template, then toolbar Copy (not Create New)',
+      { wait: true, meta: record?.assetCode || auto.assetCode || '', tick: true }
+    );
+    b.state.session.auto = {
+      ...auto,
+      active: true,
+      copyFromExisting: true,
+      skipPpmWorkflow: true,
+      phase: 'asset_copy_post_cycle_wait',
+      copyPostCycleWaitStartedAt: Date.now(),
+      copyTemplateEntityId: templateId || auto.copyTemplateEntityId,
+      copySourceEntityId: templateId || auto.copySourceEntityId
+    };
+    await b.persistSession();
+    b.render();
+    scheduleAuto(300);
   }
 
   function isCopyWorkflowPhase(phase) {
@@ -126,7 +162,7 @@
 
   function clearCopyWorkflowFlags(auto) {
     if (!auto) return auto;
-    if (copyFromExistingEnabled()) return auto;
+    if (copyFromExistingEnabled() || auto.copyFromExisting) return auto;
     const phase = clean(auto.phase || '');
     const next = {
       ...auto,
@@ -273,7 +309,12 @@
       const record = b.workflowRecord(auto);
       if (!record) throw new Error('No asset row is available for the active workflow.');
 
-      const copyMode = copyWorkflowActive(auto);
+      let copyMode = copyWorkflowActive(auto);
+      const newEntityPhases = new Set(['navigate', 'asset_save_and_new', 'fill']);
+      if (copyMode && newEntityPhases.has(clean(auto.phase || ''))) {
+        await redirectCopyRunFromNewEntityPath(b, auto, record, auto.phase);
+        return;
+      }
 
       if (copyMode && auto.phase === 'asset_copy_wait_user') {
         b.state.session.auto = {
@@ -396,6 +437,11 @@
         return;
       }
 
+      if (copyWorkflowActive(auto) && (auto.phase === 'navigate' || auto.phase === 'asset_save_and_new')) {
+        await redirectCopyRunFromNewEntityPath(b, auto, record, auto.phase);
+        return;
+      }
+
       if (auto.phase === 'asset_save_and_new') {
         const prevEntityId = String(auto.previousAssetEntityId || auto.assetEntityId || '');
         if (!prevEntityId) {
@@ -464,6 +510,10 @@
       }
 
       if (auto.phase === 'navigate') {
+        if (copyWorkflowActive(auto)) {
+          await redirectCopyRunFromNewEntityPath(b, auto, record, 'navigate');
+          return;
+        }
         if (isNewEntityPage()) {
           b.state.session.auto = {
             ...auto,
@@ -538,6 +588,10 @@
             return;
           }
           scheduleAuto(350);
+          return;
+        }
+        if (copyWorkflowActive(auto)) {
+          await redirectCopyRunFromNewEntityPath(b, auto, record, 'navigate-fallback');
           return;
         }
         location.href = b.state.session.newEntityUrl || deriveNewEntityUrl();
@@ -621,6 +675,14 @@
 
   root.workflow = root.workflow || {};
   root.workflow.engine = Object.freeze({
-    scheduleAuto, runAutomatic, startAutomatic, pauseAutomatic, resumeAutomatic, stopAutomaticWithError
+    scheduleAuto,
+    runAutomatic,
+    startAutomatic,
+    pauseAutomatic,
+    resumeAutomatic,
+    stopAutomaticWithError,
+    copyFromExistingEnabled,
+    copyWorkflowActive,
+    isCopyWorkflowPhase
   });
 })();
