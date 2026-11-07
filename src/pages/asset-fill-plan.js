@@ -27,9 +27,15 @@
       const hasLookups = tabSpecs.length > 0;
       if (!hasDirect && !hasLookups) continue;
 
+      let deferredAssetCode = null;
       for (const field of fields) {
         if (!clean(field.value)) continue;
         if (options.skipAssetCode && field.label.some((label) => norm(label) === 'asset code')) continue;
+        const isAssetCode = field.label.some((label) => norm(label) === 'asset code');
+        if (options.deferAssetCodeOnDetails && tab === 'Details' && isAssetCode) {
+          deferredAssetCode = field;
+          continue;
+        }
         steps.push({
           kind: 'direct',
           tab,
@@ -40,6 +46,16 @@
       }
       for (const spec of tabSpecs) {
         steps.push({ kind: 'lookup', tab, field: spec.field, spec });
+      }
+      if (deferredAssetCode) {
+        steps.push({
+          kind: 'direct',
+          tab: 'Details',
+          label: deferredAssetCode.label,
+          value: String(deferredAssetCode.value),
+          required: Boolean(deferredAssetCode.required),
+          assetCodeFinalize: true
+        });
       }
     }
 

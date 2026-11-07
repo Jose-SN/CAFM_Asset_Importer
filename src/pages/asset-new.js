@@ -48,6 +48,53 @@
     return Boolean(findAssetNotesTextarea());
   }
 
+  function copyFillEditorActive() {
+    const b = $();
+    return Boolean(
+      b.state.settings?.copyFromExisting === true
+      && b.state.session.auto?.copyFromExisting
+      && (isAssetCopyChildEditorPage() || isNewEntityPage())
+    );
+  }
+
+  async function fillWorkbookAssetCode(record, options = {}) {
+    const b = $();
+    const expected = clean(record.assetCode);
+    if (!expected) return { status: 'blank', label: 'Asset Code' };
+    const copyMode = Boolean(options.copyMode);
+    if (!(await b.clickTab('Details'))) return { status: 'tab-failed', label: 'Asset Code' };
+    const found = b.nearestControl(['Asset Code']);
+    if (!found?.control) return { status: 'missing', label: 'Asset Code' };
+    const before = clean(elementValue(found.control));
+    if (norm(before) === norm(expected)) {
+      return { status: 'filled', label: 'Asset Code', control: found.control, expected };
+    }
+    if (copyMode && before) {
+      b.setNativeValue(found.control, '');
+      await wait(80);
+    }
+    const result = b.fillByLabel(['Asset Code'], expected, {
+      tab: 'Details tab',
+      meta: `Details tab · ${record.assetCode}`,
+      allowReadOnly: copyMode
+    });
+    const after = result.control ? clean(elementValue(result.control)) : '';
+    if (result.status === 'filled' && norm(after) !== norm(expected)) {
+      b.setNativeValue(result.control, expected);
+      await wait(40);
+    }
+    b.addEvent('asset-code-fill', {
+      expected,
+      before,
+      after: result.control ? clean(elementValue(result.control)) : '',
+      status: result.status,
+      copyMode,
+      importSheet: record.importSheet || 'CAFM Import',
+      workbookRow: record.workbookRow
+    });
+    return { ...result, expected };
+  }
+
   async function persistAutoFillCursor(record, stepIndex) {
     const b = $();
     const auto = b.state.session.auto;
@@ -62,7 +109,12 @@
     const directResults = [];
     let lookupEvidence = [...(b.state.session.currentLookupEvidence || [])];
     const settings = b.state.settings || {};
-    const plan = buildAssetFillPlan(record, { skipAssetCode: options.skipAssetCode, settings });
+    const copyDeferCode = copyFillEditorActive() && !options.skipAssetCode;
+    const plan = buildAssetFillPlan(record, {
+      skipAssetCode: options.skipAssetCode,
+      settings,
+      deferAssetCodeOnDetails: copyDeferCode
+    });
     const autoPauseRequested = () => options.respectAutoPause && b.state.session.auto && !b.state.session.auto.active;
 
     let startIndex = 0;
@@ -108,7 +160,9 @@
       }
 
       if (step.kind === 'direct') {
-        const result = b.fillByLabel(step.label, step.value, { tab: `${step.tab} tab`, meta: `${step.tab} tab · ${record.assetCode}` });
+        const result = step.assetCodeFinalize
+          ? await fillWorkbookAssetCode(record, { copyMode: copyDeferCode })
+          : b.fillByLabel(step.label, step.value, { tab: `${step.tab} tab`, meta: `${step.tab} tab · ${record.assetCode}` });
         directResults.push({ tab: step.tab, ...result, expected: step.value, required: Boolean(step.required) });
         if (['missing', 'readonly', 'failed'].includes(result.status)) {
           await b.recordValidationWarning(record, { scope: 'asset', tab: step.tab, field: step.label[0], expected: step.value, actual: '', reason: `Fill result: ${result.status}` });
@@ -160,6 +214,11 @@
         }
         await wait(0);
       }
+    }
+
+    if (copyDeferCode && clean(record.assetCode)) {
+      const codeResult = await fillWorkbookAssetCode(record, { copyMode: true });
+      directResults.push({ tab: 'Details', ...codeResult, expected: record.assetCode, required: true });
     }
 
     if (options.respectAutoPause && b.state.session.auto) {

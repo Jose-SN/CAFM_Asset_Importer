@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-11-07T00:00:00.000Z",
-  "extensionVersion": "8.0.85",
+  "extensionVersion": "8.0.86",
   "description": "Diagnostic template for copy-from-existing mode. Download diagnostic JSON from the panel after a run; events accumulate in chrome.storage until Clear progress & diagnostic log.",
   "copyWorkflow": {
     "model": "two-windows-one-popup",
