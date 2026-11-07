@@ -226,11 +226,12 @@
     if (!record) throw new Error('No current asset row is loaded.');
     const issues = globalThis.CAFMAssetRules.validateRecord(record);
     if (issues.length) throw new Error(`Workbook row ${record.workbookRow}: ${issues.join('; ')}`);
+    // Copy mode: allow the copied editor URL (id=-1&CopyOf=…); same fill plan and fillAssetFieldsByTab as New Entity.
     const copyDraft = Boolean(
       options.respectAutoPause
       && b.state.settings.copyFromExisting === true
       && b.state.session.auto?.copyFromExisting
-      && (b.state.session.auto?.copyEditorReady || root.pages.assetCopy?.isCopyFillEditorPage?.() || isAssetCopyChildEditorPage())
+      && (isNewEntityPage() || isAssetCopyChildEditorPage())
     );
     if (!isNewEntityPage() && !copyDraft) throw new Error('Open the Asset New Entity page before filling a record.');
 

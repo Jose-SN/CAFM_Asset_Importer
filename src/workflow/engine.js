@@ -581,6 +581,7 @@
       b.state.session.auto = { ...b.state.session.auto, active: true, mode: auto.mode || 'automatic', phase: 'filling', index: b.state.session.index, assetCode: b.currentRecord().assetCode };
       await b.persistSession();
       b.render();
+      // Copy mode and New Entity share fillCurrentRecord — no separate fill implementation.
       const filled = await root.pages.assetNew.fillCurrentRecord({ respectAutoPause: true });
       if (filled?.cancelled || !b.state.session.auto?.active) return;
       b.state.session.manualAwaitSave = null;

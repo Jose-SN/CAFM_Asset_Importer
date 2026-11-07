@@ -254,7 +254,7 @@
     b.showActivity?.(
       'Filling',
       record.assetCode,
-      'Workbook fields (same as New Entity — overwrites copied template)',
+      'Reading workbook fields into CAFM tabs',
       { wait: true, meta: `Row ${record.workbookRow}`, tick: true }
     );
     await kickCopyChildFill(b, record);
