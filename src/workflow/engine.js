@@ -7,6 +7,8 @@
     isAssetPage,
     isNewEntityPage,
     isAssetCopyEditorPage,
+    isAssetCopyChildEditorPage,
+    copyOfFromUrl,
     isAssetListPage,
     isSavedAssetPage,
     entityIdFromUrl,
@@ -520,8 +522,10 @@
         }
       }
 
-      const copyFillReady = copyMode && Boolean(auto.copyEditorReady || isNewEntityPage() || isAssetCopyEditorPage());
-      if (!isAssetPage() || (!isNewEntityPage() && !copyFillReady)) {
+      const onCopyFillSurface = isAssetCopyChildEditorPage() || (isNewEntityPage() && Boolean(copyOfFromUrl()));
+      const canFillNewEntity = !copyMode && isNewEntityPage();
+      const copyFillReady = copyMode && Boolean(auto.copyEditorReady) && onCopyFillSurface;
+      if (!isAssetPage() || (!canFillNewEntity && !copyFillReady)) {
         if (copyMode && auto.phase === 'asset_copy_wait_user') {
           scheduleAuto(400);
           return;

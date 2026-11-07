@@ -9,6 +9,7 @@ const PPM_CHILD_KEY = 'wchCafmPpmChildV807';
 const PPM_EDITOR_URL = /\/Evolution\/!System\/PPMs\/FPPM\/ViewFPPMItem\.aspx/i;
 const PPM_REGISTER_URL = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItemPPMs\.aspx/i;
 const ASSET_EDITOR_URL = /\/Evolution\/!System\/Asset\/FASSET\/ViewFASSETItem\.aspx/i;
+const ASSET_COPY_TRACK_KEY = 'wchCafmAssetCopyTrackV801';
 
 const SESSION_KEY = 'eeAssetImporterV80Session';
 const SETTINGS_KEY = 'eeAssetImporterV80Settings';
@@ -41,6 +42,17 @@ async function collectWorkflowTabIds(session) {
     if (typeof assetStored[ASSET_TAB_KEY]?.tabId === 'number') tabIds.add(assetStored[ASSET_TAB_KEY].tabId);
   } catch (_) {}
   const auto = session?.auto || {};
+  const copyPhases = new Set([
+    'asset_copy_click', 'asset_copy_dialog_wait', 'asset_copy_dialog_confirm',
+    'asset_copy_wait_editor', 'filling', 'saving', 'await_save',
+    'asset_close_child', 'asset_close_wait',
+    'activate_open', 'activate_select', 'activate_confirm', 'activate_wait', 'activate_wait_user'
+  ]);
+  if (auto.copyFromExisting && copyPhases.has(String(auto.phase || ''))) {
+    const track = await getAssetCopyTrack();
+    if (typeof track?.childTabId === 'number') tabIds.add(track.childTabId);
+    if (typeof track?.parentTabId === 'number') tabIds.add(track.parentTabId);
+  }
   if (String(auto.assetEntityId || '').trim()) {
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
@@ -135,6 +147,71 @@ function isPpmEditorUrl(url) {
 
 function assetIdFromTabUrl(url) {
   try { return String(new URL(String(url || '')).searchParams.get('id') || '').trim(); } catch (_) { return ''; }
+}
+
+function copyOfFromTabUrl(url) {
+  try { return String(new URL(String(url || '')).searchParams.get('CopyOf') || '').trim(); } catch (_) { return ''; }
+}
+
+function isAssetCopyChildUrl(url) {
+  if (!ASSET_EDITOR_URL.test(String(url || ''))) return false;
+  return assetIdFromTabUrl(url) === '-1' && Boolean(copyOfFromTabUrl(url));
+}
+
+async function getAssetCopyTrack() {
+  const data = await chrome.storage.local.get(ASSET_COPY_TRACK_KEY);
+  return data[ASSET_COPY_TRACK_KEY] || null;
+}
+
+async function saveAssetCopyTrack(track) {
+  if (!track) {
+    await chrome.storage.local.remove(ASSET_COPY_TRACK_KEY);
+    return;
+  }
+  track.updatedAt = Date.now();
+  await chrome.storage.local.set({ [ASSET_COPY_TRACK_KEY]: track });
+}
+
+async function notifyAssetCopyChildReady(tabId, track) {
+  if (typeof tabId !== 'number') return;
+  try {
+    await chrome.tabs.sendMessage(tabId, {
+      type: 'EE_ASSET_COPY_CHILD_READY',
+      assetCode: track?.assetCode || '',
+      templateEntityId: track?.templateEntityId || '',
+      copyOf: track?.copyOf || copyOfFromTabUrl(track?.childUrl || ''),
+      childTabId: tabId
+    });
+  } catch (_) {}
+}
+
+async function registerAssetCopyChildTab(tab) {
+  if (!tab || typeof tab.id !== 'number') return false;
+  const track = await getAssetCopyTrack();
+  if (!track || Number(track.expectChildUntil || 0) < Date.now()) return false;
+  if (typeof track.parentTabId === 'number' && tab.id === track.parentTabId) return false;
+
+  const url = String(tab.url || tab.pendingUrl || '');
+  const expectOpen = Number(track.expectChildUntil || 0) > Date.now();
+  const openerMatch = typeof tab.openerTabId === 'number' && tab.openerTabId === track.parentTabId;
+  const copyChildUrl = url && isAssetCopyChildUrl(url);
+  const newWindowMatch = expectOpen && typeof track.parentWindowId === 'number' && tab.windowId !== track.parentWindowId
+    && ASSET_EDITOR_URL.test(url) && assetIdFromTabUrl(url) === '-1';
+  if (!copyChildUrl && !openerMatch && !newWindowMatch) return false;
+
+  track.childTabId = tab.id;
+  track.childWindowId = tab.windowId ?? null;
+  track.childUrl = url;
+  track.copyOf = copyOfFromTabUrl(url) || track.copyOf || '';
+  await saveAssetCopyTrack(track);
+
+  try {
+    await chrome.windows.update(tab.windowId, { focused: true });
+    await chrome.tabs.update(tab.id, { active: true });
+  } catch (_) {}
+
+  await notifyAssetCopyChildReady(tab.id, track);
+  return true;
 }
 
 async function getStoredPpmParent() {
@@ -945,6 +1022,77 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'ASSET_EXPECT_COPY_CHILD') {
+    const senderTab = sender.tab;
+    const assetCode = String(message.assetCode || '').trim();
+    const templateEntityId = String(message.templateEntityId || '').trim();
+    const expectMs = Math.max(60000, Number(message.expectMs) || 120000);
+    if (!senderTab || typeof senderTab.id !== 'number' || !assetCode) {
+      sendResponseSafe(sendResponse, { ok: false, reason: 'missing-tab-or-asset' });
+      return false;
+    }
+    (async () => {
+      const track = {
+        assetCode,
+        templateEntityId,
+        parentTabId: senderTab.id,
+        parentWindowId: senderTab.windowId ?? null,
+        expectChildUntil: Date.now() + expectMs,
+        childTabId: null,
+        childUrl: '',
+        copyOf: ''
+      };
+      await saveAssetCopyTrack(track);
+      sendResponseSafe(sendResponse, { ok: true, expectChildUntil: track.expectChildUntil });
+    })().catch((error) => sendResponseSafe(sendResponse, { ok: false, reason: String(error?.message || error) }));
+    return true;
+  }
+
+  if (message.type === 'ASSET_COPY_CHILD_STATE') {
+    const assetCode = String(message.assetCode || '').trim();
+    (async () => {
+      const track = await getAssetCopyTrack();
+      if (!track || (assetCode && track.assetCode !== assetCode)) {
+        sendResponseSafe(sendResponse, { ok: true, found: false });
+        return;
+      }
+      if (typeof track.childTabId === 'number') {
+        try {
+          const tab = await chrome.tabs.get(track.childTabId);
+          sendResponseSafe(sendResponse, {
+            ok: true,
+            found: true,
+            tabId: tab.id,
+            url: tab.url || track.childUrl || '',
+            copyOf: copyOfFromTabUrl(tab.url || track.childUrl || '')
+          });
+          return;
+        } catch (_) {}
+      }
+      const tabs = await chrome.tabs.query({});
+      for (const tab of tabs) {
+        if (typeof tab.id !== 'number') continue;
+        if (tab.id === track.parentTabId) continue;
+        if (!isAssetCopyChildUrl(tab.url)) continue;
+        track.childTabId = tab.id;
+        track.childUrl = tab.url || '';
+        track.copyOf = copyOfFromTabUrl(tab.url);
+        await saveAssetCopyTrack(track);
+        await notifyAssetCopyChildReady(tab.id, track);
+        sendResponseSafe(sendResponse, {
+          ok: true,
+          found: true,
+          tabId: tab.id,
+          url: tab.url || '',
+          copyOf: track.copyOf
+        });
+        return;
+      }
+      sendResponseSafe(sendResponse, { ok: true, found: false });
+    })().catch((error) => sendResponseSafe(sendResponse, { ok: false, found: false, error: String(error?.message || error) }));
+    return true;
+  }
+
   if (message.type === 'REGISTER_ASSET_TAB') {
     const tab = sender.tab;
     if (!tab || typeof tab.id !== 'number') {
@@ -1010,11 +1158,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.tabs.onCreated.addListener((tab) => {
   if (typeof tab?.id !== 'number') return;
   registerPpmChildTab(tab).catch(() => {});
+  registerAssetCopyChildTab(tab).catch(() => {});
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (typeof tabId !== 'number') return;
   registerPpmChildTab(tab || { id: tabId, url: changeInfo.url }).catch(() => {});
+  registerAssetCopyChildTab(tab || { id: tabId, url: changeInfo.url || tab?.url }).catch(() => {});
   getStoredPpmParent().then((parent) => {
     if (!parent?.children?.some((item) => item.tabId === tabId)) return;
     const entry = parent.children.find((item) => item.tabId === tabId);

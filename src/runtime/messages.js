@@ -67,6 +67,18 @@
         return;
       }
 
+      if (message.type === 'EE_ASSET_COPY_CHILD_READY') {
+        storageGet([STORAGE.session]).then(async (stored) => {
+          if (stored[STORAGE.session]) state.session = { ...state.session, ...stored[STORAGE.session] };
+          try {
+            await root.pages.assetCopy?.resumeCopyChildEditor?.(message);
+          } catch (_) {
+            scheduleAuto(200);
+          }
+        }).catch(() => scheduleAuto(250));
+        return;
+      }
+
       if (message.type === 'EE_ASSET_EDITOR_CLOSED') {
         addEvent('asset-parent-editor-close-message', {
           assetCode: message.assetCode || '',

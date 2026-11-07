@@ -24,6 +24,27 @@
     }
   }
 
+  function copyOfFromUrl(href = location.href) {
+    try {
+      return clean(new URL(href, location.href).searchParams.get('CopyOf') || '');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function isAssetCopyChildEditorPage(href = location.href) {
+    try {
+      const url = new URL(href, location.href);
+      if (!assetPagePattern.test(url.pathname)) return false;
+      const id = clean(url.searchParams.get('id') || '');
+      const copyOf = clean(url.searchParams.get('CopyOf') || '');
+      if (href === location.href && !isAssetPage()) return false;
+      return id === '-1' && Boolean(copyOf);
+    } catch (_) {
+      return false;
+    }
+  }
+
   function isNewEntityPage() {
     if (!isAssetPage()) return false;
     const id = entityIdFromUrl();
@@ -38,6 +59,7 @@
   /** Copied asset editor (unsaved duplicate) — may share a positive id before first save. */
   function isAssetCopyEditorPage() {
     if (!isAssetPage()) return false;
+    if (isAssetCopyChildEditorPage()) return true;
     if (isNewEntityPage()) return true;
     const bodyPrefix = clean(document.body?.innerText || '').slice(0, 2500);
     if (/new entity/i.test(bodyPrefix)) return true;
@@ -131,6 +153,8 @@
   root.core.pages = Object.freeze({
     isAssetPage,
     entityIdFromUrl,
+    copyOfFromUrl,
+    isAssetCopyChildEditorPage,
     isNewEntityPage,
     isAssetCopyEditorPage,
     isSavedAssetPage,

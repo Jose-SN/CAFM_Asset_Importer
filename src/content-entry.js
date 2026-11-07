@@ -226,7 +226,14 @@
     if (!isWorkflowPage()) return;
 
     if (isAssetPage() || isAssetListPage()) await runtimeMessage({ type: 'REGISTER_ASSET_TAB' });
-    if (isAssetPage()) await handlePostReloadSaveState();
+    if (isAssetPage()) {
+      await handlePostReloadSaveState();
+      if (state.session.auto?.active && CI.core.pages.isAssetCopyChildEditorPage()) {
+        try {
+          await CI.pages.assetCopy.resumeCopyChildEditor();
+        } catch (_) {}
+      }
+    }
     const autoObserver = new MutationObserver(() => {
       if (state.session.auto?.active) scheduleAuto();
     });

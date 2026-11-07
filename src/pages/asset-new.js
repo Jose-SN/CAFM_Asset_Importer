@@ -4,7 +4,7 @@
   const root = globalThis.CAFMImporter;
   const { clean, norm } = root.core.text;
   const { wait, visible, isAssistantElement, elementValue, dispatchClick } = root.core.dom;
-  const { isNewEntityPage, isAssetCopyEditorPage } = root.core.pages;
+  const { isNewEntityPage, isAssetCopyChildEditorPage } = root.core.pages;
   const { lookupMapping, valueEquivalent } = root.pages.assetMappings;
   const { buildAssetFillPlan, fillPlanResumeIndex } = root.pages.assetFillPlan;
   const $ = () => root.runtime.b;
@@ -230,7 +230,7 @@
       options.respectAutoPause
       && b.state.settings.copyFromExisting === true
       && b.state.session.auto?.copyFromExisting
-      && (b.state.session.auto?.copyEditorReady || isAssetCopyEditorPage())
+      && (b.state.session.auto?.copyEditorReady || isAssetCopyChildEditorPage())
     );
     if (!isNewEntityPage() && !copyDraft) throw new Error('Open the Asset New Entity page before filling a record.');
 

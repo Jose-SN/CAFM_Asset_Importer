@@ -327,6 +327,15 @@ function setSelectByLabel(labelNames, value, fillOptions = {}) {
 }
 
 function findSaveButton() {
+  for (const doc of sameOriginDocuments()) {
+    try {
+      const exact = doc.querySelector('a[title="Click to save your changes"][onclick*="Toolbar.Save"]');
+      if (exact && visible(exact) && !isAssistantElement(exact)) return exact;
+      const saveIcon = doc.getElementById('ctl00_ctl00_ToolbarEx_Save');
+      const anchor = saveIcon?.closest?.('a[onclick*="Toolbar.Save"]');
+      if (anchor && visible(anchor) && !isAssistantElement(anchor)) return anchor;
+    } catch (_) {}
+  }
   const candidates = [...document.querySelectorAll('button,a,[role="button"],span,div')]
     .filter((element) => {
       if (!visible(element) || isAssistantElement(element)) return false;

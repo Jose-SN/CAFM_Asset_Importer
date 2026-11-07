@@ -4,7 +4,13 @@
   const root = globalThis.CAFMImporter;
   const { clean } = root.core.text;
   const { visible, dispatchClick } = root.core.dom;
-  const { isSavedAssetPage, isAssetCopyEditorPage, entityIdFromUrl } = root.core.pages;
+  const {
+    isSavedAssetPage,
+    isAssetCopyEditorPage,
+    isAssetCopyChildEditorPage,
+    copyOfFromUrl,
+    entityIdFromUrl
+  } = root.core.pages;
   const $ = () => root.runtime.b;
 
   const COPY_DIALOG_SELECTORS = Object.freeze({
@@ -28,6 +34,63 @@
 
   function copyClickGuardKey(record, attempt) {
     return `asset-copy-${clean(record?.assetCode || 'asset')}-${Number(attempt) || 0}`;
+  }
+
+  async function expectCopyChildWindow(record, templateEntityId) {
+    const b = $();
+    try {
+      await b.runtimeMessage({
+        type: 'ASSET_EXPECT_COPY_CHILD',
+        assetCode: record.assetCode,
+        templateEntityId: clean(templateEntityId || ''),
+        expectMs: 120000
+      });
+    } catch (error) {
+      b.addEvent('asset-copy-expect-child-error', { message: String(error?.message || error) });
+    }
+  }
+
+  async function getCopyChildState(record) {
+    const b = $();
+    try {
+      return await b.runtimeMessage({ type: 'ASSET_COPY_CHILD_STATE', assetCode: record.assetCode }) || { found: false };
+    } catch (_) {
+      return { found: false };
+    }
+  }
+
+  async function resumeCopyChildEditor(payload = {}) {
+    const b = $();
+    const auto = b.state.session.auto || {};
+    if (!auto.active || !auto.copyFromExisting) return false;
+    if (!isAssetCopyChildEditorPage()) return false;
+    const phase = clean(auto.phase || '');
+    if (auto.copyEditorReady && phase === 'filling') {
+      b.scheduleAuto(100);
+      return true;
+    }
+    if (!['asset_copy_wait_editor', 'asset_copy_dialog_wait', 'asset_copy_dialog_confirm'].includes(phase)) return false;
+    b.addEvent('asset-copy-child-resume', {
+      assetCode: auto.assetCode || payload.assetCode || '',
+      copyOf: copyOfFromUrl(),
+      phase: auto.phase,
+      childTabId: payload.childTabId ?? null
+    });
+    b.state.session.auto = {
+      ...auto,
+      phase: 'filling',
+      copyEditorReady: true,
+      copyEditorReadyAt: Date.now(),
+      copyChildTabId: payload.childTabId ?? auto.copyChildTabId ?? null,
+      copySourceEntityId: auto.copySourceEntityId || payload.templateEntityId || copyOfFromUrl(),
+      fillPlanStep: 0,
+      fillPlanAssetCode: ''
+    };
+    await b.persistSession();
+    b.render();
+    b.showToast(`Copied asset editor ready (CopyOf ${copyOfFromUrl() || '—'}). Filling workbook fields…`, 'info', 7000);
+    b.scheduleAuto(200);
+    return true;
   }
 
   async function attemptToolbarCopy(record, auto, attempt = 1) {
@@ -61,31 +124,38 @@
     const phase = clean(auto.phase || '');
 
     if (phase === 'asset_copy_wait_editor') {
+      if (isAssetCopyChildEditorPage()) {
+        await resumeCopyChildEditor();
+        return;
+      }
+      if (isSavedAssetPage()) {
+        const started = Number(auto.copyEditorWaitStartedAt || Date.now());
+        const child = await getCopyChildState(record);
+        if (child?.found) {
+          b.showActivity?.('Waiting', 'Copied asset window', 'Fill + Save run in the new window', {
+            wait: true,
+            meta: record.assetCode,
+            tick: true
+          });
+          b.state.session.auto = {
+            ...auto,
+            copyChildTabId: child.tabId,
+            copyChildUrl: child.url || '',
+            copyOfEntityId: child.copyOf || auto.copyOfEntityId || ''
+          };
+          await b.persistSession();
+          b.scheduleAuto(500);
+          return;
+        }
+        if (Date.now() - started > b.state.settings.saveTimeoutMs) {
+          throw new Error('CAFM did not open the copied asset editor window before the safety timeout.');
+        }
+        b.scheduleAuto(400);
+        return;
+      }
       const started = Number(auto.copyEditorWaitStartedAt || Date.now());
-      const sourceId = clean(auto.copySourceEntityId || '');
-      const currentId = entityIdFromUrl();
-      const ready = isAssetCopyEditorPage();
-      const navigated = sourceId && currentId && currentId !== sourceId;
-      if (ready || navigated) {
-        b.addEvent('asset-copy-editor-ready', {
-          assetCode: record.assetCode,
-          sourceEntityId: sourceId,
-          currentEntityId: currentId,
-          ready,
-          navigated
-        });
-        b.state.session.auto = {
-          ...auto,
-          phase: 'filling',
-          copyEditorReady: true,
-          copyEditorReadyAt: Date.now(),
-          fillPlanStep: 0,
-          fillPlanAssetCode: ''
-        };
-        await b.persistSession();
-        b.render();
-        b.showActivity?.('Ready', 'Copied asset editor', 'Filling workbook fields', { wait: false, meta: record.assetCode, tick: false });
-        b.scheduleAuto(200);
+      if (isAssetCopyEditorPage() && !isSavedAssetPage()) {
+        await resumeCopyChildEditor();
         return;
       }
       if (Date.now() - started > b.state.settings.saveTimeoutMs) {
@@ -113,6 +183,7 @@
         copyButtonDisabled: copyState.disabled
       });
       const attempt = Math.max(1, Number(auto.copyClickAttempts) || 1);
+      await expectCopyChildWindow(record, sourceId);
       await attemptToolbarCopy(record, auto, attempt);
       b.state.session.auto = {
         ...auto,
@@ -130,6 +201,18 @@
 
     if (phase === 'asset_copy_dialog_wait') {
       const started = Number(auto.copyDialogWaitStartedAt || Date.now());
+      const childEarly = await getCopyChildState(record);
+      if (childEarly?.found) {
+        b.state.session.auto = {
+          ...auto,
+          phase: 'asset_copy_wait_editor',
+          copyEditorWaitStartedAt: Date.now(),
+          copyChildTabId: childEarly.tabId
+        };
+        await b.persistSession();
+        b.scheduleAuto(200);
+        return;
+      }
       const dialog = findCopySettingsDialog();
       if (dialog) {
         b.state.session.auto = { ...auto, phase: 'asset_copy_dialog_confirm' };
@@ -188,6 +271,7 @@
         assetCode: record.assetCode,
         copyPpmsChecked: Boolean(ppmBox?.checked)
       });
+      await expectCopyChildWindow(record, auto.copySourceEntityId || entityIdFromUrl());
       b.state.session.auto = {
         ...auto,
         phase: 'asset_copy_wait_editor',
@@ -211,5 +295,10 @@
   }
 
   root.pages = root.pages || {};
-  root.pages.assetCopy = Object.freeze({ processAssetCopy, findCopySettingsDialog });
+  root.pages.assetCopy = Object.freeze({
+    processAssetCopy,
+    findCopySettingsDialog,
+    resumeCopyChildEditor,
+    expectCopyChildWindow
+  });
 })();
